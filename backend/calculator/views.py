@@ -4,6 +4,7 @@ from rest_framework.response import Response
 from decimal import Decimal, ROUND_HALF_UP
 from .utils import TradeCalculator
 
+
 @api_view(['POST'])
 def calculate_charges(request):
     """
@@ -35,15 +36,14 @@ def calculate_charges(request):
             buy_value = quantity * buy_price
             sell_value = quantity * sell_price
             
-            # Calculate brokerage for each leg
-            buy_brokerage = calculator.calculate_brokerage(buy_value)
-            sell_brokerage = calculator.calculate_brokerage(sell_value)
+            # Calculate brokerage for the transaction
+            transaction_brokerage = calculator.calculate_brokerage(buy_value, sell_value)
             
             # Accumulate values
             total_quantity += quantity
             total_buy_value += buy_value
             total_sell_value += sell_value
-            total_brokerage += buy_brokerage + sell_brokerage
+            total_brokerage += transaction_brokerage
 
             # Store transaction data
             transactions_data.append({
@@ -52,14 +52,14 @@ def calculate_charges(request):
                 'sellValue': str(sell_value),
                 'averageBuyPrice': str(
                     (buy_value / quantity).quantize(Decimal('0.01')) 
-                    if quantity > 0 
+                    if quantity > 0 and buy_value > 0
                     else '0.00'
                 )
             })
 
         # Calculate total charges
         total_turnover = total_buy_value + total_sell_value
-        stt = calculator.calculate_stt(total_sell_value)
+        stt = calculator.calculate_stt(total_turnover) # changed here
         exchange_charges = calculator.calculate_exchange_charges(total_turnover)
         stamp_duty = calculator.calculate_stamp_duty(total_buy_value)
         sebi_fee = calculator.calculate_sebi_fee(total_turnover)
@@ -90,7 +90,7 @@ def calculate_charges(request):
                 'totalSellValue': str(total_sell_value.quantize(Decimal('0.01'))),
                 'averageBuyPrice': str(
                     (total_buy_value / total_quantity).quantize(Decimal('0.01')) 
-                    if total_quantity > 0 
+                    if total_quantity > 0 and total_buy_value > 0
                     else '0.00'
                 ),
                 'turnover': str(total_turnover.quantize(Decimal('0.01'))),

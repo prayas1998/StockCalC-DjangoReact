@@ -25,7 +25,7 @@ import {
   User,
   Save,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 
 interface Transaction {
@@ -99,21 +99,7 @@ const Index = () => {
     navigate(`/${newPlatform.toLowerCase()}`);
   };
 
-  const getCompanyName = () => {
-    return transactions[0]?.companyName || "this company";
-  };
-
-  const saveTransactions = () => {
-    console.log("Saving transactions:", transactions);
-  };
-
-  const [calculationState, setCalculationState] = useState<CalculationState>({
-    isLoading: false,
-    error: null,
-    result: null,
-  });
-
-  const handleCalculateCharges = async () => {
+  const handleCalculateCharges = useCallback(async () => {
     setCalculationState({
       isLoading: true,
       error: null,
@@ -165,7 +151,38 @@ const Index = () => {
         result: null,
       });
     }
+  }, [platform, exchange, tradeType, transactions]);
+
+  // Add this useEffect to trigger recalculation
+  useEffect(() => {
+    const isValid = transactions.every(
+      (t) =>
+        t.quantity &&
+        t.buyPrice &&
+        t.sellPrice &&
+        !isNaN(Number(t.quantity)) &&
+        !isNaN(Number(t.buyPrice)) &&
+        !isNaN(Number(t.sellPrice))
+    );
+
+    if (isValid) {
+      handleCalculateCharges();
+    }
+  }, [exchange, tradeType, transactions, handleCalculateCharges]);
+
+  const getCompanyName = () => {
+    return transactions[0]?.companyName || "this company";
   };
+
+  const saveTransactions = () => {
+    console.log("Saving transactions:", transactions);
+  };
+
+  const [calculationState, setCalculationState] = useState<CalculationState>({
+    isLoading: false,
+    error: null,
+    result: null,
+  });
 
   // Helper function for number formatting
   const formatCurrency = (value: string | number | undefined) => {
@@ -555,7 +572,9 @@ const Index = () => {
                         { key: "sebiFee", label: "SEBI Turnover Fees" },
                         { key: "gst", label: "GST" },
                         { key: "stampDuty", label: "Stamp Duty" },
-                        { key: "ipft", label: "IPFT" },
+                        ...(exchange === "NSE"
+                          ? [{ key: "ipft", label: "IPFT" }]
+                          : []), // Conditional IPFT
                       ].map(({ key, label }) => (
                         <div key={key} className="flex justify-between">
                           <span className="text-muted-foreground">{label}</span>
