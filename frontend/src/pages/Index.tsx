@@ -3,13 +3,28 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Label } from "@/components/ui/label";
+import { calculateCharges } from "../services/api";
+import type { CalculationResponse } from "../services/api";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { ChevronRight, Calculator, ArrowRight, Clock, Shield, Moon, Sun, ChevronDown, Plus, Trash2, User, Save } from "lucide-react";
+import {
+  ChevronRight,
+  Calculator,
+  ArrowRight,
+  Clock,
+  Shield,
+  Moon,
+  Sun,
+  ChevronDown,
+  Plus,
+  Trash2,
+  User,
+  Save,
+} from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -21,29 +36,33 @@ interface Transaction {
   sellPrice: string;
 }
 
+interface CalculationState {
+  isLoading: boolean;
+  error: string | null;
+  result: CalculationResponse | null;
+}
+
 const Index = () => {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(false);
   const [exchange, setExchange] = useState("NSE");
   const [tradeType, setTradeType] = useState("equity-delivery");
-  const [instrumentType, setInstrumentType] = useState("future"); // for F&O
-  
-  // Initialize platform based on current path
+  const [instrumentType, setInstrumentType] = useState("future");
+
   const [platform, setPlatform] = useState(() => {
     const path = window.location.pathname.slice(1);
     return path.charAt(0).toUpperCase() + path.slice(1) || "Groww";
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: "1", companyName: "", quantity: "", buyPrice: "", sellPrice: "" }
+    { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" },
   ]);
 
-  // Dark mode toggle
   useEffect(() => {
     if (darkMode) {
-      document.documentElement.classList.add('dark');
+      document.documentElement.classList.add("dark");
     } else {
-      document.documentElement.classList.remove('dark');
+      document.documentElement.classList.remove("dark");
     }
   }, [darkMode]);
 
@@ -54,21 +73,25 @@ const Index = () => {
         id: Math.random().toString(),
         quantity: "",
         buyPrice: "",
-        sellPrice: ""
-      }
+        sellPrice: "",
+      },
     ]);
   };
 
   const removeTransaction = (id: string) => {
     if (transactions.length > 1) {
-      setTransactions(transactions.filter(t => t.id !== id));
+      setTransactions(transactions.filter((t) => t.id !== id));
     }
   };
 
-  const updateTransaction = (id: string, field: keyof Transaction, value: string) => {
-    setTransactions(transactions.map(t => 
-      t.id === id ? { ...t, [field]: value } : t
-    ));
+  const updateTransaction = (
+    id: string,
+    field: keyof Transaction,
+    value: string
+  ) => {
+    setTransactions(
+      transactions.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+    );
   };
 
   const handlePlatformChange = (newPlatform: string) => {
@@ -82,24 +105,80 @@ const Index = () => {
 
   const saveTransactions = () => {
     console.log("Saving transactions:", transactions);
-    // Here you can add the logic to save transactions
   };
 
-  // Calculate average price (placeholder for backend calculation)
-  const getAveragePrice = (transactions: Transaction[], currentIndex: number) => {
-    // This will be replaced with backend calculation
-    return "₹100.00";
+  const [calculationState, setCalculationState] = useState<CalculationState>({
+    isLoading: false,
+    error: null,
+    result: null,
+  });
+
+  const handleCalculateCharges = async () => {
+    setCalculationState({
+      isLoading: true,
+      error: null,
+      result: null,
+    });
+
+    try {
+      const isValid = transactions.every(
+        (t) =>
+          t.quantity &&
+          t.buyPrice &&
+          t.sellPrice &&
+          !isNaN(Number(t.quantity)) &&
+          !isNaN(Number(t.buyPrice)) &&
+          !isNaN(Number(t.sellPrice))
+      );
+
+      if (!isValid) {
+        throw new Error("Please fill all fields with valid numbers");
+      }
+
+      const formattedTransactions = transactions.map((t) => ({
+        quantity: t.quantity,
+        buyPrice: t.buyPrice,
+        sellPrice: t.sellPrice,
+      }));
+
+      const result = await calculateCharges(
+        platform.toLowerCase(),
+        exchange,
+        tradeType,
+        formattedTransactions
+      );
+
+      if ("error" in result) {
+        throw new Error(`${result.error}: ${result.detail || ""}`);
+      }
+
+      setCalculationState({
+        isLoading: false,
+        error: null,
+        result,
+      });
+    } catch (error) {
+      setCalculationState({
+        isLoading: false,
+        error:
+          error instanceof Error ? error.message : "Unknown error occurred",
+        result: null,
+      });
+    }
   };
 
-  // Calculate charges (placeholder for backend calculation)
-  const getCharges = (transaction: Transaction) => {
-    // This will be replaced with backend calculation
-    return "₹10.00";
+  // Helper function for number formatting
+  const formatCurrency = (value: string | number | undefined) => {
+    const numberValue = Number(value || 0);
+    return numberValue.toLocaleString("en-IN", {
+      maximumFractionDigits: 2,
+      style: "currency",
+      currency: "INR",
+    });
   };
 
   return (
     <div className="min-h-screen">
-      {/* Navbar */}
       <nav className="border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div>
@@ -124,7 +203,9 @@ const Index = () => {
                 <DropdownMenuItem onClick={() => handlePlatformChange("Rise")}>
                   Rise
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handlePlatformChange("Others")}>
+                <DropdownMenuItem
+                  onClick={() => handlePlatformChange("Others")}
+                >
                   Others
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -135,17 +216,22 @@ const Index = () => {
               onClick={() => setDarkMode(!darkMode)}
               className="rounded-full"
             >
-              {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              {darkMode ? (
+                <Sun className="h-5 w-5" />
+              ) : (
+                <Moon className="h-5 w-5" />
+              )}
             </Button>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
       <section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-blue-200 to-blue-50 dark:from-gray-900 dark:to-background min-h-[40vh] flex items-center">
         <div className="max-w-7xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-full mb-8">
-            <span className="text-primary text-sm font-medium">Calculate Stock Market Charges</span>
+            <span className="text-primary text-sm font-medium">
+              Calculate Stock Market Charges
+            </span>
             <ChevronRight className="h-4 w-4 text-primary" />
           </div>
           <h1 className="text-6xl font-bold tracking-tight sm:text-7xl mb-6">
@@ -154,21 +240,22 @@ const Index = () => {
             Starts Here
           </h1>
           <p className="mt-4 text-xl text-muted-foreground max-w-2xl mx-auto">
-            Calculate all your trading charges instantly with our advanced calculator.
+            Calculate all your trading charges instantly with our advanced
+            calculator.
           </p>
         </div>
       </section>
 
-      {/* Calculator Section */}
       <section className="section-padding bg-secondary/50 dark:bg-secondary/10">
         <div className="max-w-7xl mx-auto">
           <Card className="p-6 glass">
             <div className="space-y-6">
-              {/* Trade Type and Exchange toggles */}
               <div>
-                <Label className="text-base font-medium mb-4 block">Trade Type</Label>
-                <ToggleGroup 
-                  type="single" 
+                <Label className="text-base font-medium mb-4 block">
+                  Trade Type
+                </Label>
+                <ToggleGroup
+                  type="single"
                   value={tradeType}
                   onValueChange={(value) => value && setTradeType(value)}
                   className="justify-start"
@@ -187,29 +274,43 @@ const Index = () => {
 
               <div className="flex flex-wrap gap-8 items-start">
                 <div>
-                  <Label className="text-base font-medium mb-4 block">Exchange</Label>
-                  <ToggleGroup 
-                    type="single" 
-                    value={exchange} 
+                  <Label className="text-base font-medium mb-4 block">
+                    Exchange
+                  </Label>
+                  <ToggleGroup
+                    type="single"
+                    value={exchange}
                     onValueChange={(value) => value && setExchange(value)}
                     className="justify-start"
                   >
-                    <ToggleGroupItem value="NSE" className="text-sm">NSE</ToggleGroupItem>
-                    <ToggleGroupItem value="BSE" className="text-sm">BSE</ToggleGroupItem>
+                    <ToggleGroupItem value="NSE" className="text-sm">
+                      NSE
+                    </ToggleGroupItem>
+                    <ToggleGroupItem value="BSE" className="text-sm">
+                      BSE
+                    </ToggleGroupItem>
                   </ToggleGroup>
                 </div>
 
                 {tradeType === "fno" && (
                   <div>
-                    <Label className="text-base font-medium mb-4 block">Instrument Type</Label>
-                    <ToggleGroup 
-                      type="single" 
+                    <Label className="text-base font-medium mb-4 block">
+                      Instrument Type
+                    </Label>
+                    <ToggleGroup
+                      type="single"
                       value={instrumentType}
-                      onValueChange={(value) => value && setInstrumentType(value)}
+                      onValueChange={(value) =>
+                        value && setInstrumentType(value)
+                      }
                       className="justify-start"
                     >
-                      <ToggleGroupItem value="future" className="text-sm">Future</ToggleGroupItem>
-                      <ToggleGroupItem value="option" className="text-sm">Option</ToggleGroupItem>
+                      <ToggleGroupItem value="future" className="text-sm">
+                        Future
+                      </ToggleGroupItem>
+                      <ToggleGroupItem value="option" className="text-sm">
+                        Option
+                      </ToggleGroupItem>
                     </ToggleGroup>
                   </div>
                 )}
@@ -240,51 +341,122 @@ const Index = () => {
                               id="companyName"
                               placeholder="Enter company name"
                               value={transaction.companyName}
-                              onChange={(e) => updateTransaction(transaction.id, "companyName", e.target.value)}
+                              onChange={(e) =>
+                                updateTransaction(
+                                  transaction.id,
+                                  "companyName",
+                                  e.target.value
+                                )
+                              }
                               className="mt-1"
                             />
                           </div>
                         )}
-                        
+
                         <div>
-                          <Label htmlFor={`quantity-${transaction.id}`}>Quantity</Label>
+                          <Label htmlFor={`quantity-${transaction.id}`}>
+                            Quantity
+                          </Label>
                           <Input
                             id={`quantity-${transaction.id}`}
                             type="number"
+                            min="0"
                             placeholder="Quantity"
                             value={transaction.quantity}
-                            onChange={(e) => updateTransaction(transaction.id, "quantity", e.target.value)}
+                            onFocus={(e) => {
+                              if (e.target.value === "0") e.target.value = "";
+                            }}
+                            onChange={(e) =>
+                              updateTransaction(
+                                transaction.id,
+                                "quantity",
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (["e", "E", "+", "-"].includes(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`buyPrice-${transaction.id}`}>Buy Price</Label>
+                          <Label htmlFor={`buyPrice-${transaction.id}`}>
+                            Buy Price
+                          </Label>
                           <Input
                             id={`buyPrice-${transaction.id}`}
                             type="number"
+                            min="0"
                             placeholder="Buy Price"
                             value={transaction.buyPrice}
-                            onChange={(e) => updateTransaction(transaction.id, "buyPrice", e.target.value)}
+                            onFocus={(e) => {
+                              if (e.target.value === "0") e.target.value = "";
+                            }}
+                            onChange={(e) =>
+                              updateTransaction(
+                                transaction.id,
+                                "buyPrice",
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (["e", "E", "+", "-"].includes(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`sellPrice-${transaction.id}`}>Sell Price</Label>
+                          <Label htmlFor={`sellPrice-${transaction.id}`}>
+                            Sell Price
+                          </Label>
                           <Input
                             id={`sellPrice-${transaction.id}`}
                             type="number"
+                            min="0"
                             placeholder="Sell Price"
                             value={transaction.sellPrice}
-                            onChange={(e) => updateTransaction(transaction.id, "sellPrice", e.target.value)}
+                            onFocus={(e) => {
+                              if (e.target.value === "0") e.target.value = "";
+                            }}
+                            onChange={(e) =>
+                              updateTransaction(
+                                transaction.id,
+                                "sellPrice",
+                                e.target.value
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (["e", "E", "+", "-"].includes(e.key)) {
+                                e.preventDefault();
+                              }
+                            }}
                           />
                         </div>
                         <div className="flex flex-col justify-end text-sm text-muted-foreground space-y-1">
-                          <div>Avg. Price: {getAveragePrice(transactions, index)}</div>
-                          <div>Charges: {getCharges(transaction)}</div>
+                          <div>
+                            Avg. Price:{" "}
+                            {formatCurrency(
+                              calculationState.result?.transactions[index]
+                                ?.averageBuyPrice
+                            )}
+                          </div>
+                          <div>
+                            Charges:{" "}
+                            {formatCurrency(
+                              calculationState.result?.charges?.totalCharges &&
+                                Number(
+                                  calculationState.result.charges.totalCharges
+                                ) / transactions.length
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
                   </Card>
                 ))}
-                
+
                 <Button
                   onClick={addTransaction}
                   variant="outline"
@@ -295,8 +467,18 @@ const Index = () => {
                 </Button>
 
                 <div className="flex gap-4 justify-end">
-                  <Button>
-                    Calculate Charges
+                  <Button
+                    onClick={handleCalculateCharges}
+                    disabled={calculationState.isLoading}
+                  >
+                    {calculationState.isLoading ? (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 animate-spin" />
+                        Calculating...
+                      </div>
+                    ) : (
+                      "Calculate Charges"
+                    )}
                   </Button>
                   <Button
                     onClick={saveTransactions}
@@ -312,62 +494,80 @@ const Index = () => {
 
           {/* Results Section */}
           <Card className="p-6 glass mt-8">
+            {calculationState.error && (
+              <div className="p-4 mb-4 text-red-500 bg-red-50 rounded-lg">
+                Error: {calculationState.error}
+              </div>
+            )}
+
             <div className="space-y-6">
               <div>
                 <div className="text-sm text-muted-foreground">Turnover</div>
-                <div className="text-2xl font-bold">₹1,25,000.00</div>
+                <div className="text-2xl font-bold">
+                  {formatCurrency(
+                    calculationState.result?.summary.turnover || 0
+                  )}
+                </div>
               </div>
 
               <div>
-                <div className="text-sm text-muted-foreground">P&L</div>
-                <div className="text-2xl font-bold text-primary">₹25,000.00</div>
+                <div className="text-sm text-muted-foreground">Gross P&L</div>
+                <div className="text-2xl font-bold text-primary">
+                  {formatCurrency(
+                    calculationState.result?.summary.grossPnL || 0
+                  )}
+                </div>
               </div>
 
               <div className="pt-4 border-t">
                 <div className="flex justify-between items-center mb-6">
                   <div className="text-lg font-semibold">Charges</div>
-                  <div className="text-lg font-semibold">₹184.23</div>
+                  <div className="text-lg font-semibold">
+                    {formatCurrency(
+                      calculationState.result?.charges.totalCharges || 0
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-6">
-                  {/* Brokerage Section */}
                   <div>
                     <div className="flex justify-between items-center mb-3">
                       <h4 className="text-base font-medium">Brokerage</h4>
-                      <span>₹40.00</span>
+                      <span>
+                        {formatCurrency(
+                          calculationState.result?.charges.brokerage || 0
+                        )}
+                      </span>
                     </div>
                   </div>
 
-                  {/* Other Charges Section */}
                   <div>
-                    <h4 className="text-base font-medium mb-3">Other Charges</h4>
+                    <h4 className="text-base font-medium mb-3">
+                      Other Charges
+                    </h4>
                     <div className="space-y-3">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Securities Transaction Tax (STT)</span>
-                        <span>₹125.00</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Exchange Charges</span>
-                        <span>₹3.71</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">SEBI Turnover Fees</span>
-                        <span>₹0.13</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">GST</span>
-                        <span>₹7.89</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Stamp Duty</span>
-                        <span>₹7.50</span>
-                      </div>
-                      {exchange === "NSE" && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">IPFT</span>
-                          <span>₹0.05</span>
+                      {[
+                        {
+                          key: "stt",
+                          label: "Securities Transaction Tax (STT)",
+                        },
+                        { key: "exchangeCharges", label: "Exchange Charges" },
+                        { key: "sebiFee", label: "SEBI Turnover Fees" },
+                        { key: "gst", label: "GST" },
+                        { key: "stampDuty", label: "Stamp Duty" },
+                        { key: "ipft", label: "IPFT" },
+                      ].map(({ key, label }) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="text-muted-foreground">{label}</span>
+                          <span>
+                            {formatCurrency(
+                              calculationState.result?.charges[
+                                key as keyof typeof calculationState.result.charges
+                              ] || 0
+                            )}
+                          </span>
                         </div>
-                      )}
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -375,7 +575,9 @@ const Index = () => {
 
               <div className="pt-4 border-t">
                 <div className="text-sm text-muted-foreground">Net P&L</div>
-                <div className="text-3xl font-bold text-primary">₹24,815.77</div>
+                <div className="text-3xl font-bold text-primary">
+                  {formatCurrency(calculationState.result?.summary.netPnL || 0)}
+                </div>
               </div>
             </div>
           </Card>
@@ -384,9 +586,12 @@ const Index = () => {
           <section className="section-padding">
             <div className="max-w-7xl mx-auto">
               <div className="text-center mb-16">
-                <h2 className="text-3xl font-bold">Why Choose Our Calculator?</h2>
+                <h2 className="text-3xl font-bold">
+                  Why Choose Our Calculator?
+                </h2>
                 <p className="text-muted-foreground mt-4">
-                  Designed to make your trading decisions easier and more informed
+                  Designed to make your trading decisions easier and more
+                  informed
                 </p>
               </div>
               <div className="grid md:grid-cols-3 gap-8">
@@ -394,23 +599,30 @@ const Index = () => {
                   {
                     icon: Calculator,
                     title: "Accurate Calculations",
-                    description: "Get precise calculations for all charges based on latest rates",
+                    description:
+                      "Get precise calculations for all charges based on latest rates",
                   },
                   {
                     icon: Clock,
                     title: "Real-time Updates",
-                    description: "Charges are updated instantly as you modify trade details",
+                    description:
+                      "Charges are updated instantly as you modify trade details",
                   },
                   {
                     icon: Shield,
                     title: "Reliable & Secure",
-                    description: "Your data is secure and calculations are verified",
+                    description:
+                      "Your data is secure and calculations are verified",
                   },
                 ].map((feature, index) => (
                   <Card key={index} className="p-6 glass">
                     <feature.icon className="w-12 h-12 text-primary mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">{feature.title}</h3>
-                    <p className="text-muted-foreground">{feature.description}</p>
+                    <h3 className="text-xl font-semibold mb-2">
+                      {feature.title}
+                    </h3>
+                    <p className="text-muted-foreground">
+                      {feature.description}
+                    </p>
                   </Card>
                 ))}
               </div>
