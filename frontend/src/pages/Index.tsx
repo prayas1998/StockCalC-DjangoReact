@@ -37,14 +37,20 @@ interface Transaction {
 }
 
 interface CalculationState {
-  isLoading: boolean;
   error: string | null;
   result: CalculationResponse | null;
 }
 
 const Index = () => {
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    // Check localStorage on initial load
+    if (typeof window !== "undefined") {
+      const savedMode = localStorage.getItem("darkMode");
+      return savedMode ? JSON.parse(savedMode) : true; // Default dark mode
+    }
+    return true; // Fallback for server-side
+  });
   const [exchange, setExchange] = useState("NSE");
   const [tradeType, setTradeType] = useState("equity-delivery");
   const [instrumentType, setInstrumentType] = useState("future");
@@ -55,8 +61,21 @@ const Index = () => {
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" },
+    { id: "1", companyName: "", quantity: "", buyPrice: "", sellPrice: "" },
   ]);
+
+  useEffect(() => {
+    localStorage.setItem("darkMode", JSON.stringify(darkMode));
+  }, [darkMode]); // Save to localStorage on change
+
+  // First-run initialization
+  useEffect(() => {
+    const savedMode = localStorage.getItem("darkMode");
+    if (savedMode === null) {
+      // Only set default if no existing preference
+      document.documentElement.classList.add("dark");
+    }
+  }, []); // Empty array = runs only once
 
   useEffect(() => {
     if (darkMode) {
@@ -101,7 +120,6 @@ const Index = () => {
 
   const handleCalculateCharges = useCallback(async () => {
     setCalculationState({
-      isLoading: true,
       error: null,
       result: null,
     });
@@ -139,13 +157,11 @@ const Index = () => {
       }
 
       setCalculationState({
-        isLoading: false,
         error: null,
         result,
       });
     } catch (error) {
       setCalculationState({
-        isLoading: false,
         error:
           error instanceof Error ? error.message : "Unknown error occurred",
         result: null,
@@ -155,18 +171,25 @@ const Index = () => {
 
   // Add this useEffect to trigger recalculation
   useEffect(() => {
-    const isValid = transactions.every(
+    const allFieldsFilled = transactions.every(
+      (t) => t.quantity.trim() && t.buyPrice.trim() && t.sellPrice.trim()
+    );
+
+    const allValidNumbers = transactions.every(
       (t) =>
-        t.quantity &&
-        t.buyPrice &&
-        t.sellPrice &&
         !isNaN(Number(t.quantity)) &&
         !isNaN(Number(t.buyPrice)) &&
         !isNaN(Number(t.sellPrice))
     );
 
-    if (isValid) {
+    if (allFieldsFilled && allValidNumbers) {
       handleCalculateCharges();
+    } else {
+      // Reset to default values when inputs are invalid
+      setCalculationState({
+        error: null,
+        result: null,
+      });
     }
   }, [exchange, tradeType, transactions, handleCalculateCharges]);
 
@@ -179,7 +202,6 @@ const Index = () => {
   };
 
   const [calculationState, setCalculationState] = useState<CalculationState>({
-    isLoading: false,
     error: null,
     result: null,
   });
@@ -485,19 +507,6 @@ const Index = () => {
 
                 <div className="flex gap-4 justify-end">
                   <Button
-                    onClick={handleCalculateCharges}
-                    disabled={calculationState.isLoading}
-                  >
-                    {calculationState.isLoading ? (
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 animate-spin" />
-                        Calculating...
-                      </div>
-                    ) : (
-                      "Calculate Charges"
-                    )}
-                  </Button>
-                  <Button
                     onClick={saveTransactions}
                     className="bg-emerald-600 hover:bg-emerald-700"
                   >
@@ -531,7 +540,7 @@ const Index = () => {
                 <div className="text-sm text-muted-foreground">Gross P&L</div>
                 <div className="text-2xl font-bold text-primary">
                   {formatCurrency(
-                    calculationState.result?.summary.grossPnL || 0
+                    calculationState.result?.summary.grossPnL ?? 0
                   )}
                 </div>
               </div>
@@ -541,7 +550,7 @@ const Index = () => {
                   <div className="text-lg font-semibold">Charges</div>
                   <div className="text-lg font-semibold">
                     {formatCurrency(
-                      calculationState.result?.charges.totalCharges || 0
+                      calculationState.result?.charges.totalCharges ?? 0
                     )}
                   </div>
                 </div>
@@ -552,7 +561,7 @@ const Index = () => {
                       <h4 className="text-base font-medium">Brokerage</h4>
                       <span>
                         {formatCurrency(
-                          calculationState.result?.charges.brokerage || 0
+                          calculationState.result?.charges.brokerage ?? 0
                         )}
                       </span>
                     </div>
@@ -582,7 +591,7 @@ const Index = () => {
                             {formatCurrency(
                               calculationState.result?.charges[
                                 key as keyof typeof calculationState.result.charges
-                              ] || 0
+                              ] ?? 0
                             )}
                           </span>
                         </div>
@@ -595,7 +604,7 @@ const Index = () => {
               <div className="pt-4 border-t">
                 <div className="text-sm text-muted-foreground">Net P&L</div>
                 <div className="text-3xl font-bold text-primary">
-                  {formatCurrency(calculationState.result?.summary.netPnL || 0)}
+                  {formatCurrency(calculationState.result?.summary.netPnL ?? 0)}
                 </div>
               </div>
             </div>
