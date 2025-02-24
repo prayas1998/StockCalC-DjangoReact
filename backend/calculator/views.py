@@ -17,7 +17,7 @@ def calculate_charges(request):
         trade_type = request.data.get('tradeType', 'equity-delivery')
         transactions = request.data.get('transactions', [])
 
-        calculator = TradeCalculator(platform, exchange)
+        calculator = TradeCalculator(platform, exchange, trade_type)
         
         # Initialize accumulators
         total_quantity = Decimal('0')

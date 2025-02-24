@@ -61,7 +61,7 @@ const Index = () => {
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: "1", companyName: "", quantity: "", buyPrice: "", sellPrice: "" },
+    { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" },
   ]);
 
   useEffect(() => {
@@ -90,9 +90,9 @@ const Index = () => {
       ...transactions,
       {
         id: Math.random().toString(),
-        quantity: "",
-        buyPrice: "",
-        sellPrice: "",
+        quantity: "0",
+        buyPrice: "0",
+        sellPrice: "0",
       },
     ]);
   };
@@ -402,8 +402,14 @@ const Index = () => {
                             min="0"
                             placeholder="Quantity"
                             value={transaction.quantity}
-                            onFocus={(e) => {
-                              if (e.target.value === "0") e.target.value = "";
+                            onFocus={() => {
+                              if (transaction.quantity === "0") {
+                                updateTransaction(
+                                  transaction.id,
+                                  "quantity",
+                                  ""
+                                );
+                              }
                             }}
                             onChange={(e) =>
                               updateTransaction(
@@ -412,6 +418,15 @@ const Index = () => {
                                 e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") {
+                                updateTransaction(
+                                  transaction.id,
+                                  "quantity",
+                                  "0"
+                                );
+                              }
+                            }}
                             onKeyDown={(e) => {
                               if (["e", "E", "+", "-"].includes(e.key)) {
                                 e.preventDefault();
@@ -429,8 +444,14 @@ const Index = () => {
                             min="0"
                             placeholder="Buy Price"
                             value={transaction.buyPrice}
-                            onFocus={(e) => {
-                              if (e.target.value === "0") e.target.value = "";
+                            onFocus={() => {
+                              if (transaction.buyPrice === "0") {
+                                updateTransaction(
+                                  transaction.id,
+                                  "buyPrice",
+                                  ""
+                                );
+                              }
                             }}
                             onChange={(e) =>
                               updateTransaction(
@@ -439,6 +460,15 @@ const Index = () => {
                                 e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") {
+                                updateTransaction(
+                                  transaction.id,
+                                  "buyPrice",
+                                  "0"
+                                );
+                              }
+                            }}
                             onKeyDown={(e) => {
                               if (["e", "E", "+", "-"].includes(e.key)) {
                                 e.preventDefault();
@@ -456,8 +486,14 @@ const Index = () => {
                             min="0"
                             placeholder="Sell Price"
                             value={transaction.sellPrice}
-                            onFocus={(e) => {
-                              if (e.target.value === "0") e.target.value = "";
+                            onFocus={() => {
+                              if (transaction.sellPrice === "0") {
+                                updateTransaction(
+                                  transaction.id,
+                                  "sellPrice",
+                                  ""
+                                );
+                              }
                             }}
                             onChange={(e) =>
                               updateTransaction(
@@ -466,6 +502,15 @@ const Index = () => {
                                 e.target.value
                               )
                             }
+                            onBlur={(e) => {
+                              if (e.target.value === "") {
+                                updateTransaction(
+                                  transaction.id,
+                                  "sellPrice",
+                                  "0"
+                                );
+                              }
+                            }}
                             onKeyDown={(e) => {
                               if (["e", "E", "+", "-"].includes(e.key)) {
                                 e.preventDefault();
