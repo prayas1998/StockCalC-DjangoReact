@@ -1,4 +1,6 @@
-from decimal import Decimal
+import logging
+from decimal import Decimal, InvalidOperation
+
 from .brokers.groww import GrowwCalculator
 from .levies.government import GovernmentCharges
 
@@ -32,7 +34,8 @@ class TradeCalculator:
         """Convert value to Decimal safely"""
         try:
             return Decimal(str(value))
-        except:
+        except (InvalidOperation, TypeError, ValueError) as e:
+            logging.warning(f"Decimal conversion error for value {value}: {str(e)}")
             return Decimal('0')
 
     @staticmethod
