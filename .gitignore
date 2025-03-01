@@ -1,7 +1,7 @@
 venv-stock-django-react/
-.vscode/
-
-
+.vscode
+.idea
+.gitignore
 
 
 # Template: Commonly ignored files in Python and Node.js (https://github.com/github/gitignore/blob/main/Node.gitignore)

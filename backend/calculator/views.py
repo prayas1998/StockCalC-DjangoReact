@@ -37,7 +37,7 @@ def calculate_charges(request):
             sell_value = quantity * sell_price
             
             # Calculate brokerage for the transaction
-            transaction_brokerage = calculator.calculate_brokerage(buy_value, sell_value)
+            transaction_brokerage = calculator.broker.calculate_brokerage(buy_value, sell_value)
             
             # Accumulate values
             total_quantity += quantity
@@ -59,15 +59,20 @@ def calculate_charges(request):
 
         # Calculate total charges
         total_turnover = total_buy_value + total_sell_value
-        stt = calculator.calculate_stt(total_turnover) # changed here
-        exchange_charges = calculator.calculate_exchange_charges(total_turnover)
-        stamp_duty = calculator.calculate_stamp_duty(total_buy_value)
-        sebi_fee = calculator.calculate_sebi_fee(total_turnover)
-        ipft = calculator.calculate_ipft(total_turnover)
+        stt = calculator.govt_charges.calculate_stt(total_turnover)
+        exchange_charges = calculator.govt_charges.calculate_exchange_charges(total_turnover)
+        stamp_duty = calculator.govt_charges.calculate_stamp_duty(total_buy_value)
+        sebi_fee = calculator.govt_charges.calculate_sebi_fee(total_turnover)
+        ipft = calculator.govt_charges.calculate_ipft(total_turnover)
 
         # GST Calculation
-        taxable_components = total_brokerage + exchange_charges + sebi_fee + ipft
-        gst = calculator.calculate_gst(taxable_components)
+        taxable_components = sum([
+            total_brokerage,
+            exchange_charges,
+            sebi_fee,
+            ipft
+        ])
+        gst = calculator.govt_charges.calculate_gst(taxable_components)
 
         # Calculate totals
         total_charges = sum([
