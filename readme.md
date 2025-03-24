@@ -17,7 +17,7 @@
 **Example**:  
 Buy Value = ₹10,000 → ₹10.00  
 Sell Value = ₹15,000 → ₹15.00  
-**Total Brokerage** = ₹25.00  
+**Total Brokerage** = ₹25.00
 
 ---
 
