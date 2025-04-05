@@ -224,6 +224,9 @@ const Index = () => {
             <h1 className="text-xl font-bold">TradeSmart</h1>
           </div>
           <div className="flex items-center gap-4">
+            <Button variant="ghost" onClick={() => navigate("/tools")} className="flex items-center gap-2">
+              Tools
+            </Button>
             <Button variant="ghost" className="flex items-center gap-2">
               <User className="h-5 w-5" />
               Login
