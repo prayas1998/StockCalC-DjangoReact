@@ -1,99 +1,112 @@
+# StockCalc - Stock Brokerage Calculator
 
+A comprehensive tool for calculating brokerage charges, taxes, and fees for stock market transactions across different platforms in India.
 
+## Features
 
+- **Multiple Transaction Support**: Add and calculate charges for multiple transactions of the same stock to get average buy price
+- **Accurate Fee Calculation**: Precise computation of brokerage charges and all statutory levies (STT, Exchange fees, SEBI charges, etc.)
+- **Real-time Updates**: Instant recalculation as you update transaction details
+- **Profit/Loss Analysis**: Clear display of gross and net P&L after accounting for all charges
+- **Platform Support**: Currently optimized for GROWW with plans to add support for RIISE and others
+- **Exchange Support**: Calculations for NSE (with BSE support in the works)
+- **Dark/Light Mode**: Toggle between dark and light themes
 
-# Trade Charge Formulas  
+## Technology Stack
 
----
+- **Frontend**: React with TypeScript, Tailwind CSS, and shadcn/ui components
+- **Backend**: Django REST Framework
+- **Database**: SQLite (development)
 
-## 1. Brokerage  
-**Formula**:  
-- Buy: `0.1% of buy value` (min ₹2, max ₹20)  
-- Sell: `0.1% of sell value` (min ₹2, max ₹20)  
-**Conditions**:  
-- Applies to both buy and sell transactions.  
-- For Groww equity-delivery trades only.  
-**Rounding**: 2 decimal places (nearest paisa).  
-**Example**:  
-Buy Value = ₹10,000 → ₹10.00  
-Sell Value = ₹15,000 → ₹15.00  
-**Total Brokerage** = ₹25.00
+## Project Structure
 
----
+The project follows a standard Django-React structure:
 
-## 2. STT (Securities Transaction Tax)  
-**Formula**:  
-- `0.1% of total turnover` (buy + sell value).  
-**Conditions**:  
-- Applies to equity-delivery trades.  
-**Rounding**: Nearest whole rupee.  
-**Example**:  
-Total Turnover = ₹25,000 → ₹25  
+```
+StockCalc/
+├── backend/           # Django backend
+│   ├── calculator/    # Main app for brokerage calculations 
+│   │   ├── brokers/   # Broker-specific calculation logic
+│   │   └── levies/    # Government charges calculation
+│   └── backend/       # Django project settings
+└── frontend/          # React frontend
+    └── src/
+        ├── components/  # Reusable UI components
+        ├── pages/       # Page components including the main calculator
+        └── services/    # API services for backend communication
+```
 
----
+## Getting Started
 
-## 3. Exchange Charges  
-**Formula**:  
-- **NSE**: `0.00297% of total turnover`  
-- **BSE**: `0.00375% of total turnover`  
-**Rounding**: 2 decimal places.  
-**Example**:  
-NSE: ₹25,000 → ₹0.74  
-BSE: ₹25,000 → ₹0.94  
+### Prerequisites
 
----
+- Python 3.8+
+- Node.js 14+
+- npm or yarn
 
-## 4. Stamp Duty  
-**Formula**:  
-- `0.015% of buy value`.  
-**Conditions**:  
-- Applicable only to buy orders.  
-**Rounding**: Nearest whole rupee.  
-**Example**:  
-Buy Value = ₹20,000 → ₹3  
+### Installation
 
----
+1. Clone the repository:
+   ```
+   git clone https://github.com/yourusername/stockcalc-djangoreact.git
+   cd stockcalc-djangoreact
+   ```
 
-## 5. SEBI Turnover Fee  
-**Formula**:  
-- `0.0001% of total turnover`.  
-**Rounding**: 2 decimal places.  
-**Example**:  
-Total Turnover = ₹25,000 → ₹0.03  
+2. Set up the backend:
+   ```
+   cd backend
+   python -m venv venv
+   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
+   pip install -r requirements.txt
+   python manage.py migrate
+   python manage.py runserver
+   ```
 
----
+3. Set up the frontend:
+   ```
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-## 6. IPFT (Investor Protection Fund Trust)  
-**Formula**:  
-- `0.0001% of total turnover`.  
-**Conditions**:  
-- NSE trades only.  
-**Rounding**: 2 decimal places.  
-**Example**:  
-NSE Total Turnover = ₹25,000 → ₹0.03  
+4. Open your browser and navigate to `http://localhost:5173` (or whatever port Vite assigns)
 
----
+## Usage
 
-## 7. GST  
-**Formula**:  
-- `18% of (Brokerage + Exchange Charges + SEBI Fee + IPFT)`.  
-**Rounding**: 2 decimal places.  
-**Example**:  
-Taxable Components = ₹25 (Brokerage) + ₹0.74 (Exchange) + ₹0.03 (SEBI) + ₹0.03 (IPFT) = ₹25.80  
-**GST** = ₹25.80 × 18% = ₹4.64  
+1. Input your stock transactions with quantity, buy price, and sell price
+2. Select the exchange (NSE) and trade type
+3. Add multiple transactions if needed using the "+" button
+4. View real-time calculation of:
+   - Average buy price across all transactions
+   - Detailed breakdown of all charges (brokerage, STT, etc.)
+   - Gross and net profit/loss
 
----
+## Key Calculation Details
 
-## Key Notes  
-1. **Total Turnover** = Buy Value + Sell Value.  
-2. **Rounding Rules**:  
-   - **2 Decimal Places**: Brokerage, Exchange, SEBI, IPFT, GST.  
-   - **Nearest Rupee**: STT, Stamp Duty.  
-3. **Platform-Specific**:  
-   - IPFT applies only to NSE.  
-   - Groww equity-delivery uses min/max brokerage (₹2–₹20).  
+### GROWW Brokerage
 
----
+- Equity Delivery: 0.1% or ₹2 (whichever is higher) per transaction side, capped at ₹20
+- The calculator accurately implements the specific fee structure used by GROWW
 
-**Final Formula**:  
-**Total Charges** = Brokerage + STT + Exchange Charges + Stamp Duty + SEBI Fee + IPFT + GST
+### Government Charges
+
+- Securities Transaction Tax (STT): 0.1% on the total turnover
+- Exchange Transaction Charges: 0.00000375 of turnover (BSE) or 0.0000297 of turnover (NSE)
+- SEBI Turnover Fees: 0.0001% of turnover
+- Investor Protection Fund: 0.0001% of turnover (NSE)
+- Stamp Duty: 0.015% on buy value
+- GST: 18% on (brokerage + exchange fees + SEBI fees)
+
+## Unique Advantages
+
+- **Multiple Transaction Support**: Unlike most calculators that only handle single transactions, this calculator supports multiple transactions of the same stock, providing an accurate average buy price.
+- **Comprehensive Fee Calculation**: Includes all applicable fees and taxes with precise formulas matching the actual amounts charged by brokers.
+- **Profit/Loss Analysis**: Clear visualization of both gross P&L (before charges) and net P&L (after all charges).
+
+## Future Plans
+
+- Add support for RIISE and other brokerage platforms
+- Implement BSE exchange calculations
+- Add support for intraday equity, futures, and options trading
+- Historical transaction saving and comparison
+- Mobile app version

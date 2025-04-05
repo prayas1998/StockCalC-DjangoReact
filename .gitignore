@@ -3,6 +3,7 @@ venv-stock-django-react/
 .idea
 .gitignore
 PROJECT STRUCTURE.docx
+formulas.md
 
 # Template: Commonly ignored files in Python and Node.js (https://github.com/github/gitignore/blob/main/Node.gitignore)
 

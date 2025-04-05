@@ -19,8 +19,9 @@ def calculate_charges(request):
 
         calculator = TradeCalculator(platform, exchange, trade_type)
         
-        # Initialize accumulators
-        total_quantity = Decimal('0')
+        # Initialize accumulators for running totals
+        cumulative_quantity = Decimal('0')
+        cumulative_buy_value = Decimal('0')
         total_buy_value = Decimal('0')
         total_sell_value = Decimal('0')
         total_brokerage = Decimal('0')
@@ -32,32 +33,41 @@ def calculate_charges(request):
             buy_price = Decimal(str(transaction['buyPrice']))
             sell_price = Decimal(str(transaction['sellPrice']))
 
-            # Calculate values
+            # Calculate values for this transaction
             buy_value = quantity * buy_price
             sell_value = quantity * sell_price
             
-            # Calculate brokerage for the transaction
-            transaction_brokerage = calculator.broker.calculate_brokerage(buy_value, sell_value)
+            # Update cumulative totals for average price calculation
+            cumulative_quantity += quantity
+            cumulative_buy_value += buy_value
             
-            # Accumulate values
-            total_quantity += quantity
+            # Calculate Groww brokerage for just this transaction
+            # Buy side brokerage: 0.1% of buy value (min ₹2, max ₹20)
+            buy_brokerage = min(max(buy_value * Decimal('0.001'), Decimal('2')), Decimal('20')) if buy_value > 0 else Decimal('0')
+            # Sell side brokerage: 0.1% of sell value (min ₹2, max ₹20)
+            sell_brokerage = min(max(sell_value * Decimal('0.001'), Decimal('2')), Decimal('20')) if sell_value > 0 else Decimal('0')
+            # Total brokerage for this transaction
+            transaction_brokerage = buy_brokerage + sell_brokerage
+            
+            # Update running totals
             total_buy_value += buy_value
             total_sell_value += sell_value
             total_brokerage += transaction_brokerage
 
-            # Store transaction data
+            # Store transaction data with cumulative average price and transaction brokerage
             transactions_data.append({
                 'quantity': str(quantity),
                 'buyValue': str(buy_value),
                 'sellValue': str(sell_value),
                 'averageBuyPrice': str(
-                    (buy_value / quantity).quantize(Decimal('0.01')) 
-                    if quantity > 0 and buy_value > 0
+                    (cumulative_buy_value / cumulative_quantity).quantize(Decimal('0.01'))
+                    if cumulative_quantity > 0 and cumulative_buy_value > 0
                     else '0.00'
-                )
+                ),
+                'charges': str(transaction_brokerage.quantize(Decimal('0.01')))  # This is just the Groww brokerage
             })
 
-        # Calculate total charges
+        # Calculate final totals for government levies
         total_turnover = total_buy_value + total_sell_value
         stt = calculator.govt_charges.calculate_stt(total_turnover)
         exchange_charges = calculator.govt_charges.calculate_exchange_charges(total_turnover)
@@ -65,7 +75,7 @@ def calculate_charges(request):
         sebi_fee = calculator.govt_charges.calculate_sebi_fee(total_turnover)
         ipft = calculator.govt_charges.calculate_ipft(total_turnover)
 
-        # GST Calculation
+        # Final GST Calculation on all applicable charges
         taxable_components = sum([
             total_brokerage,
             exchange_charges,
@@ -74,7 +84,7 @@ def calculate_charges(request):
         ])
         gst = calculator.govt_charges.calculate_gst(taxable_components)
 
-        # Calculate totals
+        # Calculate total charges (brokerage + all government levies)
         total_charges = sum([
             total_brokerage,
             stt,
@@ -90,12 +100,12 @@ def calculate_charges(request):
         # Format response
         response_data = {
             'summary': {
-                'totalQuantity': str(total_quantity.quantize(Decimal('1'))),
+                'totalQuantity': str(cumulative_quantity.quantize(Decimal('1'))),
                 'totalBuyValue': str(total_buy_value.quantize(Decimal('0.01'))),
                 'totalSellValue': str(total_sell_value.quantize(Decimal('0.01'))),
                 'averageBuyPrice': str(
-                    (total_buy_value / total_quantity).quantize(Decimal('0.01')) 
-                    if total_quantity > 0 and total_buy_value > 0
+                    (total_buy_value / cumulative_quantity).quantize(Decimal('0.01'))
+                    if cumulative_quantity > 0 and total_buy_value > 0
                     else '0.00'
                 ),
                 'turnover': str(total_turnover.quantize(Decimal('0.01'))),
