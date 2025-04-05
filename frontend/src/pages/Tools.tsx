@@ -13,6 +13,18 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 
+// Define charge type to avoid duplication
+type Charges = {
+  brokerage: number;
+  stt: number;
+  exchangeCharges: number;
+  gst: number;
+  stampDuty: number;
+  sebiCharges: number;
+  ipft: number;
+  totalCharges: number;
+};
+
 const Tools = () => {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(() => {
@@ -26,6 +38,7 @@ const Tools = () => {
   
   const [platform, setPlatform] = useState(() => {
     const path = window.location.pathname.slice(1);
+    if (path === "tools") return "Groww"; // Default to Groww when on tools page
     return path.charAt(0).toUpperCase() + path.slice(1) || "Groww";
   });
 
@@ -37,16 +50,7 @@ const Tools = () => {
     sellingPrice: number;
     grossProfit: number;
     netProfit: number;
-    charges: {
-      brokerage: number;
-      stt: number;
-      exchangeCharges: number;
-      gst: number;
-      stampDuty: number;
-      sebiCharges: number;
-      ipft: number;
-      totalCharges: number;
-    };
+    charges: Charges;
   } | null>(null);
   
   // Net Profit Calculator states
@@ -56,20 +60,13 @@ const Tools = () => {
   const [profitResult, setProfitResult] = useState<{
     grossProfit: number;
     netProfit: number;
-    charges: {
-      brokerage: number;
-      stt: number;
-      exchangeCharges: number;
-      gst: number;
-      stampDuty: number;
-      sebiCharges: number;
-      ipft: number;
-      totalCharges: number;
-    };
+    profitPercentage: number;
+    isProfit: boolean;
+    charges: Charges;
   } | null>(null);
   
   // Exchange state (for both calculators)
-  const [exchange, setExchange] = useState("NSE");
+  const exchange = "NSE"; // Fixed to NSE
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
@@ -99,7 +96,7 @@ const Tools = () => {
   };
   
   // Calculate charges based on formulas.md
-  const calculateCharges = (buyValue: number, sellValue: number, exchange: string) => {
+  const calculateCharges = (buyValue: number, sellValue: number, exchange: string): Charges => {
     const totalTurnover = buyValue + sellValue;
     
     // 1. Brokerage (for Groww equity-delivery)
@@ -249,9 +246,15 @@ const Tools = () => {
     const grossProfit = sellValue - buyValue;
     const netProfit = grossProfit - charges.totalCharges;
     
+    // Calculate percentage
+    const profitPercentage = (netProfit / buyValue) * 100;
+    const isProfit = netProfit >= 0;
+    
     setProfitResult({
       grossProfit,
       netProfit,
+      profitPercentage,
+      isProfit,
       charges
     });
   };
@@ -319,25 +322,6 @@ const Tools = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold mb-6">Stock Market Tools</h1>
         
-        <div className="mb-6">
-          <Label className="text-base font-medium mb-4 block">
-            Exchange
-          </Label>
-          <ToggleGroup
-            type="single"
-            value={exchange}
-            onValueChange={(value) => value && setExchange(value)}
-            className="justify-start"
-          >
-            <ToggleGroupItem value="NSE" className="text-sm">
-              NSE
-            </ToggleGroupItem>
-            <ToggleGroupItem value="BSE" className="text-sm">
-              BSE
-            </ToggleGroupItem>
-          </ToggleGroup>
-        </div>
-        
         <div className="grid md:grid-cols-2 gap-6">
           {/* Profit Target Calculator */}
           <Card className="p-6 bg-card shadow-sm">
@@ -350,7 +334,7 @@ const Tools = () => {
             </p>
             
             <div className="space-y-4">
-            <div>
+              <div>
                 <Label htmlFor="quantity">Quantity</Label>
                 <Input
                   id="quantity"
@@ -361,7 +345,7 @@ const Tools = () => {
                   className="mt-1"
                 />
               </div>
-
+              
               <div>
                 <Label htmlFor="buyPrice">Buy Price Per Share</Label>
                 <Input
@@ -373,18 +357,6 @@ const Tools = () => {
                   className="mt-1"
                 />
               </div>
-              
-              {/* <div>
-                <Label htmlFor="quantity">Quantity</Label>
-                <Input
-                  id="quantity"
-                  type="text"
-                  placeholder="Enter quantity"
-                  value={targetQuantity}
-                  onChange={(e) => handleInputChange(setTargetQuantity, e.target.value)}
-                  className="mt-1"
-                />
-              </div> */}
               
               <div>
                 <Label htmlFor="profitPercentage">Target Profit Percentage</Label>
@@ -410,9 +382,9 @@ const Tools = () => {
               <div className="mt-6 p-4 border rounded-md bg-secondary/20">
                 <h3 className="font-semibold text-lg mb-2">Results</h3>
                 <div className="space-y-2">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-primary font-semibold">
                     <span>Required Selling Price:</span>
-                    <span className="font-medium">{formatCurrency(targetResult.sellingPrice)}</span>
+                    <span>{formatCurrency(targetResult.sellingPrice)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Gross Profit:</span>
@@ -467,18 +439,18 @@ const Tools = () => {
             )}
           </Card>
           
-          {/* Net Profit Calculator */}
+          {/* Net P&L Calculator */}
           <Card className="p-6 bg-card shadow-sm">
             <div className="flex items-center gap-2 mb-4">
               <Calculator className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Net Profit Calculator</h2>
+              <h2 className="text-xl font-semibold">Net P&L Calculator</h2>
             </div>
             <p className="text-muted-foreground mb-6">
-              Calculate your net profit after all charges based on your buy and sell prices.
+              Calculate your net profit or loss after all charges based on your buy and sell prices.
             </p>
             
             <div className="space-y-4">
-            <div>
+              <div>
                 <Label htmlFor="profitQuantity">Quantity</Label>
                 <Input
                   id="profitQuantity"
@@ -517,8 +489,11 @@ const Tools = () => {
               <Button 
                 onClick={calculateNetProfit}
                 className="w-full mt-2"
+                variant={profitSellPrice && profitBuyPrice && parseFloat(profitSellPrice) < parseFloat(profitBuyPrice) ? "destructive" : "default"}
               >
-                Calculate Net Profit
+                {profitSellPrice && profitBuyPrice && parseFloat(profitSellPrice) < parseFloat(profitBuyPrice) 
+                  ? "Calculate Net Loss" 
+                  : "Calculate Net Profit"}
               </Button>
             </div>
             
@@ -527,16 +502,18 @@ const Tools = () => {
                 <h3 className="font-semibold text-lg mb-2">Results</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span>Gross Profit:</span>
-                    <span className="font-medium">{formatCurrency(profitResult.grossProfit)}</span>
+                    <span>Gross {profitResult.isProfit ? "Profit" : "Loss"}:</span>
+                    <span className="font-medium">{formatCurrency(Math.abs(profitResult.grossProfit))}</span>
                   </div>
                   <div className="flex justify-between">
                     <span>Total Charges:</span>
                     <span className="font-medium">{formatCurrency(profitResult.charges.totalCharges)}</span>
                   </div>
                   <div className="flex justify-between text-primary font-semibold">
-                    <span>Net Profit:</span>
-                    <span>{formatCurrency(profitResult.netProfit)}</span>
+                    <span>Net {profitResult.isProfit ? "Profit" : "Loss"}:</span>
+                    <span className={profitResult.isProfit ? "text-primary" : "text-destructive"}>
+                      {formatCurrency(Math.abs(profitResult.netProfit))} ({profitResult.profitPercentage.toFixed(2)}%)
+                    </span>
                   </div>
                   
                   <div className="pt-2 mt-2 border-t">
