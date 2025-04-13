@@ -221,15 +221,19 @@ const Index = () => {
       <nav className="border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div>
-            <h1 
-              className="text-xl font-bold cursor-pointer hover:text-primary transition-colors" 
+            <h1
+              className="text-xl font-bold cursor-pointer hover:text-primary transition-colors"
               onClick={() => navigate("/groww")}
             >
               TradeSmart
             </h1>
           </div>
           <div className="flex items-center gap-4">
-            <Button variant="ghost" onClick={() => navigate("/tools")} className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/tools")}
+              className="flex items-center gap-2"
+            >
               Tools
             </Button>
             <Button variant="ghost" className="flex items-center gap-2">

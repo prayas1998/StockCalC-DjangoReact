@@ -272,7 +272,7 @@ const Tools = () => {
       <nav className="border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div>
-            <h1 
+          <h1 
               className="text-xl font-bold cursor-pointer hover:text-primary transition-colors" 
               onClick={() => navigate("/groww")}
             >
