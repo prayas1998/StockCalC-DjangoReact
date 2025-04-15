@@ -1,3 +1,4 @@
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -132,3 +133,6 @@ def calculate_charges(request):
             'error': 'Invalid input data',
             'detail': str(e)
         }, status=400)
+    
+def test_api(request):
+    return JsonResponse({"status": "success", "message": "Test API is working!"})
