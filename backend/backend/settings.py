@@ -54,7 +54,9 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
     "http://localhost:8082",
     "http://localhost:8081",
-    # "http://127.0.0.1:8081/"
+    "https://stockcalc-frontend.vercel.app/",
+    "https://stockcalc-frontend-prayas1998s-projects.vercel.app/",
+    "https://stockcalc-frontend-prayas1998-prayas1998s-projects.vercel.app/",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

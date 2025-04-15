@@ -7,6 +7,8 @@ formulas.md
 RulesForAI.md
 backend/staticfiles/
 DESCRIPTION.md
+frontend/.env.development
+frontend/.env.production
 
 # Build artifacts
 /dist
