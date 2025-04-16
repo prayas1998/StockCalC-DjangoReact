@@ -51,6 +51,15 @@ const Index = () => {
     }
     return true; // Fallback for server-side
   });
+
+  const [showFirstVisitAlert, setShowFirstVisitAlert] = useState(() => {
+    if (typeof window !== "undefined") {
+      const hasSeenAlert = localStorage.getItem("hasSeenAlert");
+      return !hasSeenAlert;
+    }
+    return true;
+  });
+
   const [exchange, setExchange] = useState("NSE");
   const [tradeType, setTradeType] = useState("equity-delivery");
   const [instrumentType, setInstrumentType] = useState("future");
@@ -67,6 +76,12 @@ const Index = () => {
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
   }, [darkMode]); // Save to localStorage on change
+
+  useEffect(() => {
+    if (showFirstVisitAlert) {
+      localStorage.setItem("hasSeenAlert", "true");
+    }
+  }, [showFirstVisitAlert]);
 
   // First-run initialization
   useEffect(() => {
@@ -218,6 +233,24 @@ const Index = () => {
 
   return (
     <div className="min-h-screen">
+      {showFirstVisitAlert && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-background p-6 rounded-lg max-w-md w-full space-y-4">
+            <div className="flex items-center gap-2">
+              <Clock className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-semibold">Welcome to TradeSmart</h3>
+            </div>
+            <p className="text-muted-foreground">
+              As our backend is hosted on a free tier service, the first calculation may take 1-2 minutes to initialize. This is a one-time wait when you first open the app. Subsequent calculations will be much faster.
+            </p>
+            <div className="flex justify-end">
+              <Button onClick={() => setShowFirstVisitAlert(false)}>
+                I Understand
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
       <nav className="border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div>
