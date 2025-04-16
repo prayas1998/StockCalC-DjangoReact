@@ -27,6 +27,9 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
+import AuthDialog from "@/components/auth/AuthDialog";
+import ProfileDropdown from "@/components/auth/ProfileDropdown";
 
 interface Transaction {
   id: string;
@@ -43,6 +46,8 @@ interface CalculationState {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     // Check localStorage on initial load
     if (typeof window !== "undefined") {
@@ -213,7 +218,12 @@ const Index = () => {
   };
 
   const saveTransactions = () => {
+    if (!user) {
+      setAuthDialogOpen(true);
+      return;
+    }
     console.log("Saving transactions:", transactions);
+    // Here you would save the transactions to Supabase
   };
 
   const [calculationState, setCalculationState] = useState<CalculationState>({
@@ -251,6 +261,12 @@ const Index = () => {
           </div>
         </div>
       )}
+      
+      <AuthDialog 
+        isOpen={authDialogOpen} 
+        onClose={() => setAuthDialogOpen(false)} 
+      />
+      
       <nav className="border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div>
@@ -269,10 +285,20 @@ const Index = () => {
             >
               Tools
             </Button>
-            <Button variant="ghost" className="flex items-center gap-2">
-              <User className="h-5 w-5" />
-              Login
-            </Button>
+            
+            {user ? (
+              <ProfileDropdown />
+            ) : (
+              <Button 
+                variant="ghost" 
+                className="flex items-center gap-2"
+                onClick={() => setAuthDialogOpen(true)}
+              >
+                <User className="h-5 w-5" />
+                Login
+              </Button>
+            )}
+            
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="flex items-center gap-2">
