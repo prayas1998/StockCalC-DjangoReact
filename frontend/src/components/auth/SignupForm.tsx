@@ -13,7 +13,8 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const signupSchema = z
   .object({
@@ -38,6 +39,8 @@ interface SignupFormProps {
 const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
   const { signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [emailExists, setEmailExists] = useState(false);
   
   const form = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
@@ -52,6 +55,9 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
 
   const onSubmit = async (data: SignupValues) => {
     setIsLoading(true);
+    setFormError(null);
+    setEmailExists(false);
+    
     try {
       const { error } = await signUp(
         data.email,
@@ -62,7 +68,22 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
       
       if (!error) {
         onSuccess();
+      } else {
+        // Check for email already registered error
+        if (error.message && (
+            error.message.includes("already registered") || 
+            error.message.includes("already in use") ||
+            error.message.includes("email already exists")
+          )) {
+          setEmailExists(true);
+        } else {
+          // Handle other errors
+          setFormError(error.message || "An error occurred during signup");
+        }
       }
+    } catch (error) {
+      setFormError("An unexpected error occurred. Please try again.");
+      console.error("Signup error:", error);
     } finally {
       setIsLoading(false);
     }
@@ -71,6 +92,29 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        {formError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{formError}</AlertDescription>
+          </Alert>
+        )}
+        
+        {emailExists && (
+          <Alert className="border-blue-200 bg-blue-50">
+            <AlertCircle className="h-4 w-4 text-blue-500" />
+            <AlertDescription className="flex items-center gap-2">
+              This email is already registered.
+              <Button 
+                variant="link" 
+                className="h-auto p-0" 
+                onClick={switchMode}
+              >
+                Sign in instead
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+        
         <div className="grid grid-cols-2 gap-4">
           <FormField
             control={form.control}
@@ -164,4 +208,4 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
   );
 };
 
-export default SignupForm; 
+export default SignupForm;

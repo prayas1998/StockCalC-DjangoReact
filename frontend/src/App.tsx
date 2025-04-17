@@ -10,6 +10,7 @@ import Others from "./pages/Others";
 import Tools from "./pages/Tools";
 import Transactions from "./pages/Transactions";
 import NotFound from "./pages/NotFound";
+import AuthCallback from './pages/AuthCallback';
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/tools" element={<Tools />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="*" element={<NotFound />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
           </Routes>
         </BrowserRouter>
       </AuthProvider>

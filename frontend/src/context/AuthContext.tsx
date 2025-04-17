@@ -62,11 +62,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       return { error: null };
     } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Error creating account',
-        description: error.message || 'An unknown error occurred',
-      });
+      // Check for duplicate email error
+      if (error.message && error.message.includes("already")) {
+        toast({
+          variant: 'destructive',
+          title: 'Email already registered',
+          description: 'This email is already registered. Please sign in instead.',
+        });
+      } else {
+        toast({
+          variant: 'destructive',
+          title: 'Error creating account',
+          description: error.message || 'An unknown error occurred',
+        });
+      }
       return { error };
     }
   };
