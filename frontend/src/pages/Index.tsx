@@ -52,9 +52,9 @@ const Index = () => {
     // Check localStorage on initial load
     if (typeof window !== "undefined") {
       const savedMode = localStorage.getItem("darkMode");
-      return savedMode ? JSON.parse(savedMode) : true; // Default dark mode
+      return savedMode ? JSON.parse(savedMode) : false; // Default light mode
     }
-    return true; // Fallback for server-side
+    return false; // Fallback for server-side
   });
 
   const [showFirstVisitAlert, setShowFirstVisitAlert] = useState(() => {
@@ -93,7 +93,7 @@ const Index = () => {
     const savedMode = localStorage.getItem("darkMode");
     if (savedMode === null) {
       // Only set default if no existing preference
-      document.documentElement.classList.add("dark");
+      document.documentElement.classList.remove("dark");
     }
   }, []); // Empty array = runs only once
 
