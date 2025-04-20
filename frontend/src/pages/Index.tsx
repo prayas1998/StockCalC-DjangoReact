@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Label } from "@/components/ui/label";
-import { calculateCharges } from "../services/api";
+import { calculateCharges, saveTransactions } from "../services/api";
 import type { CalculationResponse } from "../services/api";
 import {
   DropdownMenu,
@@ -31,6 +31,13 @@ import { useAuth } from "@/context/AuthContext";
 import AuthDialog from "@/components/auth/AuthDialog";
 import ProfileDropdown from "@/components/auth/ProfileDropdown";
 import Header from "@/components/ui/header";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/use-toast";
 
 interface Transaction {
   id: string;
@@ -38,6 +45,7 @@ interface Transaction {
   quantity: string;
   buyPrice: string;
   sellPrice: string;
+  error?: string;
 }
 
 interface CalculationState {
@@ -69,6 +77,7 @@ const Index = () => {
   const [exchange, setExchange] = useState("NSE");
   const [tradeType, setTradeType] = useState("equity-delivery");
   const [instrumentType, setInstrumentType] = useState("future");
+  const [isSaving, setIsSaving] = useState(false);
 
   const [platform, setPlatform] = useState(() => {
     const path = window.location.pathname.slice(1);
@@ -105,6 +114,26 @@ const Index = () => {
       document.documentElement.classList.remove("dark");
     }
   }, [darkMode]);
+
+  const validateTransaction = (transaction: Transaction): Transaction => {
+    const qty = Number(transaction.quantity);
+    const buyPrice = Number(transaction.buyPrice);
+    const sellPrice = Number(transaction.sellPrice);
+
+    if (!transaction.quantity || qty <= 0) {
+      return { ...transaction, error: "Quantity is required." };
+    }
+
+    if ((buyPrice <= 0 && sellPrice <= 0) || (transaction.buyPrice === "" && transaction.sellPrice === "")) {
+      return { ...transaction, error: "Enter a buy price or a sell price." };
+    }
+
+    return { ...transaction, error: undefined };
+  };
+
+  const validateTransactions = (transactions: Transaction[]): Transaction[] => {
+    return transactions.map(validateTransaction);
+  };
 
   const addTransaction = () => {
     setTransactions([
@@ -146,24 +175,35 @@ const Index = () => {
     });
 
     try {
+      // Apply validation to each transaction
+      const validatedTransactions = validateTransactions(transactions);
+      const hasErrors = validatedTransactions.some(t => t.error);
+
+      // Update transactions with validation errors
+      setTransactions(validatedTransactions);
+
+      if (hasErrors) {
+        throw new Error("Please fix validation errors before calculating.");
+      }
+
+      // Ensure at least one of buyPrice or sellPrice is provided for each transaction
       const isValid = transactions.every(
         (t) =>
           t.quantity &&
-          t.buyPrice &&
-          t.sellPrice &&
           !isNaN(Number(t.quantity)) &&
-          !isNaN(Number(t.buyPrice)) &&
-          !isNaN(Number(t.sellPrice))
+          Number(t.quantity) > 0 &&
+          ((t.buyPrice && !isNaN(Number(t.buyPrice)) && Number(t.buyPrice) > 0) || 
+           (t.sellPrice && !isNaN(Number(t.sellPrice)) && Number(t.sellPrice) > 0))
       );
 
       if (!isValid) {
-        throw new Error("Please fill all fields with valid numbers");
+        throw new Error("Please fix validation errors before calculating.");
       }
 
       const formattedTransactions = transactions.map((t) => ({
         quantity: t.quantity,
-        buyPrice: t.buyPrice,
-        sellPrice: t.sellPrice,
+        buyPrice: t.buyPrice || "0",
+        sellPrice: t.sellPrice || "0",
       }));
 
       const result = await calculateCharges(
@@ -192,18 +232,18 @@ const Index = () => {
 
   // Add this useEffect to trigger recalculation
   useEffect(() => {
-    const allFieldsFilled = transactions.every(
-      (t) => t.quantity.trim() && t.buyPrice.trim() && t.sellPrice.trim()
-    );
+    const validTransactions = transactions.every((t) => {
+      const qty = Number(t.quantity);
+      const buyPrice = Number(t.buyPrice);
+      const sellPrice = Number(t.sellPrice);
+      
+      return (
+        qty > 0 && 
+        (buyPrice > 0 || sellPrice > 0)
+      );
+    });
 
-    const allValidNumbers = transactions.every(
-      (t) =>
-        !isNaN(Number(t.quantity)) &&
-        !isNaN(Number(t.buyPrice)) &&
-        !isNaN(Number(t.sellPrice))
-    );
-
-    if (allFieldsFilled && allValidNumbers) {
+    if (validTransactions) {
       handleCalculateCharges();
     } else {
       // Reset to default values when inputs are invalid
@@ -218,13 +258,81 @@ const Index = () => {
     return transactions[0]?.companyName || "this company";
   };
 
-  const saveTransactions = () => {
+  const hasValidationErrors = transactions.some(t => 
+    !t.quantity || Number(t.quantity) <= 0 || 
+    ((Number(t.buyPrice) <= 0 || t.buyPrice === "") && 
+     (Number(t.sellPrice) <= 0 || t.sellPrice === ""))
+  );
+
+  const canSaveTransactions = !!user && 
+                             !!transactions[0]?.companyName?.trim() &&
+                             !hasValidationErrors;
+
+  const saveTransactionsHandler = async () => {
     if (!user) {
       setAuthDialogOpen(true);
       return;
     }
-    console.log("Saving transactions:", transactions);
-    // Here you would save the transactions to Supabase
+
+    // Check if company name is provided
+    if (!transactions[0]?.companyName?.trim()) {
+      toast({
+        title: "Error",
+        description: "Please enter a company name to save transactions",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Validate transactions before saving
+    const validatedTransactions = validateTransactions(transactions);
+    const hasErrors = validatedTransactions.some(t => t.error);
+    
+    // Update transactions with validation errors
+    setTransactions(validatedTransactions);
+
+    if (hasErrors) {
+      toast({
+        title: "Error",
+        description: "Please fix validation errors before saving",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const formattedTransactions = transactions.map((t) => ({
+        quantity: t.quantity,
+        buyPrice: t.buyPrice || "0",
+        sellPrice: t.sellPrice || "0",
+      }));
+
+      const result = await saveTransactions(
+        transactions[0].companyName || "Untitled Transaction",
+        platform.toLowerCase(),
+        exchange,
+        tradeType,
+        formattedTransactions
+      );
+
+      if ("error" in result) {
+        throw new Error(`${result.error}: ${result.detail || ""}`);
+      }
+
+      toast({
+        title: "Success",
+        description: "Transaction saved successfully",
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to save transaction",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const [calculationState, setCalculationState] = useState<CalculationState>({
@@ -398,8 +506,11 @@ const Index = () => {
                         )}
 
                         <div>
-                          <Label htmlFor={`quantity-${transaction.id}`}>
-                            Quantity
+                          <Label htmlFor={`quantity-${transaction.id}`} className="flex justify-between">
+                            <span>Quantity</span>
+                            {transaction.error && transaction.error.includes("Quantity") && (
+                              <span className="text-xs text-destructive">{transaction.error}</span>
+                            )}
                           </Label>
                           <Input
                             id={`quantity-${transaction.id}`}
@@ -437,11 +548,15 @@ const Index = () => {
                                 e.preventDefault();
                               }
                             }}
+                            className={transaction.error && transaction.error.includes("Quantity") ? "border-destructive" : ""}
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`buyPrice-${transaction.id}`}>
-                            Buy Price
+                          <Label htmlFor={`buyPrice-${transaction.id}`} className="flex justify-between">
+                            <span>Buy Price</span>
+                            {transaction.error && transaction.error.includes("buy price") && (
+                              <span className="text-xs text-destructive">{transaction.error}</span>
+                            )}
                           </Label>
                           <Input
                             id={`buyPrice-${transaction.id}`}
@@ -479,11 +594,15 @@ const Index = () => {
                                 e.preventDefault();
                               }
                             }}
+                            className={transaction.error && transaction.error.includes("buy price") ? "border-destructive" : ""}
                           />
                         </div>
                         <div>
-                          <Label htmlFor={`sellPrice-${transaction.id}`}>
-                            Sell Price
+                          <Label htmlFor={`sellPrice-${transaction.id}`} className="flex justify-between">
+                            <span>Sell Price</span>
+                            {transaction.error && transaction.error.includes("sell price") && (
+                              <span className="text-xs text-destructive">{transaction.error}</span>
+                            )}
                           </Label>
                           <Input
                             id={`sellPrice-${transaction.id}`}
@@ -521,6 +640,7 @@ const Index = () => {
                                 e.preventDefault();
                               }
                             }}
+                            className={transaction.error && transaction.error.includes("sell price") ? "border-destructive" : ""}
                           />
                         </div>
                         <div className="flex flex-col justify-end text-sm text-muted-foreground space-y-1">
@@ -556,13 +676,31 @@ const Index = () => {
                 </Button>
 
                 <div className="flex gap-4 justify-end">
-                  <Button
-                    onClick={saveTransactions}
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Transactions
-                  </Button>
+                  <TooltipProvider delayDuration={0}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span> {/* Wrapper to make tooltip work with disabled button */}
+                          <Button
+                            onClick={saveTransactionsHandler}
+                            className="bg-emerald-600 hover:bg-emerald-700"
+                            disabled={!user || !canSaveTransactions || isSaving}
+                          >
+                            <Save className="h-4 w-4 mr-2" />
+                            {isSaving ? "Saving..." : "Save Transactions"}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {!user 
+                          ? "Please log in to save a transaction." 
+                          : !transactions[0]?.companyName?.trim() 
+                            ? "Please add a company name." 
+                            : hasValidationErrors
+                              ? "Please fix validation errors."
+                              : "Save your transaction details"}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
               </div>
             </div>
