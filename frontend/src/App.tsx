@@ -28,6 +28,7 @@ const App = () => (
             <Route path="/others" element={<Others />} />
             <Route path="/tools" element={<Tools />} />
             <Route path="/transactions" element={<Transactions />} />
+            <Route path="/edit-transaction/:id" element={<Index />} />
             <Route path="*" element={<NotFound />} />
             <Route path="/auth/callback" element={<AuthCallback />} />
           </Routes>
