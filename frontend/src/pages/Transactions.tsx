@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft } from "lucide-react";
+import Header from "@/components/ui/header";
 
 const Transactions = () => {
   const { user, loading } = useAuth();
@@ -26,6 +27,8 @@ const Transactions = () => {
 
   return (
     <div className="min-h-screen">
+      <Header />
+      
       <div className="bg-secondary/50 dark:bg-secondary/10 py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-4 mb-8">

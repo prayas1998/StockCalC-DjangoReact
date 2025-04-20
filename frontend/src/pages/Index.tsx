@@ -30,6 +30,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import AuthDialog from "@/components/auth/AuthDialog";
 import ProfileDropdown from "@/components/auth/ProfileDropdown";
+import Header from "@/components/ui/header";
 
 interface Transaction {
   id: string;
@@ -243,6 +244,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen">
+      <Header />
+      
       {showFirstVisitAlert && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-background p-6 rounded-lg max-w-md w-full space-y-4">
@@ -267,75 +270,6 @@ const Index = () => {
         onClose={() => setAuthDialogOpen(false)} 
       />
       
-      <nav className="border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div>
-            <h1
-              className="text-xl font-bold cursor-pointer hover:text-primary transition-colors"
-              onClick={() => navigate("/groww")}
-            >
-              TradeSmart
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button
-              variant="ghost"
-              onClick={() => navigate("/tools")}
-              className="flex items-center gap-2"
-            >
-              Tools
-            </Button>
-            
-            {user ? (
-              <ProfileDropdown />
-            ) : (
-              <Button 
-                variant="ghost" 
-                className="flex items-center gap-2"
-                onClick={() => setAuthDialogOpen(true)}
-              >
-                <User className="h-5 w-5" />
-                Login
-              </Button>
-            )}
-            
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="flex items-center gap-2">
-                  {platform}
-                  <ChevronDown className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem onClick={() => handlePlatformChange("Groww")}>
-                  Groww
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handlePlatformChange("Rise")}>
-                  Rise
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => handlePlatformChange("Others")}
-                >
-                  Others
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setDarkMode(!darkMode)}
-              className="rounded-full"
-            >
-              {darkMode ? (
-                <Sun className="h-5 w-5" />
-              ) : (
-                <Moon className="h-5 w-5" />
-              )}
-            </Button>
-          </div>
-        </div>
-      </nav>
-
       <section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-blue-200 to-blue-50 dark:from-gray-800 dark:via-gray-900 dark:to-gray-950 min-h-[40vh] flex items-center">
         <div className="max-w-7xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-full mb-8">
