@@ -1,46 +1,14 @@
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { Label } from "@/components/ui/label";
-import { calculateCharges, saveTransactions } from "../services/api";
-import type { CalculationResponse } from "../services/api";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  ChevronRight,
-  Calculator,
-  ArrowRight,
-  Clock,
-  Shield,
-  Moon,
-  Sun,
-  ChevronDown,
-  Plus,
-  Trash2,
-  User,
-  Save,
-} from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
+import { Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import AuthDialog from "@/components/auth/AuthDialog";
-import ProfileDropdown from "@/components/auth/ProfileDropdown";
 import Header from "@/components/ui/header";
-import { 
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { toast } from "@/components/ui/use-toast";
+import { formatCurrency } from "@/lib/utils";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCalculation } from "@/hooks/useCalculation";
-import { formatCurrency } from "@/lib/utils";
 
 // Layout Components
 import Hero from "@/components/layout/Hero";
