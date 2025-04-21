@@ -38,20 +38,20 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { toast } from "@/components/ui/use-toast";
+import { useTransactions } from "@/hooks/useTransactions";
+import { useCalculation } from "@/hooks/useCalculation";
+import { formatCurrency } from "@/lib/utils";
 
-interface Transaction {
-  id: string;
-  companyName?: string;
-  quantity: string;
-  buyPrice: string;
-  sellPrice: string;
-  error?: string;
-}
+// Layout Components
+import Hero from "@/components/layout/Hero";
+import Features from "@/components/layout/Features";
+import Footer from "@/components/layout/Footer";
 
-interface CalculationState {
-  error: string | null;
-  result: CalculationResponse | null;
-}
+// Calculator Components
+import CalculatorOptions from "@/components/calculator/CalculatorOptions";
+import TransactionForm from "@/components/calculator/TransactionForm";
+import CalculationResults from "@/components/calculator/CalculationResults";
+import SaveTransactionButton from "@/components/calculator/SaveTransactionButton";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -77,16 +77,24 @@ const Index = () => {
   const [exchange, setExchange] = useState("NSE");
   const [tradeType, setTradeType] = useState("equity-delivery");
   const [instrumentType, setInstrumentType] = useState("future");
-  const [isSaving, setIsSaving] = useState(false);
 
   const [platform, setPlatform] = useState(() => {
     const path = window.location.pathname.slice(1);
     return path.charAt(0).toUpperCase() + path.slice(1) || "Groww";
   });
 
-  const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" },
-  ]);
+  // Use custom hook for transactions
+  const { 
+    transactions, 
+    setTransactions
+  } = useTransactions();
+
+  // Use custom hook for calculations
+  const { 
+    calculationState, 
+    handleSaveTransactions,
+    isSaving 
+  } = useCalculation(platform, exchange, tradeType, transactions);
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
@@ -115,239 +123,9 @@ const Index = () => {
     }
   }, [darkMode]);
 
-  const validateTransaction = (transaction: Transaction): Transaction => {
-    const qty = Number(transaction.quantity);
-    const buyPrice = Number(transaction.buyPrice);
-    const sellPrice = Number(transaction.sellPrice);
-
-    if (!transaction.quantity || qty <= 0) {
-      return { ...transaction, error: "Quantity is required." };
-    }
-
-    if ((buyPrice <= 0 && sellPrice <= 0) || (transaction.buyPrice === "" && transaction.sellPrice === "")) {
-      return { ...transaction, error: "Enter a buy price or a sell price." };
-    }
-
-    return { ...transaction, error: undefined };
-  };
-
-  const validateTransactions = (transactions: Transaction[]): Transaction[] => {
-    return transactions.map(validateTransaction);
-  };
-
-  const addTransaction = () => {
-    setTransactions([
-      ...transactions,
-      {
-        id: Math.random().toString(),
-        quantity: "0",
-        buyPrice: "0",
-        sellPrice: "0",
-      },
-    ]);
-  };
-
-  const removeTransaction = (id: string) => {
-    if (transactions.length > 1) {
-      setTransactions(transactions.filter((t) => t.id !== id));
-    }
-  };
-
-  const updateTransaction = (
-    id: string,
-    field: keyof Transaction,
-    value: string
-  ) => {
-    setTransactions(
-      transactions.map((t) => (t.id === id ? { ...t, [field]: value } : t))
-    );
-  };
-
   const handlePlatformChange = (newPlatform: string) => {
     setPlatform(newPlatform);
     navigate(`/${newPlatform.toLowerCase()}`);
-  };
-
-  const handleCalculateCharges = useCallback(async () => {
-    setCalculationState({
-      error: null,
-      result: null,
-    });
-
-    try {
-      // Apply validation to each transaction
-      const validatedTransactions = validateTransactions(transactions);
-      const hasErrors = validatedTransactions.some(t => t.error);
-
-      // Update transactions with validation errors
-      setTransactions(validatedTransactions);
-
-      if (hasErrors) {
-        throw new Error("Please fix validation errors before calculating.");
-      }
-
-      // Ensure at least one of buyPrice or sellPrice is provided for each transaction
-      const isValid = transactions.every(
-        (t) =>
-          t.quantity &&
-          !isNaN(Number(t.quantity)) &&
-          Number(t.quantity) > 0 &&
-          ((t.buyPrice && !isNaN(Number(t.buyPrice)) && Number(t.buyPrice) > 0) || 
-           (t.sellPrice && !isNaN(Number(t.sellPrice)) && Number(t.sellPrice) > 0))
-      );
-
-      if (!isValid) {
-        throw new Error("Please fix validation errors before calculating.");
-      }
-
-      const formattedTransactions = transactions.map((t) => ({
-        quantity: t.quantity,
-        buyPrice: t.buyPrice || "0",
-        sellPrice: t.sellPrice || "0",
-      }));
-
-      const result = await calculateCharges(
-        platform.toLowerCase(),
-        exchange,
-        tradeType,
-        formattedTransactions
-      );
-
-      if ("error" in result) {
-        throw new Error(`${result.error}: ${result.detail || ""}`);
-      }
-
-      setCalculationState({
-        error: null,
-        result,
-      });
-    } catch (error) {
-      setCalculationState({
-        error:
-          error instanceof Error ? error.message : "Unknown error occurred",
-        result: null,
-      });
-    }
-  }, [platform, exchange, tradeType, transactions]);
-
-  // Add this useEffect to trigger recalculation
-  useEffect(() => {
-    const validTransactions = transactions.every((t) => {
-      const qty = Number(t.quantity);
-      const buyPrice = Number(t.buyPrice);
-      const sellPrice = Number(t.sellPrice);
-      
-      return (
-        qty > 0 && 
-        (buyPrice > 0 || sellPrice > 0)
-      );
-    });
-
-    if (validTransactions) {
-      handleCalculateCharges();
-    } else {
-      // Reset to default values when inputs are invalid
-      setCalculationState({
-        error: null,
-        result: null,
-      });
-    }
-  }, [exchange, tradeType, transactions, handleCalculateCharges]);
-
-  const getCompanyName = () => {
-    return transactions[0]?.companyName || "this company";
-  };
-
-  const hasValidationErrors = transactions.some(t => 
-    !t.quantity || Number(t.quantity) <= 0 || 
-    ((Number(t.buyPrice) <= 0 || t.buyPrice === "") && 
-     (Number(t.sellPrice) <= 0 || t.sellPrice === ""))
-  );
-
-  const canSaveTransactions = !!user && 
-                             !!transactions[0]?.companyName?.trim() &&
-                             !hasValidationErrors;
-
-  const saveTransactionsHandler = async () => {
-    if (!user) {
-      setAuthDialogOpen(true);
-      return;
-    }
-
-    // Check if company name is provided
-    if (!transactions[0]?.companyName?.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a company name to save transactions",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Validate transactions before saving
-    const validatedTransactions = validateTransactions(transactions);
-    const hasErrors = validatedTransactions.some(t => t.error);
-    
-    // Update transactions with validation errors
-    setTransactions(validatedTransactions);
-
-    if (hasErrors) {
-      toast({
-        title: "Error",
-        description: "Please fix validation errors before saving",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const formattedTransactions = transactions.map((t) => ({
-        quantity: t.quantity,
-        buyPrice: t.buyPrice || "0",
-        sellPrice: t.sellPrice || "0",
-      }));
-
-      const result = await saveTransactions(
-        transactions[0].companyName || "Untitled Transaction",
-        platform.toLowerCase(),
-        exchange,
-        tradeType,
-        formattedTransactions
-      );
-
-      if ("error" in result) {
-        throw new Error(`${result.error}: ${result.detail || ""}`);
-      }
-
-      toast({
-        title: "Success",
-        description: "Transaction saved successfully",
-      });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save transaction",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const [calculationState, setCalculationState] = useState<CalculationState>({
-    error: null,
-    result: null,
-  });
-
-  // Helper function for number formatting
-  const formatCurrency = (value: string | number | undefined) => {
-    const numberValue = Number(value || 0);
-    return numberValue.toLocaleString("en-IN", {
-      maximumFractionDigits: 2,
-      style: "currency",
-      currency: "INR",
-    });
   };
 
   return (
@@ -378,481 +156,58 @@ const Index = () => {
         onClose={() => setAuthDialogOpen(false)} 
       />
       
-      <section className="relative py-24 px-4 sm:px-6 lg:px-8 bg-gradient-to-b from-blue-200 to-blue-50 dark:from-gray-800 dark:via-gray-900 dark:to-gray-950 min-h-[40vh] flex items-center">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 px-4 py-2 rounded-full mb-8">
-            <span className="text-primary text-sm font-medium">
-              Calculate Stock Market Charges
-            </span>
-            <ChevronRight className="h-4 w-4 text-primary" />
-          </div>
-          <h1 className="text-6xl font-bold tracking-tight sm:text-7xl mb-6">
-            Smart Trading
-            <br />
-            Starts Here
-          </h1>
-          <p className="mt-4 text-xl text-muted-foreground max-w-2xl mx-auto">
-            Calculate all your trading charges instantly with our advanced
-            calculator.
-          </p>
-        </div>
-      </section>
+      <Hero />
 
       <section className="section-padding bg-secondary/50 dark:bg-secondary/10">
         <div className="max-w-7xl mx-auto">
           <Card className="p-6 glass">
             <div className="space-y-6">
-              <div>
-                <Label className="text-base font-medium mb-4 block">
-                  Trade Type
-                </Label>
-                <ToggleGroup
-                  type="single"
-                  value={tradeType}
-                  onValueChange={(value) => value && setTradeType(value)}
-                  className="justify-start"
-                >
-                  <ToggleGroupItem value="equity-delivery" className="text-sm">
-                    Equity - delivery
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="equity-intraday" className="text-sm">
-                    Equity - intraday
-                  </ToggleGroupItem>
-                  <ToggleGroupItem value="fno" className="text-sm">
-                    F&O
-                  </ToggleGroupItem>
-                </ToggleGroup>
-              </div>
+              {/* Calculator Options Component */}
+              <CalculatorOptions 
+                exchange={exchange}
+                setExchange={setExchange}
+                tradeType={tradeType}
+                setTradeType={setTradeType}
+                instrumentType={instrumentType}
+                setInstrumentType={setInstrumentType}
+              />
 
-              <div className="flex flex-wrap gap-8 items-start">
-                <div>
-                  <Label className="text-base font-medium mb-4 block">
-                    Exchange
-                  </Label>
-                  <ToggleGroup
-                    type="single"
-                    value={exchange}
-                    onValueChange={(value) => value && setExchange(value)}
-                    className="justify-start"
-                  >
-                    <ToggleGroupItem value="NSE" className="text-sm">
-                      NSE
-                    </ToggleGroupItem>
-                    <ToggleGroupItem value="BSE" className="text-sm">
-                      BSE
-                    </ToggleGroupItem>
-                  </ToggleGroup>
-                </div>
-
-                {tradeType === "fno" && (
-                  <div>
-                    <Label className="text-base font-medium mb-4 block">
-                      Instrument Type
-                    </Label>
-                    <ToggleGroup
-                      type="single"
-                      value={instrumentType}
-                      onValueChange={(value) =>
-                        value && setInstrumentType(value)
-                      }
-                      className="justify-start"
-                    >
-                      <ToggleGroupItem value="future" className="text-sm">
-                        Future
-                      </ToggleGroupItem>
-                      <ToggleGroupItem value="option" className="text-sm">
-                        Option
-                      </ToggleGroupItem>
-                    </ToggleGroup>
-                  </div>
-                )}
-              </div>
-
+              {/* Transaction Form Component */}
               <div className="space-y-6">
-                {transactions.map((transaction, index) => (
-                  <Card key={transaction.id} className="p-4">
-                    <div className="space-y-4">
-                      <div className="flex justify-between items-center">
-                        <h4 className="font-medium">Transaction {index + 1}</h4>
-                        {transactions.length > 1 && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => removeTransaction(transaction.id)}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                        {index === 0 && (
-                          <div className="md:col-span-5">
-                            <Label htmlFor="companyName">Company Name</Label>
-                            <Input
-                              id="companyName"
-                              placeholder="Enter company name"
-                              value={transaction.companyName}
-                              onChange={(e) =>
-                                updateTransaction(
-                                  transaction.id,
-                                  "companyName",
-                                  e.target.value
-                                )
-                              }
-                              className="mt-1"
-                            />
-                          </div>
-                        )}
-
-                        <div>
-                          <Label htmlFor={`quantity-${transaction.id}`} className="flex justify-between">
-                            <span>Quantity</span>
-                            {transaction.error && transaction.error.includes("Quantity") && (
-                              <span className="text-xs text-destructive">{transaction.error}</span>
-                            )}
-                          </Label>
-                          <Input
-                            id={`quantity-${transaction.id}`}
-                            type="number"
-                            min="0"
-                            placeholder="Quantity"
-                            value={transaction.quantity}
-                            onFocus={() => {
-                              if (transaction.quantity === "0") {
-                                updateTransaction(
-                                  transaction.id,
-                                  "quantity",
-                                  ""
-                                );
-                              }
-                            }}
-                            onChange={(e) =>
-                              updateTransaction(
-                                transaction.id,
-                                "quantity",
-                                e.target.value
-                              )
-                            }
-                            onBlur={(e) => {
-                              if (e.target.value === "") {
-                                updateTransaction(
-                                  transaction.id,
-                                  "quantity",
-                                  "0"
-                                );
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (["e", "E", "+", "-"].includes(e.key)) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={transaction.error && transaction.error.includes("Quantity") ? "border-destructive" : ""}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor={`buyPrice-${transaction.id}`} className="flex justify-between">
-                            <span>Buy Price</span>
-                            {transaction.error && transaction.error.includes("buy price") && (
-                              <span className="text-xs text-destructive">{transaction.error}</span>
-                            )}
-                          </Label>
-                          <Input
-                            id={`buyPrice-${transaction.id}`}
-                            type="number"
-                            min="0"
-                            placeholder="Buy Price"
-                            value={transaction.buyPrice}
-                            onFocus={() => {
-                              if (transaction.buyPrice === "0") {
-                                updateTransaction(
-                                  transaction.id,
-                                  "buyPrice",
-                                  ""
-                                );
-                              }
-                            }}
-                            onChange={(e) =>
-                              updateTransaction(
-                                transaction.id,
-                                "buyPrice",
-                                e.target.value
-                              )
-                            }
-                            onBlur={(e) => {
-                              if (e.target.value === "") {
-                                updateTransaction(
-                                  transaction.id,
-                                  "buyPrice",
-                                  "0"
-                                );
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (["e", "E", "+", "-"].includes(e.key)) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={transaction.error && transaction.error.includes("buy price") ? "border-destructive" : ""}
-                          />
-                        </div>
-                        <div>
-                          <Label htmlFor={`sellPrice-${transaction.id}`} className="flex justify-between">
-                            <span>Sell Price</span>
-                            {transaction.error && transaction.error.includes("sell price") && (
-                              <span className="text-xs text-destructive">{transaction.error}</span>
-                            )}
-                          </Label>
-                          <Input
-                            id={`sellPrice-${transaction.id}`}
-                            type="number"
-                            min="0"
-                            placeholder="Sell Price"
-                            value={transaction.sellPrice}
-                            onFocus={() => {
-                              if (transaction.sellPrice === "0") {
-                                updateTransaction(
-                                  transaction.id,
-                                  "sellPrice",
-                                  ""
-                                );
-                              }
-                            }}
-                            onChange={(e) =>
-                              updateTransaction(
-                                transaction.id,
-                                "sellPrice",
-                                e.target.value
-                              )
-                            }
-                            onBlur={(e) => {
-                              if (e.target.value === "") {
-                                updateTransaction(
-                                  transaction.id,
-                                  "sellPrice",
-                                  "0"
-                                );
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (["e", "E", "+", "-"].includes(e.key)) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={transaction.error && transaction.error.includes("sell price") ? "border-destructive" : ""}
-                          />
-                        </div>
-                        <div className="flex flex-col justify-end text-sm text-muted-foreground space-y-1">
-                          <div>
-                            Avg. Price:{" "}
-                            {formatCurrency(
-                              calculationState.result?.transactions[index]
-                                ?.averageBuyPrice
-                            )}
-                          </div>
-                          <div>
-                            Charges:{" "}
-                            {formatCurrency(
-                              calculationState.result?.charges?.totalCharges &&
-                                Number(
-                                  calculationState.result.charges.totalCharges
-                                ) / transactions.length
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-
-                <Button
-                  onClick={addTransaction}
-                  variant="outline"
-                  className="flex items-center gap-2"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add transaction for {getCompanyName()}
-                </Button>
+                <TransactionForm 
+                  transactions={transactions}
+                  setTransactions={setTransactions}
+                  platform={platform}
+                  exchange={exchange}
+                  tradeType={tradeType}
+                />
 
                 <div className="flex gap-4 justify-end">
-                  <TooltipProvider delayDuration={0}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <span> {/* Wrapper to make tooltip work with disabled button */}
-                          <Button
-                            onClick={saveTransactionsHandler}
-                            className="bg-emerald-600 hover:bg-emerald-700"
-                            disabled={!user || !canSaveTransactions || isSaving}
-                          >
-                            <Save className="h-4 w-4 mr-2" />
-                            {isSaving ? "Saving..." : "Save Transactions"}
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent>
-                        {!user 
-                          ? "Please log in to save a transaction." 
-                          : !transactions[0]?.companyName?.trim() 
-                            ? "Please add a company name." 
-                            : hasValidationErrors
-                              ? "Please fix validation errors."
-                              : "Save your transaction details"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
+                  <SaveTransactionButton 
+                    user={user}
+                    transactions={transactions}
+                    platform={platform}
+                    exchange={exchange}
+                    tradeType={tradeType}
+                    setAuthDialogOpen={setAuthDialogOpen}
+                  />
                 </div>
               </div>
             </div>
           </Card>
 
-          {/* Results Section */}
-          <Card className="p-6 glass mt-8">
-            {calculationState.error && (
-              <div className="p-4 mb-4 text-red-500 bg-red-50 rounded-lg">
-                Error: {calculationState.error}
-              </div>
-            )}
+          {/* Calculation Results Component */}
+          <CalculationResults 
+            calculationState={calculationState}
+            formatCurrency={formatCurrency}
+            exchange={exchange}
+          />
 
-            <div className="space-y-6">
-              <div>
-                <div className="text-sm text-muted-foreground">Turnover</div>
-                <div className="text-2xl font-bold">
-                  {formatCurrency(
-                    calculationState.result?.summary.turnover || 0
-                  )}
-                </div>
-              </div>
+          {/* Features Component */}
+          <Features />
 
-              <div>
-                <div className="text-sm text-muted-foreground">Gross P&L</div>
-                <div className="text-2xl font-bold text-primary">
-                  {formatCurrency(
-                    calculationState.result?.summary.grossPnL ?? 0
-                  )}
-                </div>
-              </div>
-
-              <div className="pt-4 border-t">
-                <div className="flex justify-between items-center mb-6">
-                  <div className="text-lg font-semibold">Charges</div>
-                  <div className="text-lg font-semibold">
-                    {formatCurrency(
-                      calculationState.result?.charges.totalCharges ?? 0
-                    )}
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div>
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="text-base font-medium">Brokerage</h4>
-                      <span>
-                        {formatCurrency(
-                          calculationState.result?.charges.brokerage ?? 0
-                        )}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-base font-medium mb-3">
-                      Other Charges
-                    </h4>
-                    <div className="space-y-3">
-                      {[
-                        {
-                          key: "stt",
-                          label: "Securities Transaction Tax (STT)",
-                        },
-                        { key: "exchangeCharges", label: "Exchange Charges" },
-                        { key: "sebiFee", label: "SEBI Turnover Fees" },
-                        { key: "gst", label: "GST" },
-                        { key: "stampDuty", label: "Stamp Duty" },
-                        ...(exchange === "NSE"
-                          ? [{ key: "ipft", label: "IPFT" }]
-                          : []), // Conditional IPFT
-                      ].map(({ key, label }) => (
-                        <div key={key} className="flex justify-between">
-                          <span className="text-muted-foreground">{label}</span>
-                          <span>
-                            {formatCurrency(
-                              calculationState.result?.charges[
-                                key as keyof typeof calculationState.result.charges
-                              ] ?? 0
-                            )}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="pt-4 border-t">
-                <div className="text-sm text-muted-foreground">Net P&L</div>
-                <div className="text-3xl font-bold text-primary">
-                  {formatCurrency(calculationState.result?.summary.netPnL ?? 0)}
-                </div>
-              </div>
-            </div>
-          </Card>
-
-          {/* Features Section */}
-          <section className="section-padding">
-            <div className="max-w-7xl mx-auto">
-              <div className="text-center mb-16">
-                <h2 className="text-3xl font-bold">
-                  Why Choose Our Calculator?
-                </h2>
-                <p className="text-muted-foreground mt-4">
-                  Designed to make your trading decisions easier and more
-                  informed
-                </p>
-              </div>
-              <div className="grid md:grid-cols-3 gap-8">
-                {[
-                  {
-                    icon: Calculator,
-                    title: "Accurate Calculations",
-                    description:
-                      "Get precise calculations for all charges based on latest rates",
-                  },
-                  {
-                    icon: Clock,
-                    title: "Real-time Updates",
-                    description:
-                      "Charges are updated instantly as you modify trade details",
-                  },
-                  {
-                    icon: Shield,
-                    title: "Reliable & Secure",
-                    description:
-                      "Your data is secure and calculations are verified",
-                  },
-                ].map((feature, index) => (
-                  <Card key={index} className="p-6 glass">
-                    <feature.icon className="w-12 h-12 text-primary mb-4" />
-                    <h3 className="text-xl font-semibold mb-2">
-                      {feature.title}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {feature.description}
-                    </p>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          {/* Footer */}
-          <footer className="border-t">
-            <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-              <div className="text-center text-muted-foreground">
-                <p>© 2024 TradeSmart. All rights reserved.</p>
-              </div>
-            </div>
-          </footer>
+          {/* Footer Component */}
+          <Footer />
         </div>
       </section>
     </div>
