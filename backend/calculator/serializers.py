@@ -26,26 +26,19 @@ class TransactionRecordSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class TransactionGroupSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    transactions = TransactionRecordSerializer(many=True, read_only=True)
+    transactions = serializers.SerializerMethodField()
     
     class Meta:
         model = TransactionGroup
-        fields = '__all__'
-        read_only_fields = [
-            'total_quantity', 'total_buy_value', 'total_sell_value', 
-            'average_buy_price', 'total_charges', 'gross_pnl', 'net_pnl',
-            'created_at', 'updated_at'
-        ]
+        fields = ['id', 'title', 'created_at', 'platform', 'exchange', 
+                 'trade_type', 'total_quantity', 'total_buy_value', 
+                 'total_sell_value', 'average_buy_price', 'total_charges', 
+                 'gross_pnl', 'net_pnl', 'transactions']
     
-    def create(self, validated_data):
-        # Get user from request context if authenticated
-        request = self.context.get('request')
-        if request and request.user.is_authenticated:
-            validated_data['user'] = request.user
-        
-        group = TransactionGroup.objects.create(**validated_data)
-        return group
+    def get_transactions(self, obj):
+        # Only get transactions that belong to this group AND the requesting user
+        transactions = obj.transactions.filter(user=self.context['request'].user)
+        return TransactionRecordSerializer(transactions, many=True).data
 
 class TransactionGroupCreateSerializer(serializers.Serializer):
     """Serializer for creating a transaction group with multiple transactions at once"""

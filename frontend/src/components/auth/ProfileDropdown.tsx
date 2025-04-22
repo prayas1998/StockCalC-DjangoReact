@@ -61,8 +61,8 @@ const ProfileDropdown = () => {
             {firstName}
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <div className="p-2 text-sm font-medium text-muted-foreground">
+        <DropdownMenuContent align="end" className="min-w-[240px] max-w-[320px] w-auto">
+          <div className="p-2 text-sm font-medium text-muted-foreground break-words">
             {user?.email}
           </div>
           <DropdownMenuSeparator />

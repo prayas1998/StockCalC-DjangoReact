@@ -151,6 +151,12 @@ const Index = () => {
                 />
 
                 <div className="flex gap-4 justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => navigate('/transactions')}
+                  >
+                    View Saved Transactions
+                  </Button>
                   <SaveTransactionButton 
                     user={user}
                     transactions={transactions}
@@ -158,6 +164,8 @@ const Index = () => {
                     exchange={exchange}
                     tradeType={tradeType}
                     setAuthDialogOpen={setAuthDialogOpen}
+                    handleSaveTransactions={handleSaveTransactions}
+                    isSaving={isSaving}
                   />
                 </div>
               </div>

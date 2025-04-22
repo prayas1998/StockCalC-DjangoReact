@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { calculateCharges, saveTransactions } from "@/services/api";
 import type { CalculationState, Transaction } from "@/types/calculator";
 import { toast } from "@/components/ui/use-toast";
+import { checkApiConnection, formatApiError } from "@/lib/api-helpers";
 
 export const useCalculation = (
   platform: string,
@@ -81,7 +82,7 @@ export const useCalculation = (
       );
     });
 
-    if (validTransactions) {
+    if (validTransactions && transactions.length > 0) {
       handleCalculateCharges();
     } else {
       // Reset to default values when inputs are invalid
@@ -128,6 +129,13 @@ export const useCalculation = (
       return;
     }
 
+    // First check API connectivity
+    const isConnected = await checkApiConnection();
+    if (!isConnected) {
+      // The checkApiConnection function already shows a toast with the error
+      return;
+    }
+
     setIsSaving(true);
     try {
       const formattedTransactions = transactions.map((t) => ({
@@ -135,6 +143,14 @@ export const useCalculation = (
         buyPrice: t.buyPrice || "0",
         sellPrice: t.sellPrice || "0",
       }));
+
+      console.log('Saving transactions:', {
+        title: transactions[0].companyName,
+        platform: platform.toLowerCase(),
+        exchange,
+        tradeType,
+        count: formattedTransactions.length
+      });
 
       const result = await saveTransactions(
         transactions[0].companyName || "Untitled Transaction",
@@ -145,14 +161,17 @@ export const useCalculation = (
       );
 
       if ("error" in result) {
-        throw new Error(`${result.error}: ${result.detail || ""}`);
+        throw new Error(formatApiError(result));
       }
 
       toast({
         title: "Success",
         description: "Transaction saved successfully",
       });
+
     } catch (error) {
+      console.error('Error saving transaction:', error);
+      
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save transaction",

@@ -15,6 +15,8 @@ const SaveTransactionButton = ({
   exchange,
   tradeType,
   setAuthDialogOpen,
+  handleSaveTransactions,
+  isSaving
 }: SaveTransactionButtonProps) => {
   const hasValidationErrors = transactions.some(t => 
     !t.quantity || Number(t.quantity) <= 0 || 
@@ -37,12 +39,16 @@ const SaveTransactionButton = ({
                   setAuthDialogOpen(true);
                   return;
                 }
+                
+                if (canSaveTransactions) {
+                  handleSaveTransactions(user, setAuthDialogOpen);
+                }
               }}
               className="bg-emerald-600 hover:bg-emerald-700"
-              disabled={!canSaveTransactions}
+              disabled={!canSaveTransactions || isSaving}
             >
               <Save className="h-4 w-4 mr-2" />
-              Save Transactions
+              {isSaving ? "Saving..." : "Save Transactions"}
             </Button>
           </span>
         </TooltipTrigger>

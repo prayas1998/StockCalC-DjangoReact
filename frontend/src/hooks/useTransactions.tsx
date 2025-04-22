@@ -14,7 +14,7 @@ export const useTransactions = () => {
     if (!transaction.quantity || qty <= 0) {
       return { ...transaction, error: "Quantity is required." };
     }
-
+    
     if ((buyPrice <= 0 && sellPrice <= 0) || (transaction.buyPrice === "" && transaction.sellPrice === "")) {
       return { ...transaction, error: "Enter a buy price or a sell price." };
     }

@@ -1,22 +1,7 @@
-from django.http import HttpResponse, JsonResponse
-from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from decimal import Decimal, ROUND_HALF_UP
-from .utils import TradeCalculator
-
-# Import models and serializers
-from .models import TransactionRecord, TransactionGroup
-from .serializers import (
-    TransactionRecordSerializer, 
-    TransactionGroupSerializer,
-    TransactionGroupCreateSerializer
-)
-from rest_framework import viewsets, permissions, status
-from rest_framework.views import APIView
-from rest_framework.decorators import action
-from django.conf import settings
-
+from decimal import Decimal
+from ..utils import TradeCalculator
 
 @api_view(["POST"])
 def calculate_charges(request):
@@ -148,125 +133,15 @@ def calculate_charges(request):
     except (KeyError, ValueError, TypeError, ZeroDivisionError) as e:
         return Response({"error": "Invalid input data", "detail": str(e)}, status=400)
 
-
-def test_api(request):
-    return JsonResponse({"status": "success", "message": "Test API is working!"})
-
-
-# New viewsets for models
-
-class TransactionRecordViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for individual transaction records
-    """
-    queryset = TransactionRecord.objects.all().order_by('-created_at')
-    serializer_class = TransactionRecordSerializer
-    
-    def get_queryset(self):
-        """
-        Filter records to return only the user's own records or public records
-        """
-        user = self.request.user
-        if user.is_authenticated:
-            return TransactionRecord.objects.filter(user=user).order_by('-created_at')
-        return TransactionRecord.objects.none()
-    
-    def perform_create(self, serializer):
-        """
-        Associate the current authenticated user with the transaction
-        """
-        if self.request.user.is_authenticated:
-            serializer.save(user=self.request.user)
-        else:
-            serializer.save()
-
-
-class TransactionGroupViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint for transaction groups
-    """
-    queryset = TransactionGroup.objects.all().order_by('-created_at')
-    serializer_class = TransactionGroupSerializer
-    
-    def get_queryset(self):
-        """
-        Filter groups to return only the user's own groups
-        Also supports search by title
-        """
-        user = self.request.user
-        print(f"User authenticated: {user.is_authenticated}")
-        
-        if not user.is_authenticated:
-            print("User is not authenticated, returning empty queryset")
-            # For debugging purposes, return a special response during development
-            if settings.DEBUG:
-                # Use a different approach for debugging - return all records in dev mode
-                queryset = TransactionGroup.objects.all().order_by('-created_at')
-                print(f"DEBUG MODE: Returning all {queryset.count()} records")
-                return queryset
-            return TransactionGroup.objects.none()
-            
-        print(f"User ID: {user.id}, Username: {user.username}")
-        queryset = TransactionGroup.objects.filter(user=user).order_by('-created_at')
-        print(f"Found {queryset.count()} transaction groups for user")
-        
-        # Apply search filter if provided
-        search_query = self.request.query_params.get('search', None)
-        if search_query:
-            print(f"Searching for: {search_query}")
-            queryset = queryset.filter(title__icontains=search_query)
-            print(f"Found {queryset.count()} matches")
-            
-        return queryset
-    
-    def perform_create(self, serializer):
-        """
-        Associate the current authenticated user with the group
-        """
-        user = self.request.user
-        print(f"Creating transaction group for user: {user.username if user.is_authenticated else 'Anonymous'}")
-        
-        if self.request.user.is_authenticated:
-            serializer.save(user=self.request.user)
-        else:
-            serializer.save()
-    
-    @action(detail=True, methods=['post'])
-    def update_summary(self, request, pk=None):
-        """
-        Recalculate the group summary based on its transactions
-        """
-        group = self.get_object()
-        group.update_summary()
-        return Response({'status': 'summary updated'})
-
-
-class SaveCalculationAPIView(APIView):
-    """
-    API endpoint to save calculation results to database
-    """
-    def post(self, request, format=None):
-        # Use the special serializer for creating a group with transactions
-        serializer = TransactionGroupCreateSerializer(data=request.data, context={'request': request})
-        
-        if serializer.is_valid():
-            # Save the group and its transactions
-            group = serializer.save()
-            
-            # Return the saved group data
-            return Response(
-                TransactionGroupSerializer(group).data, 
-                status=status.HTTP_201_CREATED
-            )
-        
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 @api_view(['POST'])
 def save_calculation(request):
     """
     Save calculation results
     """
+    from decimal import Decimal
+    from rest_framework import status
+    from ..models import TransactionGroup, TransactionRecord
+    
     # Extract data from the request
     title = request.data.get('title', 'Untitled Calculation')
     platform = request.data.get('platform', 'groww').lower()
@@ -339,15 +214,3 @@ def save_calculation(request):
             {"error": str(e)}, 
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-@api_view(['GET'])
-def health_check(request):
-    """
-    Simple health check endpoint to verify API connectivity
-    """
-    return Response({
-        "status": "ok",
-        "message": "API is operational",
-        "version": "1.0.0"
-    })

@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { User, Moon, Sun, ChevronDown } from "lucide-react";
+import { User, Moon, Sun, ChevronDown, BarChart } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";

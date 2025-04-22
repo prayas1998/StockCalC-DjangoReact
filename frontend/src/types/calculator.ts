@@ -54,4 +54,6 @@ export interface SaveTransactionButtonProps {
   exchange: string;
   tradeType: string;
   setAuthDialogOpen: (open: boolean) => void;
+  handleSaveTransactions: (user: any, setAuthDialogOpen: (open: boolean) => void) => void;
+  isSaving: boolean;
 } 
