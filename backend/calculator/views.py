@@ -15,6 +15,7 @@ from .serializers import (
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.decorators import action
+from django.conf import settings
 
 
 @api_view(["POST"])
@@ -190,16 +191,41 @@ class TransactionGroupViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         """
         Filter groups to return only the user's own groups
+        Also supports search by title
         """
         user = self.request.user
-        if user.is_authenticated:
-            return TransactionGroup.objects.filter(user=user).order_by('-created_at')
-        return TransactionGroup.objects.none()
+        print(f"User authenticated: {user.is_authenticated}")
+        
+        if not user.is_authenticated:
+            print("User is not authenticated, returning empty queryset")
+            # For debugging purposes, return a special response during development
+            if settings.DEBUG:
+                # Use a different approach for debugging - return all records in dev mode
+                queryset = TransactionGroup.objects.all().order_by('-created_at')
+                print(f"DEBUG MODE: Returning all {queryset.count()} records")
+                return queryset
+            return TransactionGroup.objects.none()
+            
+        print(f"User ID: {user.id}, Username: {user.username}")
+        queryset = TransactionGroup.objects.filter(user=user).order_by('-created_at')
+        print(f"Found {queryset.count()} transaction groups for user")
+        
+        # Apply search filter if provided
+        search_query = self.request.query_params.get('search', None)
+        if search_query:
+            print(f"Searching for: {search_query}")
+            queryset = queryset.filter(title__icontains=search_query)
+            print(f"Found {queryset.count()} matches")
+            
+        return queryset
     
     def perform_create(self, serializer):
         """
         Associate the current authenticated user with the group
         """
+        user = self.request.user
+        print(f"Creating transaction group for user: {user.username if user.is_authenticated else 'Anonymous'}")
+        
         if self.request.user.is_authenticated:
             serializer.save(user=self.request.user)
         else:
@@ -239,58 +265,89 @@ class SaveCalculationAPIView(APIView):
 @api_view(['POST'])
 def save_calculation(request):
     """
-    Alternative function-based view to save calculation results
+    Save calculation results
     """
     # Extract data from the request
     title = request.data.get('title', 'Untitled Calculation')
     platform = request.data.get('platform', 'groww').lower()
     exchange = request.data.get('exchange', 'NSE').upper()
     trade_type = request.data.get('tradeType', 'equity-delivery')
-    transactions = request.data.get('transactions', [])
+    transactions_data = request.data.get('transactions', [])
     
-    # Create the transaction group
-    group_data = {
-        'title': title,
-        'platform': platform,
-        'exchange': exchange,
-        'trade_type': trade_type,
-    }
+    if not transactions_data:
+        return Response(
+            {"error": "No transaction data provided"}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
     
-    # Associate with user if authenticated
-    if request.user.is_authenticated:
-        group_data['user'] = request.user
-    
-    # Create the group
-    group = TransactionGroup.objects.create(**group_data)
-    
-    # Create each transaction
-    for tx in transactions:
-        # Map frontend format to model format
-        transaction_data = {
-            'platform': platform,
-            'exchange': exchange,
-            'trade_type': trade_type,
-            'group': group,
-            'quantity': int(tx.get('quantity', 0)),
-            'buy_price': Decimal(tx.get('buyPrice', 0)),
-            'sell_price': Decimal(tx.get('sellPrice', 0)),
-            # Set charges from calculation results if available
-            'total_brokerage': Decimal(tx.get('charges', 0)),
-        }
+    try:
+        # Create transaction group
+        group = TransactionGroup.objects.create(
+            user=request.user if request.user.is_authenticated else None,
+            title=title,
+            platform=platform,
+            exchange=exchange,
+            trade_type=trade_type
+        )
         
-        # Associate with user if authenticated
-        if request.user.is_authenticated:
-            transaction_data['user'] = request.user
+        # Process each transaction
+        for transaction_data in transactions_data:
+            quantity = Decimal(str(transaction_data['quantity']))
+            
+            # Handle buy price (may be 0 for sell-only transactions)
+            buy_price_str = transaction_data.get('buyPrice', '0')
+            buy_price = Decimal(buy_price_str) if buy_price_str else Decimal('0')
+            
+            # Handle sell price (may be 0 for buy-only transactions)
+            sell_price_str = transaction_data.get('sellPrice', '0') 
+            sell_price = Decimal(sell_price_str) if sell_price_str else Decimal('0')
+            
+            # Calculate values
+            buy_value = quantity * buy_price
+            sell_value = quantity * sell_price
+            
+            # Create transaction record
+            TransactionRecord.objects.create(
+                group=group,
+                user=request.user if request.user.is_authenticated else None,
+                quantity=quantity,
+                buy_price=buy_price,
+                sell_price=sell_price,
+                buy_value=buy_value,
+                sell_value=sell_value,
+                total_brokerage=Decimal('0'),  # Will be calculated in save method
+                gross_pnl=sell_value - buy_value,
+                net_pnl=sell_value - buy_value,  # Temporary; will be adjusted with charges
+                platform=platform,
+                exchange=exchange,
+                trade_type=trade_type,
+                title=title
+            )
         
-        # Create the transaction record
-        TransactionRecord.objects.create(**transaction_data)
-    
-    # Update the group summary
-    group.update_summary()
-    
-    # Return the saved group
+        # Update summary calculations
+        group.update_summary()
+        
+        # Return success response
+        return Response({
+            "status": "success",
+            "message": "Transaction saved successfully",
+            "group_id": group.id
+        }, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        return Response(
+            {"error": str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['GET'])
+def health_check(request):
+    """
+    Simple health check endpoint to verify API connectivity
+    """
     return Response({
-        'status': 'success',
-        'message': f'Calculation saved with ID: {group.id}',
-        'group_id': group.id
+        "status": "ok",
+        "message": "API is operational",
+        "version": "1.0.0"
     })
