@@ -28,8 +28,7 @@ export interface TransactionItemProps {
   updateTransaction: (id: string, field: keyof Transaction, value: string) => void;
   removeTransaction: (id: string) => void;
   canRemove: boolean;
-  averageBuyPrice?: string;
-  perTransactionCharges?: number;
+  averageBuyPrice: number;
 }
 
 export interface CalculatorOptionsProps {

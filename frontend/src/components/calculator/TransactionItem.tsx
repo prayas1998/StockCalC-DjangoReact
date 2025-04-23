@@ -13,7 +13,6 @@ const TransactionItem = ({
   removeTransaction,
   canRemove,
   averageBuyPrice,
-  perTransactionCharges,
 }: TransactionItemProps) => {
   return (
     <Card key={transaction.id} className="p-4">
@@ -191,12 +190,8 @@ const TransactionItem = ({
           </div>
           <div className="flex flex-col justify-end text-sm text-muted-foreground space-y-1">
             <div>
-              Avg. Price:{" "}
+              Avg. Buy Price:{" "}
               {formatCurrency(averageBuyPrice)}
-            </div>
-            <div>
-              Charges:{" "}
-              {formatCurrency(perTransactionCharges)}
             </div>
           </div>
         </div>

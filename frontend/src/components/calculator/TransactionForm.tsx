@@ -45,18 +45,29 @@ const TransactionForm = ({
 
   return (
     <div className="space-y-6">
-      {transactions.map((transaction, index) => (
-        <TransactionItem
-          key={transaction.id}
-          transaction={transaction}
-          index={index}
-          updateTransaction={updateTransaction}
-          removeTransaction={removeTransaction}
-          canRemove={transactions.length > 1}
-          averageBuyPrice={undefined}
-          perTransactionCharges={undefined}
-        />
-      ))}
+      {transactions.map((transaction, index) => {
+        // Calculate running total shares and total cost up to this transaction
+        let totalShares = 0;
+        let totalCost = 0;
+        for (let i = 0; i <= index; i++) {
+          const qty = Number(transactions[i].quantity) || 0;
+          const price = Number(transactions[i].buyPrice) || 0;
+          totalShares += qty;
+          totalCost += qty * price;
+        }
+        const averageBuyPrice = totalShares > 0 ? totalCost / totalShares : 0;
+        return (
+          <TransactionItem
+            key={transaction.id}
+            transaction={transaction}
+            index={index}
+            updateTransaction={updateTransaction}
+            removeTransaction={removeTransaction}
+            canRemove={transactions.length > 1}
+            averageBuyPrice={averageBuyPrice}
+          />
+        );
+      })}
 
       <Button
         onClick={addTransaction}
