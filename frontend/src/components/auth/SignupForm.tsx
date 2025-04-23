@@ -12,9 +12,9 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/context/AuthContext";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useAuth } from '@/context/AuthContext';
 
 const signupSchema = z
   .object({
@@ -83,7 +83,6 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
       }
     } catch (error) {
       setFormError("An unexpected error occurred. Please try again.");
-      console.error("Signup error:", error);
     } finally {
       setIsLoading(false);
     }

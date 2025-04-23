@@ -13,7 +13,6 @@ const AuthCallback = () => {
         const { data, error } = await supabase.auth.getSession();
         
         if (error) {
-          console.error('Auth callback error:', error);
           setMessage('There was a problem verifying your account. Please try again.');
           return;
         }
@@ -25,7 +24,6 @@ const AuthCallback = () => {
           setMessage('Authentication failed. Please try signing in again.');
         }
       } catch (err) {
-        console.error('Unexpected error during auth callback:', err);
         setMessage('An unexpected error occurred. Please try again.');
       }
     };

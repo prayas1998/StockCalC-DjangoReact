@@ -17,6 +17,19 @@ export const useCalculation = (
 
   const [isSaving, setIsSaving] = useState(false);
 
+  const validateTransactions = (transactions: Transaction[]): boolean => {
+    return transactions.every(t => {
+      const qty = Number(t.quantity);
+      const buyPrice = Number(t.buyPrice);
+      const sellPrice = Number(t.sellPrice);
+      
+      return (
+        qty > 0 && 
+        (buyPrice > 0 || sellPrice > 0)
+      );
+    });
+  };
+
   const handleCalculateCharges = useCallback(async () => {
     setCalculationState({
       error: null,
@@ -24,16 +37,7 @@ export const useCalculation = (
     });
 
     try {
-      // Apply validation to each transaction
-      const hasErrors = transactions.some(t => {
-        const qty = Number(t.quantity);
-        const buyPrice = Number(t.buyPrice);
-        const sellPrice = Number(t.sellPrice);
-        
-        return !t.quantity || qty <= 0 || 
-          ((buyPrice <= 0 || t.buyPrice === "") && 
-           (sellPrice <= 0 || t.sellPrice === ""));
-      });
+      const hasErrors = !validateTransactions(transactions);
 
       if (hasErrors) {
         throw new Error("Please fix validation errors before calculating.");
@@ -71,16 +75,7 @@ export const useCalculation = (
 
   // Trigger calculation when inputs change
   useEffect(() => {
-    const validTransactions = transactions.every((t) => {
-      const qty = Number(t.quantity);
-      const buyPrice = Number(t.buyPrice);
-      const sellPrice = Number(t.sellPrice);
-      
-      return (
-        qty > 0 && 
-        (buyPrice > 0 || sellPrice > 0)
-      );
-    });
+    const validTransactions = validateTransactions(transactions);
 
     if (validTransactions && transactions.length > 0) {
       handleCalculateCharges();
@@ -110,15 +105,7 @@ export const useCalculation = (
     }
 
     // Validate transactions before saving
-    const hasErrors = transactions.some(t => {
-      const qty = Number(t.quantity);
-      const buyPrice = Number(t.buyPrice);
-      const sellPrice = Number(t.sellPrice);
-      
-      return !t.quantity || qty <= 0 || 
-        ((buyPrice <= 0 || t.buyPrice === "") && 
-         (sellPrice <= 0 || t.sellPrice === ""));
-    });
+    const hasErrors = !validateTransactions(transactions);
 
     if (hasErrors) {
       toast({
@@ -144,14 +131,6 @@ export const useCalculation = (
         sellPrice: t.sellPrice || "0",
       }));
 
-      console.log('Saving transactions:', {
-        title: transactions[0].companyName,
-        platform: platform.toLowerCase(),
-        exchange,
-        tradeType,
-        count: formattedTransactions.length
-      });
-
       const result = await saveTransactions(
         transactions[0].companyName || "Untitled Transaction",
         platform.toLowerCase(),
@@ -170,8 +149,6 @@ export const useCalculation = (
       });
 
     } catch (error) {
-      console.error('Error saving transaction:', error);
-      
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save transaction",
@@ -188,4 +165,4 @@ export const useCalculation = (
     handleSaveTransactions,
     isSaving
   };
-}; 
+};

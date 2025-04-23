@@ -1,13 +1,13 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Session, User } from '@supabase/supabase-js';
+import { Session, User, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useToast } from '@/components/ui/use-toast';
 
 interface AuthContextProps {
   session: Session | null;
   user: User | null;
-  signUp: (email: string, password: string, firstName: string, lastName?: string) => Promise<{ error: any | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: any | null }>;
+  signUp: (email: string, password: string, firstName: string, lastName?: string) => Promise<{ error: AuthError | null }>;
+  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   loading: boolean;
   refreshSession: () => Promise<Session | null>;
@@ -15,12 +15,18 @@ interface AuthContextProps {
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
-// Helper to check token expiration
-const isTokenExpired = (token: string): boolean => {
+/**
+ * Checks if a JWT token is expired or about to expire
+ * @param token JWT token to check
+ * @param bufferSeconds Seconds before actual expiration to consider token as expired
+ * @returns boolean indicating if token is expired or about to expire
+ */
+const isTokenExpiring = (token: string, bufferSeconds = 300): boolean => {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
     const expiryTime = payload.exp * 1000; // Convert to milliseconds
-    return expiryTime < Date.now();
+    // Consider token expired if it's within buffer period
+    return expiryTime < (Date.now() + bufferSeconds * 1000);
   } catch (error) {
     console.error('Error checking token expiration:', error);
     return true; // Assume expired if we can't parse it
@@ -33,7 +39,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
-  // Function to refresh the session
+  /**
+   * Refreshes the authentication session
+   * @returns Refreshed session or null if refresh failed
+   */
   const refreshSession = async (): Promise<Session | null> => {
     try {
       const { data, error } = await supabase.auth.refreshSession();
@@ -46,10 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (data.session) {
         setSession(data.session);
         setUser(data.session.user);
-        
-        // Store the token in localStorage for the API service
         localStorage.setItem('auth_token', data.session.access_token);
-        
         return data.session;
       }
       
@@ -60,44 +66,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Update token in storage and handle session state
+  const updateSessionState = (newSession: Session | null) => {
+    setSession(newSession);
+    setUser(newSession?.user ?? null);
+    
+    if (newSession?.access_token) {
+      localStorage.setItem('auth_token', newSession.access_token);
+    } else {
+      localStorage.removeItem('auth_token');
+    }
+    
+    setLoading(false);
+  };
+
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      updateSessionState(session);
       
-      // Store the token in localStorage for the API service
-      if (session?.access_token) {
-        localStorage.setItem('auth_token', session.access_token);
-      } else {
-        localStorage.removeItem('auth_token');
+      // Proactively refresh if token is about to expire
+      if (session?.access_token && isTokenExpiring(session.access_token)) {
+        await refreshSession();
       }
-      
-      setLoading(false);
-    });
+    };
+    
+    initializeAuth();
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      updateSessionState(session);
       
-      // Update token in localStorage on auth state change
-      if (session?.access_token) {
-        localStorage.setItem('auth_token', session.access_token);
-        
-        // Check if token is about to expire and refresh if needed
-        if (isTokenExpired(session.access_token)) {
-          console.log('Token expired on auth state change, refreshing...');
-          const refreshedSession = await refreshSession();
-          if (!refreshedSession) {
-            console.log('Failed to refresh session, redirecting to login...');
-          }
+      // Check if token is about to expire and refresh if needed
+      if (session?.access_token && isTokenExpiring(session.access_token)) {
+        const refreshedSession = await refreshSession();
+        if (!refreshedSession) {
+          // Handle failed refresh by logging out
+          toast({
+            variant: 'destructive',
+            title: 'Session expired',
+            description: 'Your session has expired. Please log in again.',
+          });
+          await signOut();
         }
-      } else {
-        localStorage.removeItem('auth_token');
       }
-      
-      setLoading(false);
     });
 
     return () => {
@@ -127,8 +140,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       return { error: null };
     } catch (error) {
+      const authError = error as AuthError;
+      
       // Check for duplicate email error
-      if (error.message && error.message.includes("already")) {
+      if (authError.message && authError.message.toLowerCase().includes("already")) {
         toast({
           variant: 'destructive',
           title: 'Email already registered',
@@ -138,10 +153,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         toast({
           variant: 'destructive',
           title: 'Error creating account',
-          description: error.message || 'An unknown error occurred',
+          description: authError.message || 'An unknown error occurred',
         });
       }
-      return { error };
+      return { error: authError };
     }
   };
 
@@ -154,11 +169,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (error) throw error;
       
-      // Store the token after successful sign in
-      if (data.session?.access_token) {
-        localStorage.setItem('auth_token', data.session.access_token);
-      }
-      
       toast({
         title: 'Welcome back!',
         description: 'You have been successfully logged in.',
@@ -166,19 +176,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       return { error: null };
     } catch (error) {
+      const authError = error as AuthError;
+      
       toast({
         variant: 'destructive',
         title: 'Login failed',
-        description: error.message || 'An unknown error occurred',
+        description: authError.message || 'An unknown error occurred',
       });
-      return { error };
+      return { error: authError };
     }
   };
 
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
-      // Remove the token when signing out
       localStorage.removeItem('auth_token');
       
       toast({
@@ -213,4 +224,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-} 
+}

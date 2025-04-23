@@ -1,10 +1,9 @@
-import { checkApiConnection } from "@/lib/api-helpers";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Search, CalendarIcon, TrendingUp, TrendingDown, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, CalendarIcon, TrendingUp, TrendingDown } from "lucide-react";
 import Header from "@/components/ui/header";
 import { useUserTransactions } from "@/hooks/useUserTransactions";
 import { Input } from "@/components/ui/input";
@@ -12,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
-import { API_ENDPOINTS, API_BASE_URL, getApiUrl } from "@/config";
 
 // Format date to display in a readable format
 const formatDate = (dateString: string) => {
@@ -50,10 +48,6 @@ const Transactions = () => {
     refreshTransactions 
   } = useUserTransactions();
   
-  // For debugging purposes
-  const [isCheckingConnection, setIsCheckingConnection] = useState(false);
-  const [connectionStatus, setConnectionStatus] = useState<string | null>(null);
-  
   // State for expanded transaction details
   const [expandedTransactionId, setExpandedTransactionId] = useState<number | null>(null);
 
@@ -63,16 +57,6 @@ const Transactions = () => {
       navigate("/");
     }
   }, [user, authLoading, navigate]);
-
-  // Check connection when there's an error
-  useEffect(() => {
-    if (error) {
-      checkApiConnection()
-        .then(isConnected => {
-          console.log('API connection status:', isConnected);
-        });
-    }
-  }, [error]);
 
   // Handle search input change
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,22 +69,6 @@ const Transactions = () => {
       setExpandedTransactionId(null);
     } else {
       setExpandedTransactionId(id);
-    }
-  };
-
-  // Check API connection manually
-  const handleCheckConnection = async () => {
-    setIsCheckingConnection(true);
-    setConnectionStatus(null);
-    
-    try {
-      const isConnected = await checkApiConnection();
-      setConnectionStatus(isConnected ? 'Connected' : 'Failed');
-    } catch (err) {
-      setConnectionStatus('Error');
-      console.error('Connection check error:', err);
-    } finally {
-      setIsCheckingConnection(false);
     }
   };
 
@@ -162,31 +130,6 @@ const Transactions = () => {
                   <Button onClick={() => refreshTransactions()}>
                     Try again
                   </Button>
-                  
-                  {/* Debug section */}
-                  <div className="mt-8 border-t pt-4 w-full max-w-md">
-                    <p className="text-sm text-muted-foreground mb-2">Debug Information</p>
-                    <div className="text-xs space-y-1 bg-secondary/20 rounded-md p-3">
-                      <p>API URL: {API_BASE_URL}</p>
-                      <p>Endpoint: {getApiUrl(API_ENDPOINTS.TRANSACTION_GROUPS)}</p>
-                      <div className="flex items-center gap-2 mt-3">
-                        <Button 
-                          size="sm"
-                          variant="outline"
-                          disabled={isCheckingConnection}
-                          onClick={handleCheckConnection}
-                        >
-                          {isCheckingConnection && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
-                          Check API Connection
-                        </Button>
-                        {connectionStatus && (
-                          <span className={connectionStatus === 'Connected' ? 'text-green-500' : 'text-destructive'}>
-                            {connectionStatus}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </Card>
@@ -270,7 +213,7 @@ const Transactions = () => {
                         <Separator className="mb-4" />
                         <h4 className="text-sm font-medium mb-2">Transaction Details</h4>
                         <div className="space-y-3">
-                          {transaction.transactions.map((item, index) => (
+                          {transaction.transactions.map((item) => (
                             <div key={item.id} className="bg-secondary/50 rounded-md p-3">
                               <div className="flex justify-between text-sm mb-1">
                                 <span className="text-muted-foreground">Quantity:</span>
@@ -310,4 +253,4 @@ const Transactions = () => {
   );
 };
 
-export default Transactions; 
+export default Transactions;

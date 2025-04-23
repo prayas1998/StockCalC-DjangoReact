@@ -52,45 +52,32 @@ export interface Transaction {
 
 // Helper function to get the current token and refresh if needed
 export const getAuthToken = async (): Promise<string | null> => {
-  // First try to get from localStorage
   const token = localStorage.getItem('auth_token');
   
-  // If we have a token, verify it's not expired
   if (token) {
-    // Check if token is expired by decoding it
-    // JWT tokens have three parts separated by dots
     try {
       const tokenParts = token.split('.');
-      if (tokenParts.length !== 3) {
-        throw new Error('Invalid token format');
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]));
+        const expiryTime = payload.exp * 1000;
+        
+        if (expiryTime > Date.now()) {
+          return token;
+        }
       }
-      
-      // The payload is the second part, base64 encoded
-      const payload = JSON.parse(atob(tokenParts[1]));
-      const expiryTime = payload.exp * 1000; // Convert to milliseconds
-      
-      // If token is not expired, return it
-      if (expiryTime > Date.now()) {
-        return token;
-      }
-      
-      console.log('Token expired, refreshing...');
     } catch (error) {
-      console.error('Error parsing token:', error);
+      // Token parsing failed, will refresh
     }
   }
   
   // Token is expired or invalid, refresh the session
-  console.log('Getting fresh session from Supabase');
   const { data } = await supabase.auth.getSession();
   
   if (data?.session?.access_token) {
-    // Store the new token and return it
     localStorage.setItem('auth_token', data.session.access_token);
     return data.session.access_token;
   }
   
-  // No valid session, clear token and return null
   localStorage.removeItem('auth_token');
   return null;
 };
@@ -201,11 +188,7 @@ export const getUserTransactions = async (): Promise<Transaction[] | Calculation
     const token = await getAuthToken();
     const url = getApiUrl(API_ENDPOINTS.TRANSACTION_GROUPS);
     
-    console.log('Fetching user transactions from:', url);
-    console.log('Auth token available:', !!token);
-    
     if (!token) {
-      console.error('No authentication token found');
       return {
         error: 'Authentication required',
         detail: 'Please log in to view your transactions',
@@ -220,15 +203,11 @@ export const getUserTransactions = async (): Promise<Transaction[] | Calculation
       },
     });
     
-    console.log('Response status:', response.status);
-    
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Error response:', errorText);
       
       // Handle authentication errors
       if (response.status === 401 || response.status === 403) {
-        // Clear the token if it's invalid
         localStorage.removeItem('auth_token');
         
         return {
@@ -243,12 +222,8 @@ export const getUserTransactions = async (): Promise<Transaction[] | Calculation
       };
     }
     
-    const data = await response.json();
-    console.log('Fetched transactions count:', data.length);
-    
-    return data;
+    return await response.json();
   } catch (error) {
-    console.error('Network error in getUserTransactions:', error);
     return {
       error: 'Network error',
       detail: error instanceof Error ? error.message : 'Unknown error',
@@ -261,7 +236,6 @@ export const searchTransactions = async (query: string): Promise<Transaction[] |
     const token = await getAuthToken();
     
     if (!token) {
-      console.error('No authentication token found');
       return {
         error: 'Authentication required',
         detail: 'Please log in to search your transactions',
@@ -278,15 +252,10 @@ export const searchTransactions = async (query: string): Promise<Transaction[] |
       },
     });
     
-    console.log('Searching transactions at:', url.toString());
-    
     const response = await fetch(url.toString(), options);
-    
-    console.log('Search response status:', response.status);
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Search error response:', errorText);
       
       // Handle authentication errors
       if (response.status === 401 || response.status === 403) {
@@ -303,12 +272,8 @@ export const searchTransactions = async (query: string): Promise<Transaction[] |
       };
     }
     
-    const data = await response.json();
-    console.log(`Found ${data.length} transactions matching "${query}"`);
-    
-    return data;
+    return await response.json();
   } catch (error) {
-    console.error('Network error in searchTransactions:', error);
     return {
       error: 'Network error',
       detail: error instanceof Error ? error.message : 'Unknown error',
