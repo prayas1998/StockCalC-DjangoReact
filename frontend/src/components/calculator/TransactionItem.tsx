@@ -51,7 +51,7 @@ const TransactionItem = ({
           )}
 
           <div>
-            <Label htmlFor={`quantity-${transaction.id}`} className="flex justify-between">
+            <Label htmlFor={`quantity-${transaction.id}`} className="flex justify-between mb-2">
               <span>Quantity</span>
               {transaction.error && transaction.error.includes("Quantity") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
@@ -97,7 +97,7 @@ const TransactionItem = ({
             />
           </div>
           <div>
-            <Label htmlFor={`buyPrice-${transaction.id}`} className="flex justify-between">
+            <Label htmlFor={`buyPrice-${transaction.id}`} className="flex justify-between mb-1">
               <span>Buy Price</span>
               {transaction.error && transaction.error.includes("buy price") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
@@ -143,7 +143,7 @@ const TransactionItem = ({
             />
           </div>
           <div>
-            <Label htmlFor={`sellPrice-${transaction.id}`} className="flex justify-between">
+            <Label htmlFor={`sellPrice-${transaction.id}`} className="flex justify-between mb-1">
               <span>Sell Price</span>
               {transaction.error && transaction.error.includes("sell price") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
