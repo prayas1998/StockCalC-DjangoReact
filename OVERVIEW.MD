@@ -16,7 +16,7 @@ StockCalc-DjangoReact/           # Root directory
 │   │   │   ├── layout/           # Layout components
 │   │   │   └── ui/               # General UI components (from shadcn/ui)
 │   │   ├── context/              # React context providers
-│   │   │   └── AuthContext.tsx   # Authentication context provider
+│   │   │   └── AuthContext.tsx   # Enhanced authentication context provider
 │   │   ├── hooks/                # Custom React hooks
 │   │   │   ├── useCalculation.tsx # Handles calculation logic
 │   │   │   ├── useTransactions.tsx # Manages transaction state
@@ -48,6 +48,7 @@ StockCalc-DjangoReact/           # Root directory
 │   │   ├── models.py             # Database models (TransactionRecord, TransactionGroup)
 │   │   ├── serializers.py        # DRF serializers
 │   │   ├── urls.py               # URL routing for calculator endpoints
+│   │   ├── authentication.py     # Custom Supabase JWT authentication
 │   │   ├── views/                # Split views for clarity and maintainability
 │   │   │   ├── __init__.py       # Exposes all views at package level
 │   │   │   ├── calculation_views.py   # calculate_charges, save_calculation
@@ -186,7 +187,7 @@ This centralized configuration approach allows for:
 
 ### Views & Endpoints
 
-The calculator app's views are now organized into three focused modules under `calculator/views`:
+The calculator app's views are organized into three focused modules under `calculator/views`:
 
 1. **calculation_views.py**
    - **`calculate_charges`** (`POST /api/calculate/`)
@@ -222,12 +223,14 @@ TradeSmart uses a dual authentication system:
 
 ### 1. Supabase Authentication (Frontend)
 
-The frontend uses Supabase for user authentication:
+The frontend uses Supabase for user authentication with enhanced token management:
 
 - **AuthContext.tsx**: Provides a React context for authentication state and functions.
   - Manages user session state
   - Provides signUp, signIn, and signOut functions
-  - Listens for auth state changes
+  - Implements proactive token refresh before expiration
+  - Checks token expiration and refreshes when needed
+  - Provides comprehensive error handling with toast notifications
 
 - **supabase.ts**: Configures the Supabase client for authentication services.
   - Initialized with project URL and API key
@@ -235,17 +238,14 @@ The frontend uses Supabase for user authentication:
 
 ### 2. Django JWT Authentication (Backend API)
 
-The Django backend uses JWT authentication for API endpoints:
+The Django backend uses a custom JWT authentication implementation for API endpoints:
 
-- **Token Storage**: After login, the Supabase JWT is stored in localStorage as `auth_token`.
-- **Token Usage**: The token is attached to all authenticated API requests in the `Authorization` header as `Bearer <token>`.
-- **Token Validation**: The backend uses a custom `SupabaseAuthentication` class that:
+- **authentication.py**: Contains `SupabaseAuthentication` class that:
   - Extracts the JWT from the `Authorization` header.
   - Decodes and verifies the JWT using the Supabase project's JWT secret.
   - Disables audience (`aud`) validation to match Supabase's default tokens.
-  - Gets or creates a Django user based on the `sub` claim in the JWT.
-  - If the token is valid, the user is authenticated for the request.
-  - If the token is invalid or expired, a 401/403 response is returned.
+  - Creates Django users automatically based on Supabase authentication.
+  - Handles token expiration and validation errors gracefully.
 
 ### 3. Authentication Flow
 
@@ -256,14 +256,15 @@ The Django backend uses JWT authentication for API endpoints:
 2. **Token Management**:
    - The token is stored in localStorage with the key 'auth_token'
    - The token is attached to all authenticated API requests
+   - Token expiration is proactively checked, with automatic refresh when approaching expiry
 
 3. **Token Validation**:
-   - The Django backend validates the token for protected endpoints using the Supabase JWT secret and disables audience validation.
-   - If invalid, a 401/403 response is returned
+   - The Django backend validates the token for protected endpoints
+   - If invalid, a 401/403 response is returned with detailed error messages
 
 4. **Session Expiration**:
-   - If a token is expired or invalid, the user is redirected to login
-   - The token is removed from localStorage
+   - Token refresh is attempted before expiration
+   - If refresh fails, user is notified and redirected to login
 
 This architecture allows for secure authentication while maintaining separation between the frontend and backend systems.
 
@@ -288,6 +289,7 @@ Key settings include:
 - `ALLOWED_HOSTS`: Configured for the production domain
 - `CORS_ALLOWED_ORIGINS`: Set to allow requests from the frontend origin
 - `SECRET_KEY`: Should be kept secret and changed in production
+- `SUPABASE_JWT_SECRET`: The JWT secret from Supabase project settings
 
 ## Calculation Trigger Flow
 
@@ -324,6 +326,7 @@ Key settings include:
 
 3. **API Request**:
    - The `handleSaveTransactions` function in `useCalculation` hook is called.
+   - It first validates user authentication status and transaction data.
    - It uses the `saveTransactions` API function to send a POST request to `/api/save-calculation/`.
    - The authenticated user's token is included in the request.
 
@@ -349,7 +352,7 @@ TradeSmart uses a combination of React hooks and context for state management:
    - `useUserTransactions`: Manages saved transaction history
 
 3. **Context API**: For application-wide state:
-   - `AuthContext`: Manages authentication state across the application
+   - `AuthContext`: Manages authentication state across the application with enhanced token management
 
 This approach provides a good balance between component isolation and shared state, while avoiding prop drilling and complex state management libraries.
 
@@ -369,21 +372,21 @@ This approach provides a good balance between component isolation and shared sta
    - Vercel automatically deploys on push to the main branch.
    - Custom domains can be configured in the Vercel dashboard.
 
-### Backend Deployment
+### Backend Deployment (Render)
 
-1. **Hosting Options**:
-   - Django application can be hosted on platforms like PythonAnywhere, Heroku, or a custom server.
-   - Database can use PostgreSQL for production data.
+1. **Hosting Configuration**:
+   - Django application is deployed on Render.
+   - PostgreSQL database is used for production data.
 
 2. **Environment Setup**:
-   - Configure environment variables for sensitive information.
-   - Set DEBUG=False in production.
-   - Configure CORS to allow requests only from the frontend domain.
+   - Environment variables are configured in the Render dashboard.
+   - Production-specific settings are activated through environment variables.
+   - CORS is configured to allow requests only from the frontend domain.
 
 3. **API Security**:
-   - Use HTTPS for all API requests.
+   - HTTPS is enforced for all API requests.
    - JWT authentication protects user-specific endpoints.
-   - Rate limiting can be implemented to prevent abuse.
+   - Rate limiting is implemented to prevent abuse.
 
 ## Development Environment Setup
 
@@ -422,8 +425,9 @@ This approach provides a good balance between component isolation and shared sta
 
 2. **Authentication Issues**:
    - Clear localStorage and try logging in again.
-   - Ensure the backend properly validates and issues JWT tokens.
-   - Check that token expiration is handled correctly.
+   - Check console for token-related errors.
+   - Verify token expiration handling is working correctly.
+   - Ensure the backend has the correct SUPABASE_JWT_SECRET environment variable.
 
 3. **Calculation Errors**:
    - Verify that transaction inputs are valid (positive numbers).

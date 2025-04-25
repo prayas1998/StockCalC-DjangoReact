@@ -280,3 +280,37 @@ export const searchTransactions = async (query: string): Promise<Transaction[] |
     };
   }
 };
+
+// Delete a transaction group by ID
+export const deleteTransaction = async (id: number): Promise<{ status: string; message: string } | CalculationError> => {
+  try {
+    const options = await addAuthHeader({
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    const response = await fetch(getApiUrl(`${API_ENDPOINTS.TRANSACTION_GROUPS}${id}/`), options);
+    if (!response.ok) {
+      return {
+        error: `HTTP error! status: ${response.status}`,
+        detail: await response.text(),
+      };
+    }
+    // If response is 204 No Content, return a default success object
+    if (response.status === 204) {
+      return { status: 'success', message: 'Transaction deleted successfully' };
+    }
+    // Otherwise, try to parse JSON (for 200/202 with body)
+    const text = await response.text();
+    if (!text) {
+      return { status: 'success', message: 'Transaction deleted successfully' };
+    }
+    return JSON.parse(text);
+  } catch (error) {
+    return {
+      error: 'Network error',
+      detail: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};

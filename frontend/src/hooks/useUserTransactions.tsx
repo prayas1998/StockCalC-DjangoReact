@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getUserTransactions } from '@/services/api';
+import { getUserTransactions, deleteTransaction } from '@/services/api';
 import type { Transaction } from '@/services/api';
 import { toast } from '@/components/ui/use-toast';
 import { checkApiConnection, formatApiError } from '@/lib/api-helpers';
@@ -77,12 +77,37 @@ export const useUserTransactions = () => {
     fetchTransactions();
   }, [fetchTransactions]);
 
+  // Delete a transaction group
+  const deleteUserTransaction = async (id: number) => {
+    setLoading(true);
+    try {
+      const result = await deleteTransaction(id);
+      if ('error' in result) {
+        throw new Error(result.detail || 'Failed to delete transaction');
+      }
+      toast({
+        title: 'Success',
+        description: 'Transaction deleted successfully',
+      });
+      await fetchTransactions();
+    } catch (err) {
+      toast({
+        title: 'Error',
+        description: err instanceof Error ? err.message : 'Failed to delete transaction',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     transactions: filteredTransactions,
     loading,
     error,
     searchQuery,
     setSearchQuery: handleSearch,
-    refreshTransactions: fetchTransactions
+    refreshTransactions: fetchTransactions,
+    deleteUserTransaction,
   };
 };

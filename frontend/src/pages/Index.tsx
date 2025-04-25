@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import SaveTransactionButton from "@/components/calculator/SaveTransactionButton
 
 const Index = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
@@ -63,6 +64,22 @@ const Index = () => {
     handleSaveTransactions,
     isSaving 
   } = useCalculation(platform, exchange, tradeType, transactions);
+
+  // If redirected for editing, pre-fill the form with the transaction data
+  useEffect(() => {
+    if (location.state && location.state.editTransaction) {
+      const edit = location.state.editTransaction;
+      // Map API transaction group to form transactions
+      const mapped = edit.transactions.map((item: any) => ({
+        id: String(item.id),
+        companyName: edit.title,
+        quantity: item.quantity,
+        buyPrice: item.buy_price,
+        sellPrice: item.sell_price,
+      }));
+      setTransactions(mapped);
+    }
+  }, [location.state, setTransactions]);
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));

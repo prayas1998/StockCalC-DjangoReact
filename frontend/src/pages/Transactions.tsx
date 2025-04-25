@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/context/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Search, CalendarIcon, TrendingUp, TrendingDown } from "lucide-react";
+import { ArrowLeft, Search, CalendarIcon, TrendingUp, TrendingDown, Trash2, Plus } from "lucide-react";
 import Header from "@/components/ui/header";
 import { useUserTransactions } from "@/hooks/useUserTransactions";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,19 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { formatCurrency } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import TransactionForm from "@/components/calculator/TransactionForm";
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog";
 
 // Format date to display in a readable format
 const formatDate = (dateString: string) => {
@@ -22,7 +35,7 @@ const formatDate = (dateString: string) => {
   });
 };
 
-// Get platform icon
+// Get platform icon  
 const getPlatformIcon = (platform: string) => {
   const firstLetter = platform.charAt(0).toUpperCase();
   return firstLetter;
@@ -45,11 +58,14 @@ const Transactions = () => {
     error, 
     searchQuery, 
     setSearchQuery, 
-    refreshTransactions 
+    refreshTransactions,
+    deleteUserTransaction,
   } = useUserTransactions();
   
   // State for expanded transaction details
   const [expandedTransactionId, setExpandedTransactionId] = useState<number | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<number | null>(null);
 
   // Redirect to home if not authenticated
   useEffect(() => {
@@ -69,6 +85,20 @@ const Transactions = () => {
       setExpandedTransactionId(null);
     } else {
       setExpandedTransactionId(id);
+    }
+  };
+
+  // Handle delete with confirmation
+  const handleDeleteClick = (id: number) => {
+    setTransactionToDelete(id);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (transactionToDelete !== null) {
+      await deleteUserTransaction(transactionToDelete);
+      setDeleteDialogOpen(false);
+      setTransactionToDelete(null);
     }
   };
 
@@ -99,6 +129,11 @@ const Transactions = () => {
               <p className="text-muted-foreground">
                 View and manage your saved transactions
               </p>
+            </div>
+            <div className="ml-auto">
+              <Button onClick={() => navigate("/")}>
+                <Plus className="h-4 w-4 mr-2" /> Add Transaction
+              </Button>
             </div>
           </div>
 
@@ -165,8 +200,8 @@ const Transactions = () => {
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <div className={`text-lg font-medium ${getPnLColor(transaction.net_pnl)}`}>
+                      <div className="flex flex-col items-end gap-2">
+                        <div className={`text-lg font-medium ${getPnLColor(transaction.net_pnl)}`}> 
                           {parseFloat(transaction.net_pnl) > 0 ? '+' : ''}{formatCurrency(transaction.net_pnl)}
                           {parseFloat(transaction.net_pnl) > 0 
                             ? <TrendingUp className="inline ml-1 h-4 w-4" /> 
@@ -184,6 +219,11 @@ const Transactions = () => {
                           <Badge variant="outline" className="text-xs">
                             {transaction.trade_type.replace(/-/g, ' ')}
                           </Badge>
+                        </div>
+                        <div className="flex gap-2 mt-2">
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(transaction.id)}>
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
                         </div>
                       </div>
                     </div>
@@ -249,6 +289,22 @@ const Transactions = () => {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transaction</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete this transaction? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteDialogOpen(false)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
