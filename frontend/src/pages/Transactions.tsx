@@ -60,6 +60,7 @@ const Transactions = () => {
     setSearchQuery, 
     refreshTransactions,
     deleteUserTransaction,
+    apiConnectionFailed,
   } = useUserTransactions();
   
   // State for expanded transaction details
@@ -159,7 +160,9 @@ const Transactions = () => {
               <div className="text-center py-12">
                 <h3 className="text-xl font-medium mb-2 text-destructive">Error loading transactions</h3>
                 <p className="text-muted-foreground mb-6">
-                  {error}
+                  {apiConnectionFailed 
+                    ? "Could not connect to the API server. The backend server might be down or unreachable." 
+                    : error}
                 </p>
                 <div className="flex flex-col items-center gap-4">
                   <Button onClick={() => refreshTransactions()}>
