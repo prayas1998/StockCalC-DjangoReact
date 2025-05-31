@@ -6,8 +6,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import Index from "./pages/Index";
-import Rise from "./pages/Rise";
-import Others from "./pages/Others";
 import Tools from "./pages/Tools";
 import Transactions from "./pages/Transactions";
 import NotFound from "./pages/NotFound";
@@ -27,8 +25,8 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/groww" element={<Index />} />
               <Route path="/dhan" element={<Index />} />
-              <Route path="/rise" element={<Rise />} />
-              <Route path="/others" element={<Others />} />
+              {/* <Route path="/rise" element={<Rise />} /> */}
+              {/* <Route path="/others" element={<Others />} /> */}
               <Route path="/tools" element={<Tools />} />
               <Route path="/transactions" element={<Transactions />} />
               <Route path="/edit-transaction/:id" element={<Index />} />
