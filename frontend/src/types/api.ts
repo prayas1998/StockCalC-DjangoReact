@@ -19,6 +19,7 @@ export interface CalculationResponse {
     ipft: string;
     gst: string;
     totalCharges: string;
+    dpCharges: string;
   };
   transactions: Array<{
     quantity: string;

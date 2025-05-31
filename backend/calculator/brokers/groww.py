@@ -23,3 +23,7 @@ class GrowwCalculator(BaseBroker):
                 total_brokerage += sell_brokerage
 
         return total_brokerage
+
+    def get_dp_charge(self) -> Decimal:
+        """Returns the fixed DP charge for Groww (applied per sell transaction)"""
+        return Decimal('21.54')

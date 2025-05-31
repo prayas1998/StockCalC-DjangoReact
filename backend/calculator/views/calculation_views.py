@@ -23,6 +23,7 @@ def calculate_charges(request):
         total_buy_value = Decimal("0")
         total_sell_value = Decimal("0")
         total_brokerage = Decimal("0")
+        total_dp_charges = Decimal('0')
 
         # Process each transaction
         transactions_data = []
@@ -41,6 +42,10 @@ def calculate_charges(request):
 
             # Calculate brokerage using the broker-specific calculator
             transaction_brokerage = calculator.broker.calculate_brokerage(buy_value, sell_value)
+
+            # DP charge: only if sell_price > 0
+            transaction_dp_charge = calculator.broker.get_dp_charge() if sell_price > 0 else Decimal('0')
+            total_dp_charges += transaction_dp_charge
 
             # Update running totals
             total_buy_value += buy_value
@@ -80,9 +85,9 @@ def calculate_charges(request):
         taxable_components = sum([total_brokerage, exchange_charges, sebi_fee, ipft])
         gst = calculator.govt_charges.calculate_gst(taxable_components)
 
-        # Calculate total charges (brokerage + all government levies)
+        # Calculate total charges (brokerage + all government levies + DP charges)
         total_charges = sum(
-            [total_brokerage, stt, exchange_charges, stamp_duty, sebi_fee, ipft, gst]
+            [total_brokerage, stt, exchange_charges, stamp_duty, sebi_fee, ipft, gst, total_dp_charges]
         )
         gross_pnl = total_sell_value - total_buy_value
         net_pnl = gross_pnl - total_charges
@@ -110,6 +115,7 @@ def calculate_charges(request):
                 "sebiFee": str(sebi_fee.quantize(Decimal("0.01"))),
                 "ipft": str(ipft.quantize(Decimal("0.01"))),
                 "gst": str(gst.quantize(Decimal("0.01"))),
+                "dpCharges": str(total_dp_charges.quantize(Decimal("0.01"))),
                 "totalCharges": str(total_charges.quantize(Decimal("0.01"))),
             },
             "transactions": transactions_data,

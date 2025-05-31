@@ -8,4 +8,8 @@ class DhanCalculator(BaseBroker):
         if self.trade_type == 'equity-delivery':
             return Decimal('0')
         # If other trade types are added in the future, handle them here
-        return Decimal('0') 
+        return Decimal('0')
+
+    def get_dp_charge(self) -> Decimal:
+        """Returns the fixed DP charge for Dhan (applied per sell transaction)"""
+        return Decimal('14.75') 

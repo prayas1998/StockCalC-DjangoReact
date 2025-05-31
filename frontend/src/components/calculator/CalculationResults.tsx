@@ -69,6 +69,7 @@ const CalculationResults = ({
                   { key: "sebiFee", label: "SEBI Turnover Fees" },
                   { key: "gst", label: "GST" },
                   { key: "stampDuty", label: "Stamp Duty" },
+                  { key: "dpCharges", label: "DP Charges" },
                   ...(exchange === "NSE"
                     ? [{ key: "ipft", label: "IPFT" }]
                     : []), // Conditional IPFT
@@ -100,4 +101,4 @@ const CalculationResults = ({
   );
 };
 
-export default CalculationResults; 
+export default CalculationResults;  
