@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from .brokers.groww import GrowwCalculator
+from .brokers.dhan import DhanCalculator
 from .levies.government import GovernmentCharges
 
 
@@ -19,6 +20,7 @@ class TradeCalculator:
         """Factory method to create the appropriate broker calculator"""
         brokers = {
             'groww': GrowwCalculator,
+            'dhan': DhanCalculator,
             # 'rise': RiseCalculator,  # To be implemented later
             # 'others': OthersCalculator  # To be implemented later
         }

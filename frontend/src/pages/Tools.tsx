@@ -38,9 +38,12 @@ const Tools = () => {
   });
   
   const [platform, setPlatform] = useState(() => {
-    const path = window.location.pathname.slice(1);
+    const path = window.location.pathname.slice(1).toLowerCase();
     if (path === "tools") return "Groww"; // Default to Groww when on tools page
-    return path.charAt(0).toUpperCase() + path.slice(1) || "Groww";
+    if (["groww", "dhan", "rise", "others"].includes(path)) {
+      return path.charAt(0).toUpperCase() + path.slice(1);
+    }
+    return "Groww";
   });
 
   // Profit Target Calculator states

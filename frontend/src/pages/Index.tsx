@@ -48,8 +48,11 @@ const Index = () => {
   const [instrumentType, setInstrumentType] = useState("future");
 
   const [platform, setPlatform] = useState(() => {
-    const path = window.location.pathname.slice(1);
-    return path.charAt(0).toUpperCase() + path.slice(1) || "Groww";
+    const path = window.location.pathname.slice(1).toLowerCase();
+    if (["groww", "dhan", "rise", "others"].includes(path)) {
+      return path.charAt(0).toUpperCase() + path.slice(1);
+    }
+    return "Groww";
   });
 
   // Use custom hook for transactions

@@ -85,6 +85,12 @@ const Header = () => {
                 Groww
               </DropdownMenuItem>
               <DropdownMenuItem 
+                onClick={() => handlePlatformChange("Dhan")}
+                className="hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors duration-200"
+              >
+                Dhan
+              </DropdownMenuItem>
+              <DropdownMenuItem 
                 onClick={() => handlePlatformChange("Rise")}
                 className="hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors duration-200"
               >
