@@ -39,21 +39,8 @@ def calculate_charges(request):
             cumulative_quantity += quantity
             cumulative_buy_value += buy_value
 
-            # Calculate Groww brokerage for just this transaction
-            # Buy side brokerage: 0.1% of buy value (min ₹2, max ₹20)
-            buy_brokerage = (
-                min(max(buy_value * Decimal("0.001"), Decimal("2")), Decimal("20"))
-                if buy_value > 0
-                else Decimal("0")
-            )
-            # Sell side brokerage: 0.1% of sell value (min ₹2, max ₹20)
-            sell_brokerage = (
-                min(max(sell_value * Decimal("0.001"), Decimal("2")), Decimal("20"))
-                if sell_value > 0
-                else Decimal("0")
-            )
-            # Total brokerage for this transaction
-            transaction_brokerage = buy_brokerage + sell_brokerage
+            # Calculate brokerage using the broker-specific calculator
+            transaction_brokerage = calculator.broker.calculate_brokerage(buy_value, sell_value)
 
             # Update running totals
             total_buy_value += buy_value
@@ -75,7 +62,7 @@ def calculate_charges(request):
                     ),
                     "charges": str(
                         transaction_brokerage.quantize(Decimal("0.01"))
-                    ),  # This is just the Groww brokerage
+                    ),  # This is the broker-specific brokerage
                 }
             )
 
