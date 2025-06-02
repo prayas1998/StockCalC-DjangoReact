@@ -111,6 +111,13 @@ const Index = () => {
     }
   }, [darkMode]);
 
+  useEffect(() => {
+    // Reset transactions when platform changes
+    setTransactions([
+      { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }
+    ]);
+  }, [platform]);
+
   const handlePlatformChange = (newPlatform: string) => {
     setPlatform(newPlatform);
     navigate(`/${newPlatform.toLowerCase()}`);

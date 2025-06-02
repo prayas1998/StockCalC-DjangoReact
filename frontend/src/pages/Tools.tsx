@@ -24,6 +24,7 @@ type Charges = {
   sebiCharges: number;
   ipft: number;
   totalCharges: number;
+  dpCharges: number;
 };
 
 const Tools = () => {
@@ -72,6 +73,10 @@ const Tools = () => {
   // Exchange state (for both calculators)
   const exchange = "NSE"; // Fixed to NSE
 
+  // Add toggles for broker and trade type
+  const [selectedBroker, setSelectedBroker] = useState<'Dhan' | 'Groww'>('Dhan');
+  const [selectedTradeType, setSelectedTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
+
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
   }, [darkMode]); // Save to localStorage on change
@@ -99,50 +104,44 @@ const Tools = () => {
     });
   };
   
-  // Calculate charges based on formulas.md
+  // DP charge logic
+  const getDpCharge = (broker: string) => {
+    if (broker === 'Dhan') return 14.75;
+    if (broker === 'Groww') return 21.54;
+    return 0;
+  };
+
+  // Calculate charges based on selected broker and trade type
   const calculateCharges = (buyValue: number, sellValue: number, exchange: string): Charges => {
     const totalTurnover = buyValue + sellValue;
-    
-    // 1. Brokerage (for Groww equity-delivery)
-    // Buy: 0.1% of buy value (min ₹2, max ₹20)
-    // Sell: 0.1% of sell value (min ₹2, max ₹20)
-    const buyBrokerage = Math.min(Math.max(buyValue * 0.001, 2), 20);
-    const sellBrokerage = Math.min(Math.max(sellValue * 0.001, 2), 20);
-    const brokerage = buyBrokerage + sellBrokerage;
-    
-    // 2. STT (Securities Transaction Tax)
-    // 0.1% of total turnover (buy + sell value)
+    let brokerage = 0;
+    if (selectedTradeType === 'equity-delivery') {
+      if (selectedBroker === 'Groww') {
+        // Groww equity delivery logic
+        const buyBrokerage = Math.min(Math.max(buyValue * 0.001, 2), 20);
+        const sellBrokerage = Math.min(Math.max(sellValue * 0.001, 2), 20);
+        brokerage = buyBrokerage + sellBrokerage;
+      } else if (selectedBroker === 'Dhan') {
+        brokerage = 0;
+      }
+    } else {
+      // Placeholder for intraday logic
+      brokerage = 0;
+    }
     const stt = Math.round(totalTurnover * 0.001);
-    
-    // 3. Exchange Charges
-    // NSE: 0.00297% of total turnover
-    // BSE: 0.00375% of total turnover
-    const exchangeCharges = exchange === "NSE" 
+    const exchangeCharges = exchange === "NSE"
       ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
       : parseFloat((totalTurnover * 0.0000375).toFixed(2));
-    
-    // 4. Stamp Duty
-    // 0.015% of buy value
     const stampDuty = Math.round(buyValue * 0.00015);
-    
-    // 5. SEBI Turnover Fee
-    // 0.0001% of total turnover
     const sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
-    
-    // 6. IPFT (Investor Protection Fund Trust)
-    // 0.0001% of total turnover - NSE trades only
-    const ipft = exchange === "NSE" 
+    const ipft = exchange === "NSE"
       ? parseFloat((totalTurnover * 0.000001).toFixed(2))
       : 0;
-    
-    // 7. GST
-    // 18% of (Brokerage + Exchange Charges + SEBI Fee + IPFT)
     const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
     const gst = parseFloat((taxableAmount * 0.18).toFixed(2));
-    
-    // Total Charges
-    const totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst;
-    
+    // DP charge only if sellValue > 0
+    const dpCharges = sellValue > 0 ? getDpCharge(selectedBroker) : 0;
+    const totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst + dpCharges;
     return {
       brokerage,
       stt,
@@ -151,7 +150,8 @@ const Tools = () => {
       stampDuty,
       sebiCharges,
       ipft,
-      totalCharges
+      totalCharges,
+      dpCharges,
     };
   };
   
@@ -277,6 +277,24 @@ const Tools = () => {
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold mb-6">Stock Market Tools</h1>
+        
+        {/* Broker and Trade Type Toggles */}
+        <div className="flex flex-wrap gap-4 mb-8">
+          <div>
+            <Label className="mb-2 block">Broker</Label>
+            <ToggleGroup type="single" value={selectedBroker} onValueChange={val => val && setSelectedBroker(val as 'Dhan' | 'Groww')}>
+              <ToggleGroupItem value="Dhan">Dhan</ToggleGroupItem>
+              <ToggleGroupItem value="Groww">Groww</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+          <div>
+            <Label className="mb-2 block">Trade Type</Label>
+            <ToggleGroup type="single" value={selectedTradeType} onValueChange={val => val && setSelectedTradeType(val as 'equity-delivery' | 'equity-intraday')}>
+              <ToggleGroupItem value="equity-delivery">Equity Delivery</ToggleGroupItem>
+              <ToggleGroupItem value="equity-intraday">Equity Intraday</ToggleGroupItem>
+            </ToggleGroup>
+          </div>
+        </div>
         
         <div className="grid md:grid-cols-2 gap-6">
           {/* Profit Target Calculator */}
