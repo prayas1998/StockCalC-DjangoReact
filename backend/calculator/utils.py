@@ -1,36 +1,16 @@
 import logging
 from decimal import Decimal, InvalidOperation
 
-from .brokers.groww import GrowwCalculator
-from .brokers.dhan import DhanCalculator
-from .levies.government import GovernmentCharges
+# DEPRECATED: Use calculator/calculations/*Calculator instead
+# from .brokers.groww import GrowwCalculator
+# from .brokers.dhan import DhanCalculator
+# from .levies import get_government_charges
 
+# class TradeCalculator:
+#     ... (old code remains for now, but will be removed after migration)
 
-class TradeCalculator:
-    def __init__(self, platform, exchange, trade_type):
-        self.platform = platform.lower()
-        self.exchange = exchange.upper()
-        self.trade_type = trade_type.lower()
-
-        # Initialize components
-        self.broker = self._initialize_broker()
-        self.govt_charges = GovernmentCharges(self.exchange, self.trade_type)
-
-    def _initialize_broker(self):
-        """Factory method to create the appropriate broker calculator"""
-        brokers = {
-            'groww': GrowwCalculator,
-            'dhan': DhanCalculator,
-            # 'rise': RiseCalculator,  # To be implemented later
-            # 'others': OthersCalculator  # To be implemented later
-        }
-
-        if self.platform not in brokers:
-            raise ValueError(f"Unsupported platform: {self.platform}")
-
-        return brokers[self.platform](self.exchange, self.trade_type)
-
-    # Maintain these helper methods if needed elsewhere
+# Maintain these helper methods if needed elsewhere
+class Utils:
     @staticmethod
     def safe_decimal(value) -> Decimal:
         """Convert value to Decimal safely"""
