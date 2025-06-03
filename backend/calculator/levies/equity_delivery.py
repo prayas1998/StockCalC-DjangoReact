@@ -24,4 +24,4 @@ class EquityDeliveryCharges:
         return Decimal('0')
 
     def calculate_gst(self, taxable_components: Decimal) -> Decimal:
-        return (taxable_components * Decimal('0.18')).quantize(Decimal('0.01'), ROUND_HALF_UP) 
+        return (taxable_components * Decimal('0.18')).quantize(Decimal('0.01'), ROUND_HALF_UP)

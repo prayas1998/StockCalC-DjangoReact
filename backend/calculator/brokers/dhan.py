@@ -23,4 +23,4 @@ class DhanCalculator(BaseBroker):
         """Returns the fixed DP charge for Dhan (applied per sell transaction, only for delivery)"""
         if self.trade_type == 'equity-delivery':
             return Decimal('14.75')
-        return Decimal('0') 
+        return Decimal('0')

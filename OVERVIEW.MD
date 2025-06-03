@@ -54,13 +54,23 @@ StockCalc-DjangoReact/           # Root directory
 │   │   │   ├── calculation_views.py   # calculate_charges, save_calculation
 │   │   │   ├── transaction_views.py   # test_api, TransactionRecordViewSet, TransactionGroupViewSet, SaveCalculationAPIView
 │   │   │   └── health_views.py        # health_check and utility endpoints
-│   │   ├── utils.py               # TradeCalculator factory and shared logic
+│   │   ├── calculations/         # Modular trade-type calculation logic
+│   │   │   ├── __init__.py           # Calculation package marker
+│   │   │   ├── base_calculator.py    # Abstract base with shared logic and factory
+│   │   │   ├── equity_delivery.py    # Delivery-specific calculation logic
+│   │   │   ├── equity_intraday.py    # Intraday-specific calculation logic
+│   │   │   └── utils.py              # Shared calculation utilities
+│   │   ├── utils.py               # (Deprecated) Old TradeCalculator and helpers
 │   │   ├── brokers/               # Broker-specific calculator implementations
 │   │   │   ├── base.py            # Abstract base class for all broker calculators
 │   │   │   ├── groww.py           # Groww-specific charge rules
+│   │   │   ├── dhan.py            # Dhan-specific charge rules (delivery & intraday)
+│   │   │   ├── rise.py            # Placeholder for Rise broker
 │   │   │   └── others.py          # Placeholder for additional brokers
-│   │   └── levies/                # Government levy calculations (uniform across brokers)
-│   │       └── government.py      # STT, exchange charges, stamp duty, SEBI fee, IPFT, GST
+│   │   └── levies/                # Government levy calculations (trade-type specific)
+│   │       ├── __init__.py            # Factory for government charges
+│   │       ├── equity_delivery.py     # Delivery-specific government levies
+│   │       └── equity_intraday.py     # Intraday-specific government levies
 │   ├── requirements.txt           # Python dependencies
 │   └── manage.py                  # Django CLI
 ├── .gitignore
@@ -204,18 +214,26 @@ This modular approach improves readability and makes endpoints easier to maintai
 
 ### Calculation Services
 
-- **TradeCalculator (utils.py)**: Factory that selects the correct broker calculator based on platform, exchange, and trade type.
-- **Broker-specific calculators**: Implement brokerage logic for each broker. Only the brokerage component varies;
-  government levies (STT, exchange charges, stamp duty, SEBI fee, IPFT, GST) are computed by a shared module, ensuring consistency and reducing duplication.
+- **Modular Calculation System (`calculator/calculations/`)**: 
+  - Uses a base calculator pattern (`base_calculator.py`) that initializes the correct broker and government levy calculators based on platform, exchange, and trade type.
+  - Trade-type specific calculators (`equity_delivery.py`, `equity_intraday.py`) implement the main calculation logic for each trade type.
+  - All calculation logic for delivery and intraday trades is now isolated in their respective files, making future updates and maintenance straightforward.
+  - Shared calculation utilities are placed in `calculations/utils.py`.
+
+- **Broker-specific calculators**: Implement brokerage logic for each broker. Only the brokerage component varies; government levies are computed by the trade-type-specific levy modules, ensuring consistency and reducing duplication.
 
 ### Government Levies
 
-All government charges are fixed and uniform across brokers. They reside in `calculator/levies/government.py`, so adding a new broker requires only:
+- **Trade-type specific government levies** are now implemented in `calculator/levies/`:
+  - `equity_delivery.py`: Delivery-specific government charges (STT, exchange charges, stamp duty, SEBI fee, IPFT, GST)
+  - `equity_intraday.py`: Intraday-specific government charges (different STT, no DP charges, different stamp duty, etc.)
+  - `__init__.py`: Exposes a factory function `get_government_charges(trade_type, exchange)` to select the correct levy class for each calculation
+- This separation of concerns ensures you can onboard new brokers or trade types quickly without touching unrelated levy calculations.
 
-1. Creating a new calculator class in `calculator/brokers/`.
-2. Registering it in the `TradeCalculator` factory.
-
-This separation of concerns ensures you can onboard new brokers quickly without touching the levy calculations.
+- **Adding a new broker or trade type** now only requires:
+  1. Creating a new broker calculator in `calculator/brokers/`.
+  2. Implementing or updating the trade-type calculator in `calculator/calculations/`.
+  3. Registering the broker in the base calculator factory.
 
 ## Authentication Architecture
 
