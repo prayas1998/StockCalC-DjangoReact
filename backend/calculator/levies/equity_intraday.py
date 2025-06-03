@@ -5,9 +5,8 @@ class EquityIntradayCharges:
         self.exchange = exchange
         self.exchange_rate = Decimal('0.0000297') if exchange == 'NSE' else Decimal('0.0000375')
 
-    def calculate_stt(self, total_turnover: Decimal) -> Decimal:
-        # STT for equity intraday: 0.025% on sell side only
-        return (total_turnover * Decimal('0.00025')).quantize(Decimal('1'), ROUND_HALF_UP)
+    def calculate_stt(self, sell_value: Decimal) -> Decimal:
+        return (sell_value * Decimal('0.00025')).quantize(Decimal('1'), ROUND_HALF_UP)
 
     def calculate_exchange_charges(self, total_turnover: Decimal) -> Decimal:
         return (total_turnover * self.exchange_rate).quantize(Decimal('0.01'), ROUND_HALF_UP)

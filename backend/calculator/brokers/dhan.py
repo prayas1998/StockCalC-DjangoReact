@@ -8,10 +8,9 @@ class DhanCalculator(BaseBroker):
         if self.trade_type == 'equity-delivery':
             return Decimal('0')
         elif self.trade_type == 'equity-intraday':
-            # Flat ₹20 per executed order (applies if either buy or sell is present)
-            if buy_value > 0 or sell_value > 0:
-                return Decimal('20')
-            return Decimal('0')
+            buy_brokerage = min(Decimal('20'), (buy_value * Decimal('0.0003'))).quantize(Decimal('0.01'), ROUND_HALF_UP) if buy_value > 0 else Decimal('0')
+            sell_brokerage = min(Decimal('20'), (sell_value * Decimal('0.0003'))).quantize(Decimal('0.01'), ROUND_HALF_UP) if sell_value > 0 else Decimal('0')
+            return buy_brokerage + sell_brokerage
         # If other trade types are added in the future, handle them here
         return Decimal('0')
 
