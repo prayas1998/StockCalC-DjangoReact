@@ -9,6 +9,9 @@ backend/staticfiles/
 frontend/.env.production
 frontend/.env.development
 frontend/.vercel
+Docs/Equity_Intraday_Formulas.md
+Docs/OVERVIEW.md
+Docs/readme.md
 
 
 # Build artifacts
