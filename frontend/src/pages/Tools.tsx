@@ -115,6 +115,15 @@ const Tools = () => {
   const calculateCharges = (buyValue: number, sellValue: number, exchange: string): Charges => {
     const totalTurnover = buyValue + sellValue;
     let brokerage = 0;
+    let stt = 0;
+    let exchangeCharges = 0;
+    let stampDuty = 0;
+    let sebiCharges = 0;
+    let ipft = 0;
+    let gst = 0;
+    let dpCharges = 0;
+    let totalCharges = 0;
+
     if (selectedTradeType === 'equity-delivery') {
       if (selectedBroker === 'Groww') {
         // Groww equity delivery logic
@@ -124,24 +133,53 @@ const Tools = () => {
       } else if (selectedBroker === 'Dhan') {
         brokerage = 0;
       }
-    } else {
-      // Placeholder for intraday logic
-      brokerage = 0;
+      stt = Math.round(totalTurnover * 0.001);
+      exchangeCharges = exchange === "NSE"
+        ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
+        : parseFloat((totalTurnover * 0.0000375).toFixed(2));
+      stampDuty = Math.round(buyValue * 0.00015);
+      sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
+      ipft = exchange === "NSE"
+        ? parseFloat((totalTurnover * 0.000001).toFixed(2))
+        : 0;
+      const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
+      gst = parseFloat((taxableAmount * 0.18).toFixed(2));
+      // DP charge only if sellValue > 0
+      dpCharges = sellValue > 0 ? getDpCharge(selectedBroker) : 0;
+      totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst + dpCharges;
+    } else if (selectedTradeType === 'equity-intraday') {
+      if (selectedBroker === 'Dhan') {
+        // Dhan intraday logic
+        // Brokerage: min(₹20, 0.03% of turnover per leg) for buy and sell
+        const buyBrokerage = buyValue > 0 ? Math.min(20, parseFloat((buyValue * 0.0003).toFixed(2))) : 0;
+        const sellBrokerage = sellValue > 0 ? Math.min(20, parseFloat((sellValue * 0.0003).toFixed(2))) : 0;
+        brokerage = buyBrokerage + sellBrokerage;
+        stt = Math.round(sellValue * 0.00025); // STT only on sell
+        exchangeCharges = exchange === "NSE"
+          ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
+          : parseFloat((totalTurnover * 0.0000375).toFixed(2));
+        stampDuty = buyValue > 0 ? Math.round(buyValue * 0.00003) : 0; // Only on buy
+        sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
+        ipft = exchange === "NSE"
+          ? parseFloat((totalTurnover * 0.000001).toFixed(2))
+          : 0;
+        const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
+        gst = parseFloat((taxableAmount * 0.18).toFixed(2));
+        dpCharges = 0; // No DP charges for intraday
+        totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst;
+      } else {
+        // Groww intraday not supported
+        brokerage = 0;
+        stt = 0;
+        exchangeCharges = 0;
+        stampDuty = 0;
+        sebiCharges = 0;
+        ipft = 0;
+        gst = 0;
+        dpCharges = 0;
+        totalCharges = 0;
+      }
     }
-    const stt = Math.round(totalTurnover * 0.001);
-    const exchangeCharges = exchange === "NSE"
-      ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
-      : parseFloat((totalTurnover * 0.0000375).toFixed(2));
-    const stampDuty = Math.round(buyValue * 0.00015);
-    const sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
-    const ipft = exchange === "NSE"
-      ? parseFloat((totalTurnover * 0.000001).toFixed(2))
-      : 0;
-    const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-    const gst = parseFloat((taxableAmount * 0.18).toFixed(2));
-    // DP charge only if sellValue > 0
-    const dpCharges = sellValue > 0 ? getDpCharge(selectedBroker) : 0;
-    const totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst + dpCharges;
     return {
       brokerage,
       stt,
@@ -296,9 +334,16 @@ const Tools = () => {
           </div>
         </div>
         
+        {/* Show warning and disable calculators if Groww + Intraday selected */}
+        {selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' && (
+          <div className="mb-8 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded">
+            <strong>Note:</strong> Equity Intraday calculations are only supported for Dhan broker at this time.
+          </div>
+        )}
+        
         <div className="grid md:grid-cols-2 gap-6">
           {/* Profit Target Calculator */}
-          <Card className="p-6 bg-card shadow-sm">
+          <Card className="p-6 bg-card shadow-sm" aria-disabled={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww'} style={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
             <div className="flex items-center gap-2 mb-4">
               <Calculator className="h-5 w-5 text-primary" />
               <h2 className="text-xl font-semibold">Profit Target Calculator</h2>
@@ -414,7 +459,7 @@ const Tools = () => {
           </Card>
           
           {/* Net P&L Calculator */}
-          <Card className="p-6 bg-card shadow-sm">
+          <Card className="p-6 bg-card shadow-sm" aria-disabled={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww'} style={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
             <div className="flex items-center gap-2 mb-4">
               <Calculator className="h-5 w-5 text-primary" />
               <h2 className="text-xl font-semibold">Net P&L Calculator</h2>
