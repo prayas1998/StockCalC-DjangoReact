@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { User, Moon, Sun, ChevronDown, BarChart } from "lucide-react";
+import { User, Moon, Sun, ChevronDown, BarChart, BookOpen } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
@@ -66,6 +66,17 @@ const Header = () => {
           >
             Tools
           </Button>
+          
+          {user && (
+            <Button
+              variant="ghost"
+              onClick={() => navigate("/journal")}
+              className="flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300"
+            >
+              <BookOpen className="h-5 w-5" />
+              Journal
+            </Button>
+          )}
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -141,4 +152,4 @@ const Header = () => {
   );
 };
 
-export default Header; 
+export default Header;

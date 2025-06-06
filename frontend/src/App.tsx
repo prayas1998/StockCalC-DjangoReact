@@ -8,6 +8,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import Index from "./pages/Index";
 import Tools from "./pages/Tools";
 import Transactions from "./pages/Transactions";
+import Journal from "./pages/Journal";
 import NotFound from "./pages/NotFound";
 import AuthCallback from './pages/AuthCallback';
 
@@ -29,6 +30,7 @@ const App = () => (
               {/* <Route path="/others" element={<Others />} /> */}
               <Route path="/tools" element={<Tools />} />
               <Route path="/transactions" element={<Transactions />} />
+              <Route path="/journal" element={<Journal />} />
               <Route path="/edit-transaction/:id" element={<Index />} />
               <Route path="*" element={<NotFound />} />
               <Route path="/auth/callback" element={<AuthCallback />} />

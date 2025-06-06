@@ -22,6 +22,10 @@ export const API_ENDPOINTS = {
   SAVE_CALCULATION: `${API_PREFIX}/save-calculation/`,
   TRANSACTION_GROUPS: `${API_PREFIX}/transaction-groups/`,
   TRANSACTIONS: `${API_PREFIX}/transactions/`,
+  JOURNAL: `${API_PREFIX}/journal/`,
+  JOURNAL_TAGS: `${API_PREFIX}/tags/`,
+  JOURNAL_ANALYTICS: `${API_PREFIX}/journal/analytics/`,
+  JOURNAL_SEARCH: `${API_PREFIX}/journal/search/`,
 };
 
 // Format a full API URL
@@ -47,4 +51,4 @@ export const createUrlWithParams = (
   });
   
   return url.toString();
-}; 
+};
