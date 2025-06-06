@@ -7,6 +7,11 @@ from .transaction_views import (
     SaveCalculationAPIView
 )
 from .health_views import health_check
+from .journal_views import (
+    TradeJournalViewSet,
+    TradeTagsViewSet,
+    JournalAnalyticsAPIView
+)
 
 # This allows the urls.py file to continue using the original import paths
 # For example: from calculator.views import calculate_charges

@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     'rest_framework',  # For building APIs
     'corsheaders',    # For handling CORS
     'calculator',     # Our calculator app
+    'journal',        # Journal app for trade journal functionality
 ]
 
 MIDDLEWARE = [
