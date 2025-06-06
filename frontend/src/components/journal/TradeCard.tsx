@@ -181,6 +181,14 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
                 <h4 className="font-medium mb-2">Risk Management</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between">
+                    <span className="text-muted-foreground">Entry Price (Buy)</span>
+                    <span>{trade.buy_price ? formatCurrency(trade.buy_price) : "--"}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Entry Price (Sell)</span>
+                    <span>{trade.sell_price ? formatCurrency(trade.sell_price) : "--"}</span>
+                  </div>
+                  <div className="flex justify-between">
                     <span className="text-muted-foreground">Stop Loss</span>
                     <span>{trade.stop_loss ? formatCurrency(trade.stop_loss) : "--"}</span>
                   </div>
@@ -218,7 +226,7 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
             </div>
 
             {/* Notes */}
-            {trade.personal_notes && (
+            {trade.personal_notes && trade.personal_notes.trim() !== "" && (
               <>
                 <Separator className="my-3" />
                 <div>

@@ -35,16 +35,22 @@ const tradeFormSchema = z.object({
   company_name: z.string().min(1, { message: "Company name is required" }),
   trade_type: z.nativeEnum(TradeType),
   quantity: z.coerce.number().positive({ message: "Quantity must be positive" }),
-  buy_price: z.coerce.number().positive({ message: "Buy price must be positive" }),
-  sell_price: z.coerce.number().positive({ message: "Sell price must be positive" }).optional(),
-  stop_loss: z.coerce.number().positive({ message: "Stop loss must be positive" }).optional(),
-  target_price: z.coerce.number().positive({ message: "Target price must be positive" }).optional(),
+  buy_price: z.coerce.number().nonnegative().optional(),
+  sell_price: z.coerce.number().nonnegative().optional(),
+  stop_loss: z.coerce.number().nonnegative().optional(),
+  target_price: z.coerce.number().nonnegative().optional(),
   entry_date: z.date(),
   exit_date: z.date().optional(),
   status: z.nativeEnum(TradeStatus),
   personal_notes: z.string().optional(),
   tags: z.array(z.number()).optional(),
-});
+}).refine(
+  (data) => (data.buy_price && data.buy_price > 0) || (data.sell_price && data.sell_price > 0),
+  {
+    message: "Either Buy Price or Sell Price (or both) must be greater than 0 (₹)",
+    path: ["buy_price"],
+  }
+);
 
 type TradeFormValues = z.infer<typeof tradeFormSchema>;
 
@@ -176,7 +182,7 @@ export function TradeForm({
             name="buy_price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Buy Price</FormLabel>
+                <FormLabel>Buy Price (₹)</FormLabel>
                 <FormControl>
                   <Input type="number" step="0.01" {...field} />
                 </FormControl>
@@ -191,7 +197,7 @@ export function TradeForm({
             name="sell_price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Sell Price (Optional)</FormLabel>
+                <FormLabel>Sell Price (Optional, ₹)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -215,7 +221,7 @@ export function TradeForm({
             name="stop_loss"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Stop Loss (Optional)</FormLabel>
+                <FormLabel>Stop Loss (Optional, ₹)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -239,7 +245,7 @@ export function TradeForm({
             name="target_price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Target Price (Optional)</FormLabel>
+                <FormLabel>Target Price (Optional, ₹)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
