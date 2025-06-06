@@ -6,8 +6,6 @@ from rest_framework.routers import DefaultRouter
 router = DefaultRouter()
 router.register(r'transactions', views.TransactionRecordViewSet)
 router.register(r'transaction-groups', views.TransactionGroupViewSet)
-router.register(r'journal', views.TradeJournalViewSet)
-router.register(r'tags', views.TradeTagsViewSet)
 
 app_name = 'calculator'
 
@@ -18,5 +16,4 @@ urlpatterns = [
     path('save-calculation/', views.save_calculation, name='save_calculation'),
     path('save-calculation-class/', views.SaveCalculationAPIView.as_view(), name='save_calculation_class'),
     path('health-check/', views.health_check, name='health_check'),
-    path('journal/analytics/', views.JournalAnalyticsAPIView.as_view(), name='journal_analytics'),
 ]
