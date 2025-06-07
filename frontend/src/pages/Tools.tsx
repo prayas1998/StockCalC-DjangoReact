@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import Header from "@/components/ui/header";
+import { Switch } from "@/components/ui/switch";
 
 // Define charge type to avoid duplication
 type Charges = {
@@ -76,6 +77,16 @@ const Tools = () => {
   // Add toggles for broker and trade type
   const [selectedBroker, setSelectedBroker] = useState<'Dhan' | 'Groww'>('Dhan');
   const [selectedTradeType, setSelectedTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
+
+  // Position Sizing Calculator states
+  const [riskMode, setRiskMode] = useState<'amount' | 'percent'>('amount');
+  const [capital, setCapital] = useState("");
+  const [riskAmount, setRiskAmount] = useState("");
+  const [riskPercent, setRiskPercent] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
+  const [entryPrice, setEntryPrice] = useState("");
+  const [positionTradeType, setPositionTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
+  const LEVERAGE = 5;
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
@@ -309,12 +320,192 @@ const Tools = () => {
     }
   };
 
+  // Position Sizing Calculation
+  const getRiskValue = () => {
+    if (riskMode === 'amount') {
+      const amt = parseFloat(riskAmount);
+      return isNaN(amt) ? 0 : amt;
+    } else {
+      const cap = parseFloat(capital);
+      const pct = parseFloat(riskPercent);
+      if (isNaN(cap) || isNaN(pct)) return 0;
+      return (cap * pct) / 100;
+    }
+  };
+
+  const positionSizingResult = (() => {
+    const risk = getRiskValue();
+    const sl = parseFloat(stopLoss);
+    const cap = parseFloat(capital);
+    const ep = parseFloat(entryPrice);
+    if (isNaN(risk) || risk <= 0 || isNaN(sl) || sl <= 0) {
+      return null;
+    }
+    let quantity = Math.floor(risk / sl);
+    let positionValue = undefined;
+    let capitalUsed = undefined;
+    let buyingPower = undefined;
+    if (!isNaN(ep) && ep > 0) {
+      positionValue = quantity * ep;
+      if (positionTradeType === 'equity-intraday') {
+        if (!isNaN(cap) && cap > 0) {
+          buyingPower = cap * LEVERAGE;
+          // Suggest max possible quantity within buying power
+          const maxQtyByLeverage = Math.floor(buyingPower / ep);
+          if (quantity > maxQtyByLeverage) quantity = maxQtyByLeverage;
+          positionValue = quantity * ep;
+          capitalUsed = positionValue / LEVERAGE;
+        } else {
+          capitalUsed = positionValue / LEVERAGE;
+        }
+      } else {
+        capitalUsed = positionValue;
+      }
+    }
+    if (positionTradeType === 'equity-intraday' && !isNaN(cap) && cap > 0) {
+      buyingPower = cap * LEVERAGE;
+    }
+    return {
+      quantity,
+      positionValue,
+      capitalUsed,
+      buyingPower,
+      hasCapital: !isNaN(cap) && cap > 0,
+      hasEntryPrice: !isNaN(ep) && ep > 0,
+    };
+  })();
+
   return (
     <div className="min-h-screen">
       <Header />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <h1 className="text-3xl font-bold mb-6">Stock Market Tools</h1>
+        
+        {/* Position Sizing Calculator */}
+        <Card className="p-6 bg-card shadow-sm mb-8">
+          <div className="flex items-center gap-2 mb-4">
+            <Calculator className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-semibold">Position Sizing Calculator</h2>
+          </div>
+          <p className="text-muted-foreground mb-6">
+            Calculate optimal position size based on your risk, stop loss, and capital. Helps manage risk per trade.
+          </p>
+          <div className="flex flex-wrap gap-4 mb-4">
+            <div>
+              <Label className="mb-2 block">Trade Type</Label>
+              <ToggleGroup type="single" value={positionTradeType} onValueChange={val => val && setPositionTradeType(val as 'equity-delivery' | 'equity-intraday')}>
+                <ToggleGroupItem value="equity-delivery">Equity Delivery</ToggleGroupItem>
+                <ToggleGroupItem value="equity-intraday">Equity Intraday</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+            <div>
+              <Label className="mb-2 block">Risk Mode</Label>
+              <ToggleGroup type="single" value={riskMode} onValueChange={val => val && setRiskMode(val as 'amount' | 'percent')}>
+                <ToggleGroupItem value="amount">Fixed Amount (₹)</ToggleGroupItem>
+                <ToggleGroupItem value="percent">% of Capital</ToggleGroupItem>
+              </ToggleGroup>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4 mb-4">
+            {/* Risk per trade first */}
+            {riskMode === 'amount' ? (
+              <div>
+                <Label htmlFor="riskAmount">Risk per Trade (₹)</Label>
+                <Input
+                  id="riskAmount"
+                  type="text"
+                  placeholder="Amount you can risk"
+                  value={riskAmount}
+                  onChange={e => handleInputChange(setRiskAmount, e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="riskPercent">Risk per Trade (%)</Label>
+                <Input
+                  id="riskPercent"
+                  type="text"
+                  placeholder="% of capital to risk"
+                  value={riskPercent}
+                  onChange={e => handleInputChange(setRiskPercent, e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            )}
+            {/* Stop loss second */}
+            <div>
+              <Label htmlFor="stopLoss">Stop Loss (points)</Label>
+              <Input
+                id="stopLoss"
+                type="text"
+                placeholder="e.g. 8"
+                value={stopLoss}
+                onChange={e => handleInputChange(setStopLoss, e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            {/* Capital third */}
+            <div>
+              <Label htmlFor="capital">Capital (₹) <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Input
+                id="capital"
+                type="text"
+                placeholder="Enter your capital (optional)"
+                value={capital}
+                onChange={e => handleInputChange(setCapital, e.target.value)}
+                className="mt-1"
+              />
+            </div>
+            {/* Entry price fourth */}
+            <div>
+              <Label htmlFor="entryPrice">Entry Price (₹) <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Input
+                id="entryPrice"
+                type="text"
+                placeholder="e.g. 200 (optional)"
+                value={entryPrice}
+                onChange={e => handleInputChange(setEntryPrice, e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          {positionSizingResult && (
+            <div className="mt-6 p-4 border rounded-md bg-secondary/20">
+              <h3 className="font-semibold text-lg mb-2">Results</h3>
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span>Quantity to Trade:</span>
+                  <span className="font-medium">{positionSizingResult.quantity}</span>
+                </div>
+                {(!positionSizingResult.hasEntryPrice || (positionTradeType === 'equity-intraday' && !positionSizingResult.hasCapital)) && (
+                  <div className="text-sm text-muted-foreground mt-2">
+                    Please fill in {(!positionSizingResult.hasEntryPrice && !positionSizingResult.hasCapital && positionTradeType === 'equity-intraday') ? 'Entry Price and Capital' : (!positionSizingResult.hasEntryPrice ? 'Entry Price' : 'Capital')} to calculate Position Value and Effective Capital Used.
+                  </div>
+                )}
+                {positionSizingResult.hasEntryPrice && (
+                  <div className="flex justify-between">
+                    <span>Position Value:</span>
+                    <span className="font-medium">{formatCurrency(positionSizingResult.positionValue ?? 0)}</span>
+                  </div>
+                )}
+                {positionSizingResult.hasEntryPrice && (
+                  <div className="flex justify-between">
+                    <span>Effective Capital Used:</span>
+                    <span className="font-medium">{formatCurrency(positionSizingResult.capitalUsed ?? 0)}</span>
+                  </div>
+                )}
+                {positionTradeType === 'equity-intraday' && positionSizingResult.hasCapital && (
+                  <div className="flex justify-between">
+                    <span>Buying Power (5x):</span>
+                    <span className="font-medium">{formatCurrency(positionSizingResult.buyingPower ?? 0)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </Card>
         
         {/* Broker and Trade Type Toggles */}
         <div className="flex flex-wrap gap-4 mb-8">
