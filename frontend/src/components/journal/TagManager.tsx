@@ -192,6 +192,9 @@ export function TagManager() {
 }
 
 function TagItem({ tag }: { tag: TradeTags }) {
+  const { deleteTag, isLoading } = useTradeTags();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
   return (
     <div
       className="flex items-center justify-between px-3 py-2 rounded-md"
@@ -204,6 +207,43 @@ function TagItem({ tag }: { tag: TradeTags }) {
         />
         <span>{tag.name}</span>
       </div>
+      <>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-destructive"
+          onClick={() => setShowDeleteDialog(true)}
+          disabled={isLoading}
+        >
+          <X className="h-4 w-4" />
+        </Button>
+        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Tag</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete the tag "{tag.name}"?
+                This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={async () => {
+                  await deleteTag.mutateAsync(tag.id);
+                  setShowDeleteDialog(false);
+                }}
+                disabled={deleteTag.isLoading}
+              >
+                {deleteTag.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
     </div>
   );
 }

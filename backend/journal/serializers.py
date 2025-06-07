@@ -89,18 +89,15 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 class TradeJournalListSerializer(serializers.ModelSerializer):
-    tags = serializers.SerializerMethodField()
+    tags = TradeTagsSerializer(many=True, read_only=True)
     pnl = serializers.SerializerMethodField()
     risk_reward_ratio = serializers.SerializerMethodField()
     is_profitable = serializers.SerializerMethodField()
     
     class Meta:
         model = TradeJournal
-        exclude = ['personal_notes']
+        fields = '__all__'
         read_only_fields = ['user', 'created_at', 'updated_at']
-    
-    def get_tags(self, obj):
-        return [tag.name for tag in obj.tags.all()]
     
     def get_pnl(self, obj):
         return obj.calculate_pnl()

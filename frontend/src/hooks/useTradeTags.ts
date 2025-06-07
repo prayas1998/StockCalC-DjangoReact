@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { checkApiConnection, formatApiError } from '@/lib/api-helpers';
-import { getTradeTags, createTradeTag } from '@/services/journalApi';
+import { getTradeTags, createTradeTag, deleteTradeTag } from '@/services/journalApi';
 import type { TradeTags } from '@/types/journal';
 
 // Regex for validating hex color codes
@@ -98,6 +98,24 @@ export const useTradeTags = () => {
     }
   });
 
+  // Add deleteTag mutation
+  const deleteTag = useMutation({
+    mutationFn: async (id: number) => {
+      const isConnected = await checkConnection();
+      if (!isConnected) {
+        throw new Error('API connection failed. Please check your connection and try again.');
+      }
+      return deleteTradeTag(id);
+    },
+    onSuccess: () => {
+      toast.success('Tag deleted successfully');
+      queryClient.invalidateQueries({ queryKey: ['tradeTags'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to delete tag: ${error.message}`);
+    }
+  });
+
   // Manual refresh function
   const refreshTags = useCallback(() => {
     setApiConnectionFailed(false);
@@ -112,6 +130,7 @@ export const useTradeTags = () => {
     createTag,
     validateTag,
     refreshTags,
-    apiConnectionFailed
+    apiConnectionFailed,
+    deleteTag
   };
 };
