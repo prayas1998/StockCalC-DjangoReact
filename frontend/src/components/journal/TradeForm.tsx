@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { CalendarIcon, Check, ChevronsUpDown } from "lucide-react";
+import { CalendarIcon, Check, ChevronsUpDown, Tag as TagIcon } from "lucide-react";
 import * as z from "zod";
 
 import { cn } from "@/lib/utils";
@@ -28,16 +28,17 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { TradeJournalCreate, TradeStatus, TradeType, TradeTags } from "@/types/journal";
+import { TradeJournalCreate, TradeStatus, TradeType, TradeTags, TradeDirection } from "@/types/journal";
 
 // Define the form schema using zod
 const tradeFormSchema = z.object({
   company_name: z.string().min(1, { message: "Company name is required" }),
   trade_type: z.nativeEnum(TradeType),
+  direction: z.nativeEnum(TradeDirection),
   quantity: z.coerce.number().positive({ message: "Quantity must be positive" }),
-  buy_price: z.coerce.number().nonnegative().optional(),
-  sell_price: z.coerce.number().nonnegative().optional(),
-  stop_loss: z.coerce.number().nonnegative().optional(),
+  entry_price: z.coerce.number().nonnegative().optional(),
+  exit_price: z.coerce.number().nonnegative().optional(),
+  sl: z.coerce.number().nonnegative().optional(),
   target_price: z.coerce.number().nonnegative().optional(),
   entry_date: z.date(),
   exit_date: z.date().optional(),
@@ -45,10 +46,10 @@ const tradeFormSchema = z.object({
   personal_notes: z.string().optional(),
   tags: z.array(z.number()).optional(),
 }).refine(
-  (data) => (data.buy_price && data.buy_price > 0) || (data.sell_price && data.sell_price > 0),
+  (data) => (data.entry_price && data.entry_price > 0) || (data.exit_price && data.exit_price > 0),
   {
-    message: "Either Buy Price or Sell Price (or both) must be greater than 0 (₹)",
-    path: ["buy_price"],
+    message: "Either Entry Price or Exit Price (or both) must be greater than 0 (₹)",
+    path: ["entry_price"],
   }
 );
 
@@ -75,10 +76,17 @@ export function TradeForm({
     defaultValues: {
       company_name: initialData?.company_name || "",
       trade_type: initialData?.trade_type || TradeType.EQUITY_DELIVERY,
+      direction: initialData?.direction || TradeDirection.LONG,
       quantity: initialData?.quantity || 0,
-      buy_price: initialData?.buy_price || 0,
-      sell_price: initialData?.sell_price,
-      stop_loss: initialData?.stop_loss,
+      entry_price:
+        (initialData?.direction === TradeDirection.SHORT
+          ? initialData?.sell_price
+          : initialData?.buy_price) || 0,
+      exit_price:
+        (initialData?.direction === TradeDirection.SHORT
+          ? initialData?.buy_price
+          : initialData?.sell_price) || undefined,
+      sl: initialData?.stop_loss,
       target_price: initialData?.target_price,
       entry_date: initialData?.entry_date ? new Date(initialData.entry_date) : new Date(),
       exit_date: initialData?.exit_date ? new Date(initialData.exit_date) : undefined,
@@ -87,6 +95,27 @@ export function TradeForm({
       tags: initialData?.tags || [],
     },
   });
+
+  const direction = form.watch("direction");
+  const status = form.watch("status");
+  const stopLoss = form.watch("sl");
+  const targetPrice = form.watch("target_price");
+  const entryPrice = form.watch("entry_price");
+
+  useEffect(() => {
+    if (
+      (status === TradeStatus.CLOSED_TARGET || status === TradeStatus.CLOSED_STOPLOSS) &&
+      stopLoss && targetPrice && entryPrice
+    ) {
+      if (status === TradeStatus.CLOSED_TARGET) {
+        form.setValue("exit_price", targetPrice);
+      } else if (status === TradeStatus.CLOSED_STOPLOSS) {
+        form.setValue("exit_price", stopLoss);
+      }
+    } else if (status === TradeStatus.CANCELLED) {
+      form.setValue("exit_price", undefined);
+    }
+  }, [status, stopLoss, targetPrice, entryPrice, form]);
 
   // Handle form submission
   function handleSubmit(values: TradeFormValues) {
@@ -97,16 +126,27 @@ export function TradeForm({
       exit_date: values.exit_date ? format(values.exit_date, "yyyy-MM-dd") : undefined,
     };
     
+    // Map entry/exit price to buy/sell price based on direction
+    let buy_price, sell_price;
+    if (formattedValues.direction === TradeDirection.LONG) {
+      buy_price = formattedValues.entry_price;
+      sell_price = formattedValues.exit_price;
+    } else {
+      buy_price = formattedValues.exit_price;
+      sell_price = formattedValues.entry_price;
+    }
+
     onSubmit({
       company_name: formattedValues.company_name!,
       trade_type: formattedValues.trade_type!,
+      direction: formattedValues.direction!,
       quantity: formattedValues.quantity!,
-      buy_price: formattedValues.buy_price!,
+      buy_price: buy_price!,
+      sell_price: sell_price,
       entry_date: formattedValues.entry_date,
       status: formattedValues.status!,
       exit_date: formattedValues.exit_date,
-      sell_price: formattedValues.sell_price,
-      stop_loss: formattedValues.stop_loss,
+      stop_loss: formattedValues.sl,
       target_price: formattedValues.target_price,
       personal_notes: formattedValues.personal_notes,
       tags: formattedValues.tags
@@ -176,13 +216,41 @@ export function TradeForm({
             )}
           />
 
-          {/* Buy Price */}
+          {/* Trade Direction */}
           <FormField
             control={form.control}
-            name="buy_price"
+            name="direction"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Buy Price (₹)</FormLabel>
+                <FormLabel>Trade Direction</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value={TradeDirection.LONG}>Long (Buy first, Sell later)</SelectItem>
+                    <SelectItem value={TradeDirection.SHORT}>Short (Sell first, Buy later)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Entry Price */}
+          <FormField
+            control={form.control}
+            name="entry_price"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>
+                  Entry Price (₹)
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {direction === TradeDirection.LONG ? "(Buy Price)" : "(Sell Price)"}
+                  </span>
+                </FormLabel>
                 <FormControl>
                   <Input type="number" step="0.01" {...field} />
                 </FormControl>
@@ -191,18 +259,23 @@ export function TradeForm({
             )}
           />
 
-          {/* Sell Price */}
+          {/* Exit Price */}
           <FormField
             control={form.control}
-            name="sell_price"
+            name="exit_price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Sell Price (Optional, ₹)</FormLabel>
+                <FormLabel>
+                  Exit Price (Optional, ₹)
+                  <span className="ml-2 text-xs text-muted-foreground">
+                    {direction === TradeDirection.LONG ? "(Sell Price)" : "(Buy Price)"}
+                  </span>
+                </FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    {...field} 
+                  <Input
+                    type="number"
+                    step="0.01"
+                    {...field}
                     value={field.value || ""}
                     onChange={(e) => {
                       const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
@@ -215,13 +288,13 @@ export function TradeForm({
             )}
           />
 
-          {/* Stop Loss */}
+          {/* SL */}
           <FormField
             control={form.control}
-            name="stop_loss"
+            name="sl"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Stop Loss (Optional, ₹)</FormLabel>
+                <FormLabel>SL (Optional, ₹)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -417,16 +490,18 @@ export function TradeForm({
                     onValueChange={(value) => {
                       const tagId = parseInt(value);
                       if (!field.value?.includes(tagId)) {
-                        field.onChange([...(field.value || []), tagId]);
+                        field.onChange([...(Array.isArray(field.value) ? field.value : []), tagId]);
                       }
                     }}
+                    value=""
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select tags" />
                     </SelectTrigger>
                     <SelectContent>
                       {availableTags.map((tag) => (
-                        <SelectItem key={tag.id} value={tag.id.toString()}>
+                        <SelectItem key={tag.id} value={tag.id.toString()} className="flex items-center gap-2">
+                          <TagIcon className="h-3 w-3 mr-1" style={{ color: tag.color }} />
                           {tag.name}
                         </SelectItem>
                       ))}
@@ -439,24 +514,23 @@ export function TradeForm({
                       const tag = availableTags.find((t) => t.id === tagId);
                       if (!tag) return null;
                       return (
-                        <div
+                        <span
                           key={tag.id}
-                          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs"
-                          style={{ backgroundColor: tag.color + "33" }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted/40"
+                          style={{ backgroundColor: tag.color + '33' }}
                         >
-                          <span>{tag.name}</span>
+                          <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
+                          {tag.name}
                           <button
                             type="button"
                             onClick={() => {
-                              field.onChange(
-                                field.value?.filter((id) => id !== tag.id)
-                              );
+                              field.onChange(field.value.filter((id) => id !== tag.id));
                             }}
-                            className="text-muted-foreground hover:text-foreground"
+                            className="text-muted-foreground hover:text-foreground ml-1"
                           >
                             ×
                           </button>
-                        </div>
+                        </span>
                       );
                     })}
                   </div>

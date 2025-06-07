@@ -116,6 +116,7 @@ export default function JournalPage() {
         trade_type: editingTrade.trade_type,
         quantity: editingTrade.quantity,
         buy_price: editingTrade.buy_price,
+        direction: editingTrade.direction,
         sell_price: editingTrade.sell_price,
         stop_loss: editingTrade.stop_loss,
         target_price: editingTrade.target_price,

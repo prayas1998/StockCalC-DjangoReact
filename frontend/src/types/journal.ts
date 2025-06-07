@@ -36,6 +36,14 @@ export enum TradeStatus {
   CANCELLED = "CANCELLED"
 }
 
+/**
+ * Direction of the trade: Long (buy first) or Short (sell first)
+ */
+export enum TradeDirection {
+  LONG = "LONG",
+  SHORT = "SHORT"
+}
+
 // Interfaces
 
 /**
@@ -71,6 +79,7 @@ export interface TradeJournal {
   unrealized_pnl?: number;
   risk_reward_ratio?: number;
   is_profitable?: boolean;
+  direction: TradeDirection;
 }
 
 /**
@@ -89,6 +98,7 @@ export interface TradeJournalCreate {
   status: TradeStatus;
   personal_notes?: string;
   tags?: number[];
+  direction: TradeDirection;
 }
 
 /**
@@ -107,6 +117,7 @@ export interface TradeJournalUpdate {
   status?: TradeStatus;
   personal_notes?: string;
   tags?: number[];
+  direction?: TradeDirection;
 }
 
 /**

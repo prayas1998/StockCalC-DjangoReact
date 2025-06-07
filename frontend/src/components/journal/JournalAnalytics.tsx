@@ -3,7 +3,7 @@ import { ArrowDown, ArrowUp, TrendingUp, TrendingDown, Activity, DollarSign, Bar
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from 'recharts';
 import { useJournalAnalytics } from '@/hooks/useJournalAnalytics';
 import { formatCurrency } from '@/lib/utils';
 import type { JournalAnalytics } from '@/types/journal';
@@ -175,23 +175,33 @@ export function JournalAnalytics() {
           <div className="h-80">
             {monthlyChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart
+                <AreaChart
                   data={monthlyChartData}
                   margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                 >
+                  <defs>
+                    <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorTrades" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.8}/>
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
                   <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
                   <XAxis dataKey="name" />
-                  <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                  <YAxis yAxisId="left" orientation="left" stroke="#10b981" />
+                  <YAxis yAxisId="right" orientation="right" stroke="#3b82f6" />
                   <Tooltip 
                     formatter={(value, name) => {
                       if (name === 'pnl') return formatCurrency(value as number);
                       return value;
                     }}
                   />
-                  <Bar yAxisId="left" dataKey="pnl" fill="#8884d8" name="P&L" />
-                  <Bar yAxisId="right" dataKey="trades" fill="#82ca9d" name="Trades" />
-                </BarChart>
+                  <Area yAxisId="left" type="monotone" dataKey="pnl" stroke="#10b981" fillOpacity={1} fill="url(#colorPnl)" name="P&L" />
+                  <Area yAxisId="right" type="monotone" dataKey="trades" stroke="#3b82f6" fillOpacity={1} fill="url(#colorTrades)" name="Trades" />
+                </AreaChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
@@ -204,69 +214,6 @@ export function JournalAnalytics() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Stock Performance */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Best Performing Stocks */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Best Performing Stocks</CardTitle>
-            <CardDescription>Stocks with highest P&L</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {analytics.best_performing_stocks && analytics.best_performing_stocks.length > 0 ? (
-              <div className="space-y-4">
-                {analytics.best_performing_stocks.map((stock, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                      <span className="font-medium">{stock.company_name}</span>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <span className="text-sm text-muted-foreground">{stock.trade_count} trades</span>
-                      <span className="font-medium text-green-500">{formatCurrency(stock.total_pnl)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-8 text-center text-muted-foreground">
-                <p>No data available</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Worst Performing Stocks */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Worst Performing Stocks</CardTitle>
-            <CardDescription>Stocks with lowest P&L</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {analytics.worst_performing_stocks && analytics.worst_performing_stocks.length > 0 ? (
-              <div className="space-y-4">
-                {analytics.worst_performing_stocks.map((stock, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className="w-2 h-2 rounded-full mr-2" style={{ backgroundColor: COLORS[(index + 3) % COLORS.length] }} />
-                      <span className="font-medium">{stock.company_name}</span>
-                    </div>
-                    <div className="flex items-center space-x-4">
-                      <span className="text-sm text-muted-foreground">{stock.trade_count} trades</span>
-                      <span className="font-medium text-red-500">{formatCurrency(stock.total_pnl)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="py-8 text-center text-muted-foreground">
-                <p>No data available</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 }
@@ -301,27 +248,6 @@ function AnalyticsSkeleton() {
           <Skeleton className="h-80 w-full" />
         </CardContent>
       </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {Array(2).fill(0).map((_, i) => (
-          <Card key={i}>
-            <CardHeader>
-              <Skeleton className="h-6 w-48" />
-              <Skeleton className="h-4 w-40 mt-1" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {Array(3).fill(0).map((_, j) => (
-                  <div key={j} className="flex items-center justify-between">
-                    <Skeleton className="h-4 w-32" />
-                    <Skeleton className="h-4 w-24" />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }

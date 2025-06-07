@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { Edit, Trash2, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
+import { Edit, Trash2, ChevronDown, ChevronUp, AlertTriangle, Tag as TagIcon, StickyNote } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { TradeJournal, TradeStatus } from "@/types/journal";
 import { formatCurrency } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 interface TradeCardProps {
   trade: TradeJournal;
@@ -17,6 +18,7 @@ interface TradeCardProps {
 
 export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Calculate progress percentage for target price
   const calculateTargetProgress = () => {
@@ -73,6 +75,12 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
               <Badge variant="outline" className={getStatusColor(trade.status)}>
                 {formatStatus(trade.status)}
               </Badge>
+              {trade.tags && trade.tags.map((tag) => (
+                <span key={tag.id} className="flex items-center ml-1 px-2 py-1 rounded bg-muted/40 text-xs gap-1" style={{ backgroundColor: tag.color + '33' }}>
+                  <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
+                  {tag.name}
+                </span>
+              ))}
             </div>
             <div className="text-sm text-muted-foreground mt-1">
               {formatTradeType(trade.trade_type)} • {trade.quantity} shares
@@ -95,27 +103,31 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
           </div>
         </div>
 
-        {/* Card Summary */}
-        <div className="px-4 pb-2 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          <div>
-            <div className="text-muted-foreground">Entry</div>
-            <div>{format(new Date(trade.entry_date), "MMM d, yyyy")}</div>
+        {/* Card Summary - Compact, with Entry/Exit dates and prices */}
+        <div className="px-4 pb-2 flex flex-col gap-1 text-sm">
+          <div className="flex items-center gap-4">
+            <span className="italic text-xs text-muted-foreground">
+              Entry: {format(new Date(trade.entry_date), "MMM d, yyyy")}
+            </span>
+            <span className="italic text-xs text-muted-foreground">
+              Exit: {trade.exit_date ? format(new Date(trade.exit_date), "MMM d, yyyy") : "--"}
+            </span>
           </div>
-          <div>
-            <div className="text-muted-foreground">Exit</div>
-            <div>
-              {trade.exit_date
-                ? format(new Date(trade.exit_date), "MMM d, yyyy")
-                : "--"}
-            </div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Buy Price</div>
-            <div>{formatCurrency(trade.buy_price)}</div>
-          </div>
-          <div>
-            <div className="text-muted-foreground">Sell Price</div>
-            <div>{trade.sell_price ? formatCurrency(trade.sell_price) : "--"}</div>
+          <div className="flex flex-wrap gap-4 mt-1">
+            <span>
+              <span className="text-muted-foreground">Entry Price:</span> {formatCurrency(trade.buy_price)}
+            </span>
+            <span>
+              <span className="text-muted-foreground">SL:</span> {trade.stop_loss ? formatCurrency(trade.stop_loss) : "--"}
+            </span>
+            <span>
+              <span className="text-muted-foreground">Target:</span> {trade.target_price ? formatCurrency(trade.target_price) : "--"}
+            </span>
+            {(trade.status === TradeStatus.CLOSED_MANUAL || trade.status === TradeStatus.CANCELLED) && trade.sell_price ? (
+              <span>
+                <span className="text-muted-foreground">Exit Price:</span> {formatCurrency(trade.sell_price)}
+              </span>
+            ) : null}
           </div>
         </div>
 
@@ -164,7 +176,7 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => onDelete(trade.id)}
+              onClick={() => setShowDeleteModal(true)}
               className="h-8 w-8 text-destructive"
             >
               <Trash2 className="h-4 w-4" />
@@ -175,69 +187,40 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
         {/* Expanded Details */}
         {expanded && (
           <div className="px-4 py-3 border-t bg-muted/30">
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              {/* Risk Management */}
-              <div>
-                <h4 className="font-medium mb-2">Risk Management</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Entry Price (Buy)</span>
-                    <span>{trade.buy_price ? formatCurrency(trade.buy_price) : "--"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Entry Price (Sell)</span>
-                    <span>{trade.sell_price ? formatCurrency(trade.sell_price) : "--"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Stop Loss</span>
-                    <span>{trade.stop_loss ? formatCurrency(trade.stop_loss) : "--"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Target</span>
-                    <span>{trade.target_price ? formatCurrency(trade.target_price) : "--"}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Risk:Reward</span>
-                    <span>{trade.risk_reward_ratio || "--"}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Tags */}
-              <div>
-                <h4 className="font-medium mb-2">Tags</h4>
-                {trade.tags && trade.tags.length > 0 ? (
-                  <div className="flex flex-wrap gap-1">
-                    {trade.tags.map((tag) => (
-                      <Badge
-                        key={tag.id}
-                        variant="outline"
-                        style={{ backgroundColor: tag.color + "33" }}
-                        className="text-xs"
-                      >
-                        {tag.name}
-                      </Badge>
-                    ))}
-                  </div>
-                ) : (
-                  <span className="text-muted-foreground text-xs">No tags</span>
-                )}
-              </div>
-            </div>
-
             {/* Notes */}
             {trade.personal_notes && trade.personal_notes.trim() !== "" && (
               <>
                 <Separator className="my-3" />
-                <div>
-                  <h4 className="font-medium mb-2">Notes</h4>
-                  <p className="text-sm whitespace-pre-line">{trade.personal_notes}</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <StickyNote className="h-4 w-4 text-muted-foreground" />
+                  <h4 className="font-medium">Notes</h4>
                 </div>
+                <p className="text-sm whitespace-pre-line ml-6">{trade.personal_notes}</p>
               </>
             )}
           </div>
         )}
       </CardContent>
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Trade</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 text-center">
+            <p className="text-base">Are you sure you want to delete this trade?</p>
+          </div>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => { onDelete(trade.id); setShowDeleteModal(false); }}>
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
