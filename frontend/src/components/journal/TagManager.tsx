@@ -213,7 +213,7 @@ function TagItem({ tag }: { tag: TradeTags }) {
           size="icon"
           className="h-6 w-6 text-destructive"
           onClick={() => setShowDeleteDialog(true)}
-          disabled={isLoading}
+          disabled={deleteTag.isPending}
         >
           <X className="h-4 w-4" />
         </Button>
@@ -236,9 +236,9 @@ function TagItem({ tag }: { tag: TradeTags }) {
                   await deleteTag.mutateAsync(tag.id);
                   setShowDeleteDialog(false);
                 }}
-                disabled={deleteTag.isLoading}
+                disabled={deleteTag.isPending}
               >
-                {deleteTag.isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
+                {deleteTag.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Delete'}
               </Button>
             </DialogFooter>
           </DialogContent>

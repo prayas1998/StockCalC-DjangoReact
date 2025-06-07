@@ -92,7 +92,11 @@ export function TradeForm({
       exit_date: initialData?.exit_date ? new Date(initialData.exit_date) : undefined,
       status: initialData?.status || TradeStatus.OPEN,
       personal_notes: initialData?.personal_notes || "",
-      tags: initialData?.tags || [],
+      tags: Array.isArray(initialData?.tags)
+        ? (typeof initialData.tags[0] === "object"
+            ? initialData.tags.map((t: any) => t.id)
+            : initialData.tags)
+        : [],
     },
   });
 
