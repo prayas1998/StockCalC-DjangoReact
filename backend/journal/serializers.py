@@ -131,4 +131,23 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         trade_journal = TradeJournal.objects.create(**validated_data)
         for tag in tags:
             TradeJournalTags.objects.create(trade=trade_journal, tag=tag)
-        return trade_journal 
+        return trade_journal
+    
+    def update(self, instance, validated_data):
+        tags = validated_data.pop('tags', None)
+        
+        # Update the trade journal instance
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        
+        # Handle tags update if tags are provided
+        if tags is not None:
+            # Clear existing tag relationships
+            TradeJournalTags.objects.filter(trade=instance).delete()
+            
+            # Create new tag relationships
+            for tag in tags:
+                TradeJournalTags.objects.create(trade=instance, tag=tag)
+        
+        return instance

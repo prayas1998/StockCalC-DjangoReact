@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { CalendarIcon, Check, ChevronsUpDown, Tag as TagIcon } from "lucide-react";
+import { CalendarIcon, Check, ChevronsUpDown, Tag as TagIcon, X } from "lucide-react";
 import * as z from "zod";
 
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Badge } from "@/components/ui/badge";
 import { TradeJournalCreate, TradeStatus, TradeType, TradeTags, TradeDirection } from "@/types/journal";
 
 // Define the form schema using zod
@@ -70,6 +71,20 @@ export function TradeForm({
   onCancel,
   isSubmitting,
 }: TradeFormProps) {
+  // Helper function to extract tag IDs from initialData
+  const getInitialTagIds = () => {
+    if (!initialData?.tags) return [];
+    
+    // Handle both array of objects and array of numbers
+    if (Array.isArray(initialData.tags)) {
+      return initialData.tags.map((tag: any) => 
+        typeof tag === 'object' ? tag.id : tag
+      );
+    }
+    
+    return [];
+  };
+
   // Initialize form with default values or provided initialData
   const form = useForm<TradeFormValues>({
     resolver: zodResolver(tradeFormSchema),
@@ -92,11 +107,7 @@ export function TradeForm({
       exit_date: initialData?.exit_date ? new Date(initialData.exit_date) : undefined,
       status: initialData?.status || TradeStatus.OPEN,
       personal_notes: initialData?.personal_notes || "",
-      tags: Array.isArray(initialData?.tags)
-        ? (typeof initialData.tags[0] === "object"
-            ? initialData.tags.map((t: any) => t.id)
-            : initialData.tags)
-        : [],
+      tags: getInitialTagIds(),
     },
   });
 
@@ -105,6 +116,7 @@ export function TradeForm({
   const stopLoss = form.watch("sl");
   const targetPrice = form.watch("target_price");
   const entryPrice = form.watch("entry_price");
+  const selectedTags = form.watch("tags") || [];
 
   useEffect(() => {
     if (
@@ -120,6 +132,28 @@ export function TradeForm({
       form.setValue("exit_price", undefined);
     }
   }, [status, stopLoss, targetPrice, entryPrice, form]);
+
+  // Handle tag selection
+  const handleTagSelect = (tagId: string) => {
+    const id = parseInt(tagId);
+    const currentTags = form.getValues("tags") || [];
+    
+    if (!currentTags.includes(id)) {
+      form.setValue("tags", [...currentTags, id]);
+    }
+  };
+
+  // Handle tag removal
+  const handleTagRemove = (tagId: number) => {
+    const currentTags = form.getValues("tags") || [];
+    form.setValue("tags", currentTags.filter(id => id !== tagId));
+  };
+
+  // Get available tags for selection (excluding already selected ones)
+  const getAvailableTagsForSelection = () => {
+    const currentTags = form.getValues("tags") || [];
+    return availableTags.filter(tag => !currentTags.includes(tag.id));
+  };
 
   // Handle form submission
   function handleSubmit(values: TradeFormValues) {
@@ -153,7 +187,7 @@ export function TradeForm({
       stop_loss: formattedValues.sl,
       target_price: formattedValues.target_price,
       personal_notes: formattedValues.personal_notes,
-      tags: formattedValues.tags
+      tags: formattedValues.tags || []
     });
   }
 
@@ -478,7 +512,7 @@ export function TradeForm({
           )}
         />
 
-        {/* Tags - Will be implemented in a future task */}
+        {/* Tags */}
         {availableTags.length > 0 && (
           <FormField
             control={form.control}
@@ -489,56 +523,63 @@ export function TradeForm({
                 <FormDescription>
                   Select tags to categorize your trade
                 </FormDescription>
-                <FormControl>
+                
+                {/* Tag Selection Dropdown */}
+                {getAvailableTagsForSelection().length > 0 && (
                   <Select
-                    onValueChange={(value) => {
-                      const tagId = parseInt(value);
-                      if (!field.value?.includes(tagId)) {
-                        field.onChange([...(Array.isArray(field.value) ? field.value : []), tagId]);
-                      }
-                    }}
+                    onValueChange={handleTagSelect}
                     value=""
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select tags" />
-                    </SelectTrigger>
+                    <FormControl>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select tags to add" />
+                      </SelectTrigger>
+                    </FormControl>
                     <SelectContent>
-                      {availableTags.map((tag) => (
-                        <SelectItem key={tag.id} value={tag.id.toString()} className="flex items-center gap-2">
-                          <TagIcon className="h-3 w-3 mr-1" style={{ color: tag.color }} />
-                          {tag.name}
+                      {getAvailableTagsForSelection().map((tag) => (
+                        <SelectItem key={tag.id} value={tag.id.toString()}>
+                          <div className="flex items-center gap-2">
+                            <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
+                            {tag.name}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                </FormControl>
-                {field.value && field.value.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {field.value.map((tagId) => {
+                )}
+                
+                {/* Selected Tags Display */}
+                {selectedTags.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {selectedTags.map((tagId) => {
                       const tag = availableTags.find((t) => t.id === tagId);
                       if (!tag) return null;
                       return (
-                        <span
+                        <Badge
                           key={tag.id}
-                          className="flex items-center gap-1 px-2 py-1 rounded-md text-xs bg-muted/40"
-                          style={{ backgroundColor: tag.color + '33' }}
+                          variant="secondary"
+                          className="flex items-center gap-1 px-2 py-1"
+                          style={{ 
+                            backgroundColor: tag.color + '20',
+                            borderColor: tag.color,
+                            color: tag.color
+                          }}
                         >
                           <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
                           {tag.name}
                           <button
                             type="button"
-                            onClick={() => {
-                              field.onChange(field.value.filter((id) => id !== tag.id));
-                            }}
-                            className="text-muted-foreground hover:text-foreground ml-1"
+                            onClick={() => handleTagRemove(tag.id)}
+                            className="ml-1 hover:text-destructive"
                           >
-                            ×
+                            <X className="h-3 w-3" />
                           </button>
-                        </span>
+                        </Badge>
                       );
                     })}
                   </div>
                 )}
+                
                 <FormMessage />
               </FormItem>
             )}
