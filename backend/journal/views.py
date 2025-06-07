@@ -28,7 +28,7 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
     def get_serializer_class(self):
         if self.action == 'list':
             return TradeJournalListSerializer
-        elif self.action == 'create':
+        elif self.action in ['create', 'update', 'partial_update']:
             return TradeJournalCreateSerializer
         return TradeJournalSerializer
 
