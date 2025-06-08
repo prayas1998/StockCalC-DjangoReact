@@ -40,13 +40,21 @@ export const getApiUrl = (endpoint: string): string => {
 // Create a URL with query parameters
 export const createUrlWithParams = (
   endpoint: string, 
-  params: Record<string, string | number | boolean>
+  params: Record<string, string | number | boolean | (string | number | boolean)[]>
 ): string => {
   const url = new URL(getApiUrl(endpoint));
   
   Object.entries(params).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      url.searchParams.append(key, String(value));
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (item !== undefined && item !== null) {
+            url.searchParams.append(key, String(item));
+          }
+        });
+      } else {
+        url.searchParams.append(key, String(value));
+      }
     }
   });
   

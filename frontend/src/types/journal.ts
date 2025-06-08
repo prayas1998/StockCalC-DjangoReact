@@ -160,11 +160,11 @@ export interface TradeFormData extends Omit<TradeJournalCreate, 'tags'> {
  * Type for filtering journal entries
  */
 export interface JournalFilters {
-  status?: TradeStatus;
-  trade_type?: TradeType;
+  status?: TradeStatus | TradeStatus[];
+  trade_type?: TradeType | TradeType[];
   start_date?: string;
   end_date?: string;
-  tag_ids?: number[];
+  tags?: number[];
   is_profitable?: boolean;
   page?: number;
   page_size?: number;

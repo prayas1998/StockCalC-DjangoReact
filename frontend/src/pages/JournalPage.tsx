@@ -10,9 +10,11 @@ import { JournalAnalytics } from "@/components/journal/JournalAnalytics";
 import { TagManager } from "@/components/journal/TagManager";
 import { useJournal } from "@/hooks/useJournal";
 import { useTradeTags } from "@/hooks/useTradeTags";
-import { TradeJournal, TradeJournalCreate } from "@/types/journal";
+import { TradeJournal, TradeJournalCreate, TradeStatus, TradeType } from "@/types/journal";
 import type { CalculationError } from "@/types/api";
 import { toast } from "sonner";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 
 function isTagsArray(tags: any): tags is any[] {
   return Array.isArray(tags);
@@ -30,6 +32,10 @@ export default function JournalPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [activeTab, setActiveTab] = useState("trades");
   const [searchResults, setSearchResults] = useState<TradeJournal[] | null>(null);
+  const [filterDialogOpen, setFilterDialogOpen] = useState(false);
+  const [selectedStatuses, setSelectedStatuses] = useState<TradeStatus[]>([]);
+  const [selectedTypes, setSelectedTypes] = useState<TradeType[]>([]);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
 
   // Get journal data and mutations
   const {
@@ -40,7 +46,11 @@ export default function JournalPage() {
     hasNextPage,
     isFetchingNextPage,
     deleteTrade,
-  } = useJournal();
+  } = useJournal({
+    status: selectedStatuses,
+    trade_type: selectedTypes,
+    tags: selectedTagIds,
+  });
 
   // Get tags
   const { tags, isLoading: isTagsLoading } = useTradeTags();
@@ -232,7 +242,7 @@ export default function JournalPage() {
                   Clear Search
                 </Button>
               )}
-              <Button variant="outline">
+              <Button variant="outline" onClick={() => setFilterDialogOpen(true)}>
                 <Filter className="mr-2 h-4 w-4" /> Filter
               </Button>
             </div>
@@ -250,6 +260,97 @@ export default function JournalPage() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Filter Dialog */}
+      <Dialog open={filterDialogOpen} onOpenChange={setFilterDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Filter Trades</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {/* Status Filter */}
+            <div>
+              <div className="font-medium mb-2">Trade Status</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.values(TradeStatus).map((status) => (
+                  <label key={status} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={selectedStatuses.includes(status)}
+                      onCheckedChange={(checked) => {
+                        setSelectedStatuses((prev) =>
+                          checked
+                            ? [...prev, status]
+                            : prev.filter((s) => s !== status)
+                        );
+                      }}
+                    />
+                    {status.replace("_", " ")}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {/* Trade Type Filter */}
+            <div>
+              <div className="font-medium mb-2">Trade Type</div>
+              <div className="flex flex-wrap gap-2">
+                {Object.values(TradeType).map((type) => (
+                  <label key={type} className="flex items-center gap-2 cursor-pointer">
+                    <Checkbox
+                      checked={selectedTypes.includes(type)}
+                      onCheckedChange={(checked) => {
+                        setSelectedTypes((prev) =>
+                          checked
+                            ? [...prev, type]
+                            : prev.filter((t) => t !== type)
+                        );
+                      }}
+                    />
+                    {type.replace("_", " ")}
+                  </label>
+                ))}
+              </div>
+            </div>
+            {/* Tag Filter */}
+            <div>
+              <div className="font-medium mb-2">Tags</div>
+              <div className="flex flex-wrap gap-2">
+                {isTagsArray(tags) && tags.length > 0 ? (
+                  tags.map((tag) => (
+                    <label key={tag.id} className="flex items-center gap-2 cursor-pointer">
+                      <Checkbox
+                        checked={selectedTagIds.includes(tag.id)}
+                        onCheckedChange={(checked) => {
+                          setSelectedTagIds((prev) =>
+                            checked
+                              ? [...prev, tag.id]
+                              : prev.filter((id) => id !== tag.id)
+                          );
+                        }}
+                      />
+                      <span className="px-2 py-1 rounded" style={{ backgroundColor: tag.color + '22' }}>{tag.name}</span>
+                    </label>
+                  ))
+                ) : (
+                  <span className="text-muted-foreground">No tags created yet.</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => {
+              setSelectedStatuses([]);
+              setSelectedTypes([]);
+              setSelectedTagIds([]);
+              setFilterDialogOpen(false);
+            }}>
+              Clear All
+            </Button>
+            <Button onClick={() => setFilterDialogOpen(false)}>
+              Apply Filters
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Trade form dialog */}
       <TradeFormDialog

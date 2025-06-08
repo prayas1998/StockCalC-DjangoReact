@@ -34,7 +34,34 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return TradeJournal.objects.filter(user=user).prefetch_related('tags').order_by('-entry_date')
+        queryset = TradeJournal.objects.filter(user=user).prefetch_related('tags').order_by('-entry_date')
+
+        # Filtering by status
+        status = self.request.query_params.getlist('status') or self.request.query_params.get('status')
+        if status:
+            if isinstance(status, list) and len(status) > 0:
+                queryset = queryset.filter(status__in=status)
+            else:
+                queryset = queryset.filter(status=status)
+
+        # Filtering by trade_type
+        trade_type = self.request.query_params.getlist('trade_type') or self.request.query_params.get('trade_type')
+        if trade_type:
+            if isinstance(trade_type, list) and len(trade_type) > 0:
+                queryset = queryset.filter(trade_type__in=trade_type)
+            else:
+                queryset = queryset.filter(trade_type=trade_type)
+
+        # Filtering by tags (must match all selected tags)
+        tag_ids = self.request.query_params.getlist('tags') or self.request.query_params.get('tags')
+        if tag_ids:
+            if isinstance(tag_ids, str):
+                tag_ids = [tag_ids]
+            for tag_id in tag_ids:
+                queryset = queryset.filter(tags__id=tag_id)
+            queryset = queryset.distinct()
+
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
