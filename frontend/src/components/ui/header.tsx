@@ -53,7 +53,7 @@ const Header = () => {
         <div>
           <h1
             className="text-xl font-bold cursor-pointer text-blue-900 dark:text-blue-100 hover:text-primary transition-colors duration-300"
-            onClick={() => navigate("/groww")}
+            onClick={() => navigate("/dhan")}
           >
             TradeSmart
           </h1>

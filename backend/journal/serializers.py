@@ -70,16 +70,22 @@ class TradeJournalSerializer(serializers.ModelSerializer):
     
     def validate_stop_loss(self, value):
         buy_price = self.initial_data.get('buy_price')
+        direction = self.initial_data.get('direction', 'LONG')
         if value is not None and buy_price is not None:
-            if float(value) >= float(buy_price):
+            if direction == 'LONG' and float(value) >= float(buy_price):
                 raise serializers.ValidationError("Stop loss must be less than buy price for long positions")
+            if direction == 'SHORT' and float(value) <= float(buy_price):
+                raise serializers.ValidationError("Stop loss must be greater than buy price for short positions")
         return value
     
     def validate_target_price(self, value):
         buy_price = self.initial_data.get('buy_price')
+        direction = self.initial_data.get('direction', 'LONG')
         if value is not None and buy_price is not None:
-            if float(value) <= float(buy_price):
+            if direction == 'LONG' and float(value) <= float(buy_price):
                 raise serializers.ValidationError("Target price must be greater than buy price for long positions")
+            if direction == 'SHORT' and float(value) >= float(buy_price):
+                raise serializers.ValidationError("Target price must be less than buy price for short positions")
         return value
     
     def create(self, validated_data):

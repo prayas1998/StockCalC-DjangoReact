@@ -85,6 +85,7 @@ class Migration(migrations.Migration):
                         to=settings.AUTH_USER_MODEL,
                     ),
                 ),
+                ("direction", models.CharField(choices=[("LONG", "Long"), ("SHORT", "Short")], default="LONG", max_length=10)),
             ],
         ),
         migrations.CreateModel(

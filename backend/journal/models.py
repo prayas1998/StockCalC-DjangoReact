@@ -42,14 +42,23 @@ class TradeJournal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     tags = models.ManyToManyField(TradeTags, through='TradeJournalTags', related_name='journals')
+    direction_choices = [
+        ("LONG", "Long"),
+        ("SHORT", "Short"),
+    ]
+    direction = models.CharField(max_length=10, choices=direction_choices, default="LONG")
 
     def calculate_pnl(self):
         if self.status.startswith("CLOSED") and self.sell_price is not None:
+            if hasattr(self, 'direction') and self.direction == "SHORT":
+                return float(self.quantity) * (float(self.buy_price) - float(self.sell_price))
             return float(self.quantity) * (float(self.sell_price) - float(self.buy_price))
         return None
 
     def calculate_unrealized_pnl(self, current_price):
         if self.status == "OPEN":
+            if hasattr(self, 'direction') and self.direction == "SHORT":
+                return float(self.quantity) * (float(self.buy_price) - float(current_price))
             return float(self.quantity) * (float(current_price) - float(self.buy_price))
         return None
 
