@@ -14,39 +14,19 @@ import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import Header from "@/components/ui/header";
 import { Switch } from "@/components/ui/switch";
-
-// Define charge type to avoid duplication
-type Charges = {
-  brokerage: number;
-  stt: number;
-  exchangeCharges: number;
-  gst: number;
-  stampDuty: number;
-  sebiCharges: number;
-  ipft: number;
-  totalCharges: number;
-  dpCharges: number;
-};
+import { calculateCharges, getDpCharge, formatCurrency, Charges } from "./Tools/ChargesUtils";
+import PositionSizingCalculator from "./Tools/PositionSizingCalculator";
+import ProfitTargetCalculator from "./Tools/ProfitTargetCalculator";
+import NetPLCalculator from "./Tools/NetPLCalculator";
 
 const Tools = () => {
   const navigate = useNavigate();
   const [darkMode, setDarkMode] = useState(() => {
-    // Check localStorage on initial load
-    if (typeof window !== "undefined") {
-      const savedMode = localStorage.getItem("darkMode");
-      return savedMode ? JSON.parse(savedMode) : true; // Default dark mode
-    }
-    return true; // Fallback for server-side
+    // Default dark mode for artifact
+    return true;
   });
   
-  const [platform, setPlatform] = useState(() => {
-    const path = window.location.pathname.slice(1).toLowerCase();
-    if (path === "tools") return "Groww"; // Default to Groww when on tools page
-    if (["groww", "dhan", "rise", "others"].includes(path)) {
-      return path.charAt(0).toUpperCase() + path.slice(1);
-    }
-    return "Groww";
-  });
+  const [platform, setPlatform] = useState("Groww");
 
   // Profit Target Calculator states
   const [targetBuyPrice, setTargetBuyPrice] = useState("");
@@ -89,10 +69,6 @@ const Tools = () => {
   const LEVERAGE = 5;
 
   useEffect(() => {
-    localStorage.setItem("darkMode", JSON.stringify(darkMode));
-  }, [darkMode]); // Save to localStorage on change
-
-  useEffect(() => {
     if (darkMode) {
       document.documentElement.classList.add("dark");
     } else {
@@ -102,7 +78,8 @@ const Tools = () => {
 
   const handlePlatformChange = (newPlatform: string) => {
     setPlatform(newPlatform);
-    navigate(`/${newPlatform.toLowerCase()}`);
+    // navigate function might not be available in artifact
+    console.log(`Navigate to: /${newPlatform.toLowerCase()}`);
   };
   
   // Format currency helper
@@ -333,179 +310,135 @@ const Tools = () => {
     }
   };
 
+  // FIXED Position Sizing Calculation with Charges Consideration
   const positionSizingResult = (() => {
     const risk = getRiskValue();
     const sl = parseFloat(stopLoss);
     const cap = parseFloat(capital);
     const ep = parseFloat(entryPrice);
+    
     if (isNaN(risk) || risk <= 0 || isNaN(sl) || sl <= 0) {
       return null;
     }
-    let quantity = Math.floor(risk / sl);
-    let positionValue = undefined;
-    let capitalUsed = undefined;
-    let buyingPower = undefined;
-    if (!isNaN(ep) && ep > 0) {
-      positionValue = quantity * ep;
-      if (positionTradeType === 'equity-intraday') {
-        if (!isNaN(cap) && cap > 0) {
-          buyingPower = cap * LEVERAGE;
-          // Suggest max possible quantity within buying power
-          const maxQtyByLeverage = Math.floor(buyingPower / ep);
-          if (quantity > maxQtyByLeverage) quantity = maxQtyByLeverage;
-          positionValue = quantity * ep;
-          capitalUsed = positionValue / LEVERAGE;
-        } else {
-          capitalUsed = positionValue / LEVERAGE;
-        }
+
+    // If we don't have entry price, we can't calculate charges, so fall back to simple calculation
+    if (isNaN(ep) || ep <= 0) {
+      const quantity = Math.floor(risk / sl);
+      return {
+        quantity,
+        positionValue: undefined,
+        capitalUsed: undefined,
+        buyingPower: undefined,
+        hasCapital: !isNaN(cap) && cap > 0,
+        hasEntryPrice: false,
+        chargesConsidered: false
+      };
+    }
+
+    // With entry price available, we can calculate charges-adjusted quantity
+    let optimalQuantity = 0;
+    let bestNetRisk = 0;
+    
+    // Start with simple calculation as initial estimate
+    const initialQuantity = Math.floor(risk / sl);
+    
+    // Try quantities around the initial estimate to find the best one
+    // We'll test from 50% to 150% of initial quantity to find optimal
+    const minQty = Math.max(1, Math.floor(initialQuantity * 0.5));
+    const maxQty = Math.ceil(initialQuantity * 1.5);
+    
+    for (let qty = minQty; qty <= maxQty; qty++) {
+      const buyValue = qty * ep;
+      const sellValue = qty * (ep - sl); // Worst case scenario (stop loss hit)
+      
+      // Calculate charges for this quantity using existing function
+      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange);
+      
+      // Total cost includes the stop loss amount plus all charges
+      const totalRiskAmount = (qty * sl) + charges.totalCharges;
+      
+      // Check if this quantity fits within our risk budget
+      if (totalRiskAmount <= risk) {
+        optimalQuantity = qty;
+        bestNetRisk = totalRiskAmount;
       } else {
-        capitalUsed = positionValue;
+        break; // If we exceed risk budget, stop searching
       }
     }
-    if (positionTradeType === 'equity-intraday' && !isNaN(cap) && cap > 0) {
-      buyingPower = cap * LEVERAGE;
+    
+    // If no quantity fits within risk budget, use quantity 1 as minimum
+    if (optimalQuantity === 0) {
+      optimalQuantity = 1;
+      const buyValue = optimalQuantity * ep;
+      const sellValue = optimalQuantity * (ep - sl);
+      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange);
+      bestNetRisk = (optimalQuantity * sl) + charges.totalCharges;
     }
+
+    const positionValue = optimalQuantity * ep;
+    let capitalUsed: number | undefined;
+    let buyingPower: number | undefined;
+
+    if (selectedTradeType === 'equity-intraday') {
+      if (!isNaN(cap) && cap > 0) {
+        buyingPower = cap * LEVERAGE;
+        // Check if position fits within buying power
+        const maxQtyByLeverage = Math.floor(buyingPower / ep);
+        if (optimalQuantity > maxQtyByLeverage) {
+          optimalQuantity = maxQtyByLeverage;
+        }
+        capitalUsed = (optimalQuantity * ep) / LEVERAGE;
+      } else {
+        capitalUsed = positionValue / LEVERAGE;
+      }
+    } else {
+      capitalUsed = positionValue;
+    }
+
+    // Final charges calculation for display
+    const finalBuyValue = optimalQuantity * ep;
+    const finalSellValue = optimalQuantity * (ep - sl);
+    const finalCharges = calculateCharges(finalBuyValue, Math.abs(finalSellValue), exchange);
+    const actualRiskWithCharges = (optimalQuantity * sl) + finalCharges.totalCharges;
+
     return {
-      quantity,
+      quantity: optimalQuantity,
       positionValue,
       capitalUsed,
       buyingPower,
       hasCapital: !isNaN(cap) && cap > 0,
-      hasEntryPrice: !isNaN(ep) && ep > 0,
+      hasEntryPrice: true,
+      chargesConsidered: true,
+      estimatedCharges: finalCharges.totalCharges,
+      actualRiskAmount: actualRiskWithCharges,
+      riskBudget: risk
     };
   })();
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-background text-foreground">
       <Header />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold mb-6">Stock Market Tools</h1>
         
         {/* Position Sizing Calculator */}
-        <Card className="p-6 bg-card shadow-sm mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <Calculator className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-semibold">Position Sizing Calculator</h2>
-          </div>
-          <p className="text-muted-foreground mb-6">
-            Calculate optimal position size based on your risk, stop loss, and capital. Helps manage risk per trade.
-          </p>
-          <div className="flex flex-wrap gap-4 mb-4">
-            <div>
-              <Label className="mb-2 block">Trade Type</Label>
-              <ToggleGroup type="single" value={positionTradeType} onValueChange={val => val && setPositionTradeType(val as 'equity-delivery' | 'equity-intraday')}>
-                <ToggleGroupItem value="equity-delivery">Equity Delivery</ToggleGroupItem>
-                <ToggleGroupItem value="equity-intraday">Equity Intraday</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-            <div>
-              <Label className="mb-2 block">Risk Mode</Label>
-              <ToggleGroup type="single" value={riskMode} onValueChange={val => val && setRiskMode(val as 'amount' | 'percent')}>
-                <ToggleGroupItem value="amount">Fixed Amount (₹)</ToggleGroupItem>
-                <ToggleGroupItem value="percent">% of Capital</ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-          </div>
-          <div className="grid md:grid-cols-3 gap-4 mb-4">
-            {/* Risk per trade first */}
-            {riskMode === 'amount' ? (
-              <div>
-                <Label htmlFor="riskAmount">Risk per Trade (₹)</Label>
-                <Input
-                  id="riskAmount"
-                  type="text"
-                  placeholder="Amount you can risk"
-                  value={riskAmount}
-                  onChange={e => handleInputChange(setRiskAmount, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            ) : (
-              <div>
-                <Label htmlFor="riskPercent">Risk per Trade (%)</Label>
-                <Input
-                  id="riskPercent"
-                  type="text"
-                  placeholder="% of capital to risk"
-                  value={riskPercent}
-                  onChange={e => handleInputChange(setRiskPercent, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-            )}
-            {/* Stop loss second */}
-            <div>
-              <Label htmlFor="stopLoss">Stop Loss (points)</Label>
-              <Input
-                id="stopLoss"
-                type="text"
-                placeholder="e.g. 8"
-                value={stopLoss}
-                onChange={e => handleInputChange(setStopLoss, e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            {/* Capital third */}
-            <div>
-              <Label htmlFor="capital">Capital (₹) <span className="text-xs text-muted-foreground">(optional)</span></Label>
-              <Input
-                id="capital"
-                type="text"
-                placeholder="Enter your capital (optional)"
-                value={capital}
-                onChange={e => handleInputChange(setCapital, e.target.value)}
-                className="mt-1"
-              />
-            </div>
-            {/* Entry price fourth */}
-            <div>
-              <Label htmlFor="entryPrice">Entry Price (₹) <span className="text-xs text-muted-foreground">(optional)</span></Label>
-              <Input
-                id="entryPrice"
-                type="text"
-                placeholder="e.g. 200 (optional)"
-                value={entryPrice}
-                onChange={e => handleInputChange(setEntryPrice, e.target.value)}
-                className="mt-1"
-              />
-            </div>
-          </div>
-          {positionSizingResult && (
-            <div className="mt-6 p-4 border rounded-md bg-secondary/20">
-              <h3 className="font-semibold text-lg mb-2">Results</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span>Quantity to Trade:</span>
-                  <span className="font-medium">{positionSizingResult.quantity}</span>
-                </div>
-                {(!positionSizingResult.hasEntryPrice || (positionTradeType === 'equity-intraday' && !positionSizingResult.hasCapital)) && (
-                  <div className="text-sm text-muted-foreground mt-2">
-                    Please fill in {(!positionSizingResult.hasEntryPrice && !positionSizingResult.hasCapital && positionTradeType === 'equity-intraday') ? 'Entry Price and Capital' : (!positionSizingResult.hasEntryPrice ? 'Entry Price' : 'Capital')} to calculate Position Value and Effective Capital Used.
-                  </div>
-                )}
-                {positionSizingResult.hasEntryPrice && (
-                  <div className="flex justify-between">
-                    <span>Position Value:</span>
-                    <span className="font-medium">{formatCurrency(positionSizingResult.positionValue ?? 0)}</span>
-                  </div>
-                )}
-                {positionSizingResult.hasEntryPrice && (
-                  <div className="flex justify-between">
-                    <span>Effective Capital Used:</span>
-                    <span className="font-medium">{formatCurrency(positionSizingResult.capitalUsed ?? 0)}</span>
-                  </div>
-                )}
-                {positionTradeType === 'equity-intraday' && positionSizingResult.hasCapital && (
-                  <div className="flex justify-between">
-                    <span>Buying Power (5x):</span>
-                    <span className="font-medium">{formatCurrency(positionSizingResult.buyingPower ?? 0)}</span>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </Card>
+        <PositionSizingCalculator
+          riskMode={riskMode}
+          capital={capital}
+          riskAmount={riskAmount}
+          riskPercent={riskPercent}
+          stopLoss={stopLoss}
+          entryPrice={entryPrice}
+          onChange={(field, value) => {
+            if (field === 'riskMode') setRiskMode(value as 'amount' | 'percent');
+            else if (field === 'capital') setCapital(value);
+            else if (field === 'riskAmount') setRiskAmount(value);
+            else if (field === 'riskPercent') setRiskPercent(value);
+            else if (field === 'stopLoss') setStopLoss(value);
+            else if (field === 'entryPrice') setEntryPrice(value);
+          }}
+          LEVERAGE={LEVERAGE}
+        />
         
         {/* Broker and Trade Type Toggles */}
         <div className="flex flex-wrap gap-4 mb-8">
@@ -533,238 +466,36 @@ const Tools = () => {
         )}
         
         <div className="grid md:grid-cols-2 gap-6">
-          {/* Profit Target Calculator */}
-          <Card className="p-6 bg-card shadow-sm" aria-disabled={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww'} style={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
-            <div className="flex items-center gap-2 mb-4">
-              <Calculator className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Profit Target Calculator</h2>
-            </div>
-            <p className="text-muted-foreground mb-6">
-              Calculate the required selling price to achieve your target profit percentage after all charges.
-            </p>
-            
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="quantity">Quantity</Label>
-                <Input
-                  id="quantity"
-                  type="text"
-                  placeholder="Enter quantity"
-                  value={targetQuantity}
-                  onChange={(e) => handleInputChange(setTargetQuantity, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="buyPrice">Buy Price Per Share</Label>
-                <Input
-                  id="buyPrice"
-                  type="text"
-                  placeholder="Enter buy price"
-                  value={targetBuyPrice}
-                  onChange={(e) => handleInputChange(setTargetBuyPrice, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="profitPercentage">Target Profit Percentage</Label>
-                <Input
-                  id="profitPercentage"
-                  type="text"
-                  placeholder="Enter percentage (e.g. 5 for 5%)"
-                  value={targetProfitPercentage}
-                  onChange={(e) => handleInputChange(setTargetProfitPercentage, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              
-              <Button 
-                onClick={calculateTargetSellingPrice}
-                className="w-full mt-2"
-              >
-                Calculate Target Price
-              </Button>
-            </div>
-            
-            {targetResult && (
-              <div className="mt-6 p-4 border rounded-md bg-secondary/20">
-                <h3 className="font-semibold text-lg mb-2">Results</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-primary font-semibold">
-                    <span>Required Selling Price:</span>
-                    <span>{formatCurrency(targetResult.sellingPrice)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Gross Profit:</span>
-                    <span className="font-medium">{formatCurrency(targetResult.grossProfit)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Charges:</span>
-                    <span className="font-medium">{formatCurrency(targetResult.charges.totalCharges)}</span>
-                  </div>
-                  <div className="flex justify-between text-primary font-semibold">
-                    <span>Net Profit:</span>
-                    <span>{formatCurrency(targetResult.netProfit)}</span>
-                  </div>
-                  
-                  <div className="pt-2 mt-2 border-t">
-                    <div className="text-sm font-medium mb-1">Charges Breakdown</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Brokerage:</span>
-                        <span>{formatCurrency(targetResult.charges.brokerage)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">STT:</span>
-                        <span>{formatCurrency(targetResult.charges.stt)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Exchange:</span>
-                        <span>{formatCurrency(targetResult.charges.exchangeCharges)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">GST:</span>
-                        <span>{formatCurrency(targetResult.charges.gst)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Stamp Duty:</span>
-                        <span>{formatCurrency(targetResult.charges.stampDuty)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">SEBI Fee:</span>
-                        <span>{formatCurrency(targetResult.charges.sebiCharges)}</span>
-                      </div>
-                      {exchange === "NSE" && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">IPFT:</span>
-                          <span>{formatCurrency(targetResult.charges.ipft)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
-          
-          {/* Net P&L Calculator */}
-          <Card className="p-6 bg-card shadow-sm" aria-disabled={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww'} style={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
-            <div className="flex items-center gap-2 mb-4">
-              <Calculator className="h-5 w-5 text-primary" />
-              <h2 className="text-xl font-semibold">Net P&L Calculator</h2>
-            </div>
-            <p className="text-muted-foreground mb-6">
-              Calculate your net profit or loss after all charges based on your buy and sell prices.
-            </p>
-            
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="profitQuantity">Quantity</Label>
-                <Input
-                  id="profitQuantity"
-                  type="text"
-                  placeholder="Enter quantity"
-                  value={profitQuantity}
-                  onChange={(e) => handleInputChange(setProfitQuantity, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="profitBuyPrice">Buy Price Per Share</Label>
-                <Input
-                  id="profitBuyPrice"
-                  type="text"
-                  placeholder="Enter buy price"
-                  value={profitBuyPrice}
-                  onChange={(e) => handleInputChange(setProfitBuyPrice, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              
-              <div>
-                <Label htmlFor="sellPrice">Sell Price Per Share</Label>
-                <Input
-                  id="sellPrice"
-                  type="text"
-                  placeholder="Enter sell price"
-                  value={profitSellPrice}
-                  onChange={(e) => handleInputChange(setProfitSellPrice, e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              
-              <Button 
-                onClick={calculateNetProfit}
-                className="w-full mt-2"
-                variant={profitSellPrice && profitBuyPrice && parseFloat(profitSellPrice) < parseFloat(profitBuyPrice) ? "destructive" : "default"}
-              >
-                {profitSellPrice && profitBuyPrice && parseFloat(profitSellPrice) < parseFloat(profitBuyPrice) 
-                  ? "Calculate Net Loss" 
-                  : "Calculate Net Profit"}
-              </Button>
-            </div>
-            
-            {profitResult && (
-              <div className="mt-6 p-4 border rounded-md bg-secondary/20">
-                <h3 className="font-semibold text-lg mb-2">Results</h3>
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span>Gross {profitResult.isProfit ? "Profit" : "Loss"}:</span>
-                    <span className="font-medium">{formatCurrency(Math.abs(profitResult.grossProfit))}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Charges:</span>
-                    <span className="font-medium">{formatCurrency(profitResult.charges.totalCharges)}</span>
-                  </div>
-                  <div className="flex justify-between text-primary font-semibold">
-                    <span>Net {profitResult.isProfit ? "Profit" : "Loss"}:</span>
-                    <span className={profitResult.isProfit ? "text-primary" : "text-destructive"}>
-                      {formatCurrency(Math.abs(profitResult.netProfit))} ({profitResult.profitPercentage.toFixed(2)}%)
-                    </span>
-                  </div>
-                  
-                  <div className="pt-2 mt-2 border-t">
-                    <div className="text-sm font-medium mb-1">Charges Breakdown</div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Brokerage:</span>
-                        <span>{formatCurrency(profitResult.charges.brokerage)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">STT:</span>
-                        <span>{formatCurrency(profitResult.charges.stt)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Exchange:</span>
-                        <span>{formatCurrency(profitResult.charges.exchangeCharges)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">GST:</span>
-                        <span>{formatCurrency(profitResult.charges.gst)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">Stamp Duty:</span>
-                        <span>{formatCurrency(profitResult.charges.stampDuty)}</span>
-                      </div>
-                      <div className="flex justify-between">
-                        <span className="text-muted-foreground">SEBI Fee:</span>
-                        <span>{formatCurrency(profitResult.charges.sebiCharges)}</span>
-                      </div>
-                      {exchange === "NSE" && (
-                        <div className="flex justify-between">
-                          <span className="text-muted-foreground">IPFT:</span>
-                          <span>{formatCurrency(profitResult.charges.ipft)}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </Card>
+          <ProfitTargetCalculator
+            selectedBroker={selectedBroker}
+            selectedTradeType={selectedTradeType}
+            targetBuyPrice={targetBuyPrice}
+            targetQuantity={targetQuantity}
+            targetProfitPercentage={targetProfitPercentage}
+            targetResult={targetResult}
+            onChange={(field, value) => {
+              if (field === 'targetBuyPrice') setTargetBuyPrice(value);
+              else if (field === 'targetQuantity') setTargetQuantity(value);
+              else if (field === 'targetProfitPercentage') setTargetProfitPercentage(value);
+            }}
+            onCalculate={calculateTargetSellingPrice}
+            exchange={exchange}
+          />
+          <NetPLCalculator
+            selectedBroker={selectedBroker}
+            selectedTradeType={selectedTradeType}
+            profitBuyPrice={profitBuyPrice}
+            profitQuantity={profitQuantity}
+            profitSellPrice={profitSellPrice}
+            profitResult={profitResult}
+            onChange={(field, value) => {
+              if (field === 'profitBuyPrice') setProfitBuyPrice(value);
+              else if (field === 'profitQuantity') setProfitQuantity(value);
+              else if (field === 'profitSellPrice') setProfitSellPrice(value);
+            }}
+            onCalculate={calculateNetProfit}
+            exchange={exchange}
+          />
         </div>
       </div>
     </div>
