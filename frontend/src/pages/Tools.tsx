@@ -34,7 +34,7 @@ const Tools = () => {
     charges: Charges;
     breakevenPrice: number;
   } | null>(null);
-  
+
   // Net Profit Calculator states
   const [profitBuyPrice, setProfitBuyPrice] = useState("");
   const [profitQuantity, setProfitQuantity] = useState("");
@@ -47,7 +47,7 @@ const Tools = () => {
     charges: Charges;
     breakevenPrice: number;
   } | null>(null);
-  
+
   // Exchange state (for both calculators)
   const exchange = "NSE"; // Fixed to NSE
 
@@ -71,7 +71,7 @@ const Tools = () => {
     // navigate function might not be available in artifact
     console.log(`Navigate to: /${newPlatform.toLowerCase()}`);
   };
-  
+
   // Calculate target selling price (now: target exit price)
   const calculateTargetSellingPrice = () => {
     if (!targetBuyPrice || !targetQuantity || !targetProfitPercentage) {
@@ -167,7 +167,7 @@ const Tools = () => {
       breakevenPrice
     });
   };
-  
+
   // Calculate net profit
   const calculateNetProfit = () => {
     if (!profitBuyPrice || !profitQuantity || !profitSellPrice) {
@@ -223,7 +223,7 @@ const Tools = () => {
       breakevenPrice
     });
   };
-  
+
   // Handle input changes with validation
   const handleInputChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
     // Only allow numbers and decimal point
@@ -251,7 +251,7 @@ const Tools = () => {
     const sl = parseFloat(stopLoss);
     const cap = parseFloat(capital);
     const ep = parseFloat(entryPrice);
-    
+
     if (isNaN(risk) || risk <= 0 || isNaN(sl) || sl <= 0) {
       return null;
     }
@@ -273,25 +273,25 @@ const Tools = () => {
     // With entry price available, we can calculate charges-adjusted quantity
     let optimalQuantity = 0;
     let bestNetRisk = 0;
-    
+
     // Start with simple calculation as initial estimate
     const initialQuantity = Math.floor(risk / sl);
-    
+
     // Try quantities around the initial estimate to find the best one
     // We'll test from 50% to 150% of initial quantity to find optimal
     const minQty = Math.max(1, Math.floor(initialQuantity * 0.5));
     const maxQty = Math.ceil(initialQuantity * 1.5);
-    
+
     for (let qty = minQty; qty <= maxQty; qty++) {
       const buyValue = qty * ep;
       const sellValue = qty * (ep - sl); // Worst case scenario (stop loss hit)
-      
+
       // Calculate charges for this quantity using utility function
       const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, selectedBroker, selectedTradeType);
-      
+
       // Total cost includes the stop loss amount plus all charges
       const totalRiskAmount = (qty * sl) + charges.totalCharges;
-      
+
       // Check if this quantity fits within our risk budget
       if (totalRiskAmount <= risk) {
         optimalQuantity = qty;
@@ -300,7 +300,7 @@ const Tools = () => {
         break; // If we exceed risk budget, stop searching
       }
     }
-    
+
     // If no quantity fits within risk budget, use quantity 1 as minimum
     if (optimalQuantity === 0) {
       optimalQuantity = 1;
@@ -353,9 +353,9 @@ const Tools = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header />
-      
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        
+
         {/* Position Sizing Calculator */}
         <PositionSizingCalculator
           riskMode={riskMode}
@@ -374,9 +374,11 @@ const Tools = () => {
           }}
           LEVERAGE={LEVERAGE}
         />
-        
+
+
+
         {/* Broker and Trade Type Toggles */}
-        <div className="flex flex-wrap gap-4 mb-8">
+        {/* <div className="flex flex-wrap gap-4 mb-8">
           <div>
             <Label className="mb-2 block">Broker</Label>
             <ToggleGroup type="single" value={selectedBroker} onValueChange={val => val && setSelectedBroker(val as 'Dhan' | 'Groww')}>
@@ -391,15 +393,41 @@ const Tools = () => {
               <ToggleGroupItem value="equity-intraday">Equity Intraday</ToggleGroupItem>
             </ToggleGroup>
           </div>
-        </div>
-        
+        </div> */}
+
         {/* Show warning and disable calculators if Groww + Intraday selected */}
         {selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' && (
           <div className="mb-8 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded">
             <strong>Note:</strong> Equity Intraday calculations are only supported for Dhan broker at this time.
           </div>
         )}
-        
+
+        {/* Shared Settings Header */}
+        <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Calculator className="h-4 w-4 text-primary" />
+              <span className="font-medium text-gray-700">P&L Calculators</span>
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-medium text-gray-600">Broker:</Label>
+                <ToggleGroup type="single" value={selectedBroker} onValueChange={val => val && setSelectedBroker(val as 'Dhan' | 'Groww')} className="h-8">
+                  <ToggleGroupItem value="Dhan" className="px-3 py-1 text-xs">Dhan</ToggleGroupItem>
+                  <ToggleGroupItem value="Groww" className="px-3 py-1 text-xs">Groww</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-medium text-gray-600">Type:</Label>
+                <ToggleGroup type="single" value={selectedTradeType} onValueChange={val => val && setSelectedTradeType(val as 'equity-delivery' | 'equity-intraday')} className="h-8">
+                  <ToggleGroupItem value="equity-delivery" className="px-3 py-1 text-xs">Delivery</ToggleGroupItem>
+                  <ToggleGroupItem value="equity-intraday" className="px-3 py-1 text-xs">Intraday</ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div className="grid md:grid-cols-2 gap-6">
           <ProfitTargetCalculator
             selectedBroker={selectedBroker}
