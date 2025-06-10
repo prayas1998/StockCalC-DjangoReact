@@ -32,6 +32,7 @@ const Tools = () => {
     grossProfit: number;
     netProfit: number;
     charges: Charges;
+    breakevenPrice: number;
   } | null>(null);
   
   // Net Profit Calculator states
@@ -44,6 +45,7 @@ const Tools = () => {
     profitPercentage: number;
     isProfit: boolean;
     charges: Charges;
+    breakevenPrice: number;
   } | null>(null);
   
   // Exchange state (for both calculators)
@@ -62,6 +64,7 @@ const Tools = () => {
   const [entryPrice, setEntryPrice] = useState("");
   const [positionTradeType, setPositionTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
   const LEVERAGE = 5;
+  const [positionType, setPositionType] = useState<'long' | 'short'>('long');
 
   const handlePlatformChange = (newPlatform: string) => {
     setPlatform(newPlatform);
@@ -69,170 +72,99 @@ const Tools = () => {
     console.log(`Navigate to: /${newPlatform.toLowerCase()}`);
   };
   
-  // Format currency helper
-  const formatCurrency = (value: number) => {
-    return value.toLocaleString('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
-  };
-  
-  // DP charge logic
-  const getDpCharge = (broker: string) => {
-    if (broker === 'Dhan') return 14.75;
-    if (broker === 'Groww') return 21.54;
-    return 0;
-  };
-
-  // Calculate charges based on selected broker and trade type
-  const calculateCharges = (buyValue: number, sellValue: number, exchange: string): Charges => {
-    const totalTurnover = buyValue + sellValue;
-    let brokerage = 0;
-    let stt = 0;
-    let exchangeCharges = 0;
-    let stampDuty = 0;
-    let sebiCharges = 0;
-    let ipft = 0;
-    let gst = 0;
-    let dpCharges = 0;
-    let totalCharges = 0;
-
-    if (selectedTradeType === 'equity-delivery') {
-      if (selectedBroker === 'Groww') {
-        // Groww equity delivery logic
-        const buyBrokerage = Math.min(Math.max(buyValue * 0.001, 2), 20);
-        const sellBrokerage = Math.min(Math.max(sellValue * 0.001, 2), 20);
-        brokerage = buyBrokerage + sellBrokerage;
-      } else if (selectedBroker === 'Dhan') {
-        brokerage = 0;
-      }
-      stt = Math.round(totalTurnover * 0.001);
-      exchangeCharges = exchange === "NSE"
-        ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
-        : parseFloat((totalTurnover * 0.0000375).toFixed(2));
-      stampDuty = Math.round(buyValue * 0.00015);
-      sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
-      ipft = exchange === "NSE"
-        ? parseFloat((totalTurnover * 0.000001).toFixed(2))
-        : 0;
-      const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-      gst = parseFloat((taxableAmount * 0.18).toFixed(2));
-      // DP charge only if sellValue > 0
-      dpCharges = sellValue > 0 ? getDpCharge(selectedBroker) : 0;
-      totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst + dpCharges;
-    } else if (selectedTradeType === 'equity-intraday') {
-      if (selectedBroker === 'Dhan') {
-        // Dhan intraday logic
-        // Brokerage: min(₹20, 0.03% of turnover per leg) for buy and sell
-        const buyBrokerage = buyValue > 0 ? Math.min(20, parseFloat((buyValue * 0.0003).toFixed(2))) : 0;
-        const sellBrokerage = sellValue > 0 ? Math.min(20, parseFloat((sellValue * 0.0003).toFixed(2))) : 0;
-        brokerage = buyBrokerage + sellBrokerage;
-        stt = Math.round(sellValue * 0.00025); // STT only on sell
-        exchangeCharges = exchange === "NSE"
-          ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
-          : parseFloat((totalTurnover * 0.0000375).toFixed(2));
-        stampDuty = buyValue > 0 ? Math.round(buyValue * 0.00003) : 0; // Only on buy
-        sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
-        ipft = exchange === "NSE"
-          ? parseFloat((totalTurnover * 0.000001).toFixed(2))
-          : 0;
-        const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-        gst = parseFloat((taxableAmount * 0.18).toFixed(2));
-        dpCharges = 0; // No DP charges for intraday
-        totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst;
-      } else {
-        // Groww intraday not supported
-        brokerage = 0;
-        stt = 0;
-        exchangeCharges = 0;
-        stampDuty = 0;
-        sebiCharges = 0;
-        ipft = 0;
-        gst = 0;
-        dpCharges = 0;
-        totalCharges = 0;
-      }
-    }
-    return {
-      brokerage,
-      stt,
-      exchangeCharges,
-      gst,
-      stampDuty,
-      sebiCharges,
-      ipft,
-      totalCharges,
-      dpCharges,
-    };
-  };
-  
-  // Calculate target selling price
+  // Calculate target selling price (now: target exit price)
   const calculateTargetSellingPrice = () => {
     if (!targetBuyPrice || !targetQuantity || !targetProfitPercentage) {
       setTargetResult(null);
       return;
     }
-    
-    const buyPrice = parseFloat(targetBuyPrice);
+
+    const entryPrice = parseFloat(targetBuyPrice);
     const quantity = parseInt(targetQuantity);
     const profitPercentage = parseFloat(targetProfitPercentage);
-    
-    if (isNaN(buyPrice) || isNaN(quantity) || isNaN(profitPercentage) || buyPrice <= 0 || quantity <= 0 || profitPercentage <= 0) {
+
+    if (isNaN(entryPrice) || isNaN(quantity) || isNaN(profitPercentage) || entryPrice <= 0 || quantity <= 0 || profitPercentage <= 0) {
       setTargetResult(null);
       return;
     }
-    
-    // Calculate the total buy value
-    const buyValue = buyPrice * quantity;
-    
+
+    // Determine position type
+    const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
+    const isLong = !isIntradayShort;
+
+    // Calculate the total entry value
+    const entryValue = entryPrice * quantity;
     // Target gross profit amount
-    const desiredGrossProfit = buyValue * (profitPercentage / 100);
-    
-    // Iteratively find the selling price that gives the desired net profit
-    // Start with a selling price that would give the gross profit
-    let sellingPrice = buyPrice * (1 + profitPercentage / 100);
-    let sellValue = sellingPrice * quantity;
-    let charges = calculateCharges(buyValue, sellValue, exchange);
-    let netProfit = sellValue - buyValue - charges.totalCharges;
-    let targetNetProfit = desiredGrossProfit;
-    
-    // Binary search to find the selling price
-    let low = buyPrice;
-    let high = buyPrice * 2; // Assuming we won't need a selling price more than double the buy price
-    
-    // Maximum iterations to prevent infinite loop
+    const desiredGrossProfit = entryValue * (profitPercentage / 100);
+
+    // Iteratively find the exit price that gives the desired net profit
+    let exitPrice = entryPrice * (isLong ? (1 + profitPercentage / 100) : (1 - profitPercentage / 100));
+    let exitValue = exitPrice * quantity;
+    let charges = calculateCharges(
+      isLong ? entryValue : exitValue,
+      isLong ? exitValue : entryValue,
+      exchange,
+      selectedBroker,
+      selectedTradeType
+    );
+    let netProfit = isLong
+      ? exitValue - entryValue - charges.totalCharges
+      : entryValue - exitValue - charges.totalCharges;
+    const targetNetProfit = desiredGrossProfit;
+
+    // Binary search to find the exit price
+    let low = isLong ? entryPrice : 0.01;
+    let high = isLong ? entryPrice * 2 : entryPrice;
     const MAX_ITERATIONS = 20;
     let iterations = 0;
-    
+
     while (Math.abs(netProfit - targetNetProfit) > 0.01 && iterations < MAX_ITERATIONS) {
       if (netProfit < targetNetProfit) {
-        low = sellingPrice;
-        sellingPrice = (sellingPrice + high) / 2;
+        if (isLong) low = exitPrice;
+        else high = exitPrice;
+        exitPrice = (exitPrice + high) / 2;
       } else {
-        high = sellingPrice;
-        sellingPrice = (low + sellingPrice) / 2;
+        if (isLong) high = exitPrice;
+        else low = exitPrice;
+        exitPrice = (low + exitPrice) / 2;
       }
-      
-      sellValue = sellingPrice * quantity;
-      charges = calculateCharges(buyValue, sellValue, exchange);
-      netProfit = sellValue - buyValue - charges.totalCharges;
-      
+      exitValue = exitPrice * quantity;
+      charges = calculateCharges(
+        isLong ? entryValue : exitValue,
+        isLong ? exitValue : entryValue,
+        exchange,
+        selectedBroker,
+        selectedTradeType
+      );
+      netProfit = isLong
+        ? exitValue - entryValue - charges.totalCharges
+        : entryValue - exitValue - charges.totalCharges;
       iterations++;
     }
-    
-    // Final calculation with the found selling price
-    sellValue = sellingPrice * quantity;
-    charges = calculateCharges(buyValue, sellValue, exchange);
-    const grossProfit = sellValue - buyValue;
+
+    // Final calculation with the found exit price
+    exitValue = exitPrice * quantity;
+    charges = calculateCharges(
+      isLong ? entryValue : exitValue,
+      isLong ? exitValue : entryValue,
+      exchange,
+      selectedBroker,
+      selectedTradeType
+    );
+    const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
     netProfit = grossProfit - charges.totalCharges;
-    
+
+    // Breakeven price calculation
+    const breakevenPrice = isLong
+      ? entryPrice + (charges.totalCharges / quantity)
+      : entryPrice - (charges.totalCharges / quantity);
+
     setTargetResult({
-      sellingPrice,
+      sellingPrice: exitPrice,
       grossProfit,
       netProfit,
-      charges
+      charges,
+      breakevenPrice
     });
   };
   
@@ -242,37 +174,53 @@ const Tools = () => {
       setProfitResult(null);
       return;
     }
-    
-    const buyPrice = parseFloat(profitBuyPrice);
+
+    const entryPrice = parseFloat(profitBuyPrice);
     const quantity = parseInt(profitQuantity);
-    const sellPrice = parseFloat(profitSellPrice);
-    
-    if (isNaN(buyPrice) || isNaN(quantity) || isNaN(sellPrice) || buyPrice <= 0 || quantity <= 0 || sellPrice <= 0) {
+    const exitPrice = parseFloat(profitSellPrice);
+
+    if (isNaN(entryPrice) || isNaN(quantity) || isNaN(exitPrice) || entryPrice <= 0 || quantity <= 0 || exitPrice <= 0) {
       setProfitResult(null);
       return;
     }
-    
-    // Calculate the total buy and sell values
-    const buyValue = buyPrice * quantity;
-    const sellValue = sellPrice * quantity;
-    
-    // Calculate charges
-    const charges = calculateCharges(buyValue, sellValue, exchange);
-    
+
+    // Determine position type
+    const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
+    const isLong = !isIntradayShort;
+
+    // Calculate the total entry and exit values
+    const entryValue = entryPrice * quantity;
+    const exitValue = exitPrice * quantity;
+
+    // Calculate charges using the utility function
+    const charges = calculateCharges(
+      isLong ? entryValue : exitValue,
+      isLong ? exitValue : entryValue,
+      exchange,
+      selectedBroker,
+      selectedTradeType
+    );
+
     // Calculate profits
-    const grossProfit = sellValue - buyValue;
+    const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
     const netProfit = grossProfit - charges.totalCharges;
-    
+
     // Calculate percentage
-    const profitPercentage = (netProfit / buyValue) * 100;
+    const profitPercentage = (netProfit / entryValue) * 100;
     const isProfit = netProfit >= 0;
-    
+
+    // Breakeven price calculation
+    const breakevenPrice = isLong
+      ? entryPrice + (charges.totalCharges / quantity)
+      : entryPrice - (charges.totalCharges / quantity);
+
     setProfitResult({
       grossProfit,
       netProfit,
       profitPercentage,
       isProfit,
-      charges
+      charges,
+      breakevenPrice
     });
   };
   
@@ -284,7 +232,7 @@ const Tools = () => {
     }
   };
 
-  // Position Sizing Calculation
+  // Position Sizing Calculation - Now using the utility function
   const getRiskValue = () => {
     if (riskMode === 'amount') {
       const amt = parseFloat(riskAmount);
@@ -297,7 +245,7 @@ const Tools = () => {
     }
   };
 
-  // FIXED Position Sizing Calculation with Charges Consideration
+  // FIXED Position Sizing Calculation with Charges Consideration - Using utility function
   const positionSizingResult = (() => {
     const risk = getRiskValue();
     const sl = parseFloat(stopLoss);
@@ -338,8 +286,8 @@ const Tools = () => {
       const buyValue = qty * ep;
       const sellValue = qty * (ep - sl); // Worst case scenario (stop loss hit)
       
-      // Calculate charges for this quantity using existing function
-      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange);
+      // Calculate charges for this quantity using utility function
+      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, selectedBroker, selectedTradeType);
       
       // Total cost includes the stop loss amount plus all charges
       const totalRiskAmount = (qty * sl) + charges.totalCharges;
@@ -358,7 +306,7 @@ const Tools = () => {
       optimalQuantity = 1;
       const buyValue = optimalQuantity * ep;
       const sellValue = optimalQuantity * (ep - sl);
-      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange);
+      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, selectedBroker, selectedTradeType);
       bestNetRisk = (optimalQuantity * sl) + charges.totalCharges;
     }
 
@@ -382,10 +330,10 @@ const Tools = () => {
       capitalUsed = positionValue;
     }
 
-    // Final charges calculation for display
+    // Final charges calculation for display using utility function
     const finalBuyValue = optimalQuantity * ep;
     const finalSellValue = optimalQuantity * (ep - sl);
-    const finalCharges = calculateCharges(finalBuyValue, Math.abs(finalSellValue), exchange);
+    const finalCharges = calculateCharges(finalBuyValue, Math.abs(finalSellValue), exchange, selectedBroker, selectedTradeType);
     const actualRiskWithCharges = (optimalQuantity * sl) + finalCharges.totalCharges;
 
     return {
@@ -456,6 +404,7 @@ const Tools = () => {
           <ProfitTargetCalculator
             selectedBroker={selectedBroker}
             selectedTradeType={selectedTradeType}
+            positionType={positionType}
             targetBuyPrice={targetBuyPrice}
             targetQuantity={targetQuantity}
             targetProfitPercentage={targetProfitPercentage}
@@ -464,6 +413,7 @@ const Tools = () => {
               if (field === 'targetBuyPrice') setTargetBuyPrice(value);
               else if (field === 'targetQuantity') setTargetQuantity(value);
               else if (field === 'targetProfitPercentage') setTargetProfitPercentage(value);
+              else if (field === 'positionType') setPositionType(value as 'long' | 'short');
             }}
             onCalculate={calculateTargetSellingPrice}
             exchange={exchange}
@@ -471,6 +421,7 @@ const Tools = () => {
           <NetPLCalculator
             selectedBroker={selectedBroker}
             selectedTradeType={selectedTradeType}
+            positionType={positionType}
             profitBuyPrice={profitBuyPrice}
             profitQuantity={profitQuantity}
             profitSellPrice={profitSellPrice}
@@ -479,6 +430,7 @@ const Tools = () => {
               if (field === 'profitBuyPrice') setProfitBuyPrice(value);
               else if (field === 'profitQuantity') setProfitQuantity(value);
               else if (field === 'profitSellPrice') setProfitSellPrice(value);
+              else if (field === 'positionType') setPositionType(value as 'long' | 'short');
             }}
             onCalculate={calculateNetProfit}
             exchange={exchange}

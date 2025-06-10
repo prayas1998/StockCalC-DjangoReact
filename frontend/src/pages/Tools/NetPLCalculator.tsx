@@ -5,10 +5,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Calculator } from "lucide-react";
 import { formatCurrency, Charges } from "./ChargesUtils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 interface NetPLCalculatorProps {
   selectedBroker: 'Dhan' | 'Groww';
   selectedTradeType: 'equity-delivery' | 'equity-intraday';
+  positionType: 'long' | 'short';
   profitBuyPrice: string;
   profitQuantity: string;
   profitSellPrice: string;
@@ -18,6 +21,7 @@ interface NetPLCalculatorProps {
     profitPercentage: number;
     isProfit: boolean;
     charges: Charges;
+    breakevenPrice?: number;
   } | null;
   onChange: (field: string, value: string) => void;
   onCalculate: () => void;
@@ -27,6 +31,7 @@ interface NetPLCalculatorProps {
 const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
   selectedBroker,
   selectedTradeType,
+  positionType,
   profitBuyPrice,
   profitQuantity,
   profitSellPrice,
@@ -42,8 +47,22 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
         <h2 className="text-xl font-semibold">Net P&L Calculator</h2>
       </div>
       <p className="text-muted-foreground mb-6">
-        Calculate your net profit or loss after all charges based on your buy and sell prices.
+        Calculate your net profit or loss after all charges based on your entry and exit prices.
       </p>
+      {selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && (
+        <div className="mb-4 flex items-center gap-2">
+          <Label className="mb-0">Position:</Label>
+          <Select value={positionType} onValueChange={val => onChange('positionType', val)}>
+            <SelectTrigger className="w-36 h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="long">Long Position</SelectItem>
+              <SelectItem value="short">Short Position</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="space-y-4">
         <div>
           <Label htmlFor="profitQuantity">Quantity</Label>
@@ -57,22 +76,22 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
           />
         </div>
         <div>
-          <Label htmlFor="profitBuyPrice">Buy Price Per Share</Label>
+          <Label htmlFor="profitBuyPrice">Entry Price Per Share</Label>
           <Input
             id="profitBuyPrice"
             type="text"
-            placeholder="Enter buy price"
+            placeholder="Enter entry price"
             value={profitBuyPrice}
             onChange={e => onChange('profitBuyPrice', e.target.value)}
             className="mt-1"
           />
         </div>
         <div>
-          <Label htmlFor="sellPrice">Sell Price Per Share</Label>
+          <Label htmlFor="sellPrice">Exit Price Per Share</Label>
           <Input
             id="sellPrice"
             type="text"
-            placeholder="Enter sell price"
+            placeholder="Enter exit price"
             value={profitSellPrice}
             onChange={e => onChange('profitSellPrice', e.target.value)}
             className="mt-1"
@@ -100,12 +119,19 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
               <span>Total Charges:</span>
               <span className="font-medium">{formatCurrency(profitResult.charges.totalCharges)}</span>
             </div>
-            <div className="flex justify-between text-primary font-semibold">
+            <div className="flex justify-between font-semibold" style={{ color: positionType === 'long' ? '#16a34a' : '#dc2626' }}>
               <span>Net {profitResult.isProfit ? "Profit" : "Loss"}:</span>
               <span className={profitResult.isProfit ? "text-primary" : "text-destructive"}>
                 {formatCurrency(Math.abs(profitResult.netProfit))} ({profitResult.profitPercentage.toFixed(2)}%)
               </span>
             </div>
+            {/* Breakeven Price Display */}
+            {typeof profitResult.breakevenPrice === 'number' && (
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>Breakeven Exit Price:</span>
+                <span>{formatCurrency(profitResult.breakevenPrice)}</span>
+              </div>
+            )}
             <div className="pt-2 mt-2 border-t">
               <div className="text-sm font-medium mb-1">Charges Breakdown</div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">

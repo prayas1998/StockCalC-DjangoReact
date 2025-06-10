@@ -5,10 +5,13 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Calculator } from "lucide-react";
 import { formatCurrency, Charges } from "./ChargesUtils";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 interface ProfitTargetCalculatorProps {
   selectedBroker: 'Dhan' | 'Groww';
   selectedTradeType: 'equity-delivery' | 'equity-intraday';
+  positionType: 'long' | 'short';
   targetBuyPrice: string;
   targetQuantity: string;
   targetProfitPercentage: string;
@@ -17,6 +20,7 @@ interface ProfitTargetCalculatorProps {
     grossProfit: number;
     netProfit: number;
     charges: Charges;
+    breakevenPrice?: number;
   } | null;
   onChange: (field: string, value: string) => void;
   onCalculate: () => void;
@@ -26,6 +30,7 @@ interface ProfitTargetCalculatorProps {
 const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
   selectedBroker,
   selectedTradeType,
+  positionType,
   targetBuyPrice,
   targetQuantity,
   targetProfitPercentage,
@@ -41,8 +46,22 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
         <h2 className="text-xl font-semibold">Profit Target Calculator</h2>
       </div>
       <p className="text-muted-foreground mb-6">
-        Calculate the required selling price to achieve your target profit percentage after all charges.
+        Calculate the required exit price to achieve your target profit percentage after all charges.
       </p>
+      {selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && (
+        <div className="mb-4 flex items-center gap-2">
+          <Label className="mb-0">Position:</Label>
+          <Select value={positionType} onValueChange={val => onChange('positionType', val)}>
+            <SelectTrigger className="w-36 h-8 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="long">Long Position</SelectItem>
+              <SelectItem value="short">Short Position</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
       <div className="space-y-4">
         <div>
           <Label htmlFor="quantity">Quantity</Label>
@@ -56,11 +75,11 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
           />
         </div>
         <div>
-          <Label htmlFor="buyPrice">Buy Price Per Share</Label>
+          <Label htmlFor="buyPrice">Entry Price Per Share</Label>
           <Input
             id="buyPrice"
             type="text"
-            placeholder="Enter buy price"
+            placeholder="Enter entry price"
             value={targetBuyPrice}
             onChange={e => onChange('targetBuyPrice', e.target.value)}
             className="mt-1"
@@ -89,7 +108,7 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
           <h3 className="font-semibold text-lg mb-2">Results</h3>
           <div className="space-y-2">
             <div className="flex justify-between text-primary font-semibold">
-              <span>Required Selling Price:</span>
+              <span>Required Exit Price:</span>
               <span>{formatCurrency(targetResult.sellingPrice)}</span>
             </div>
             <div className="flex justify-between">
@@ -100,10 +119,16 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
               <span>Total Charges:</span>
               <span className="font-medium">{formatCurrency(targetResult.charges.totalCharges)}</span>
             </div>
-            <div className="flex justify-between text-primary font-semibold">
+            <div className="flex justify-between font-semibold" style={{ color: positionType === 'long' ? '#16a34a' : '#dc2626' }}>
               <span>Net Profit:</span>
               <span>{formatCurrency(targetResult.netProfit)}</span>
             </div>
+            {typeof targetResult.breakevenPrice === 'number' && (
+              <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                <span>Breakeven Exit Price:</span>
+                <span>{formatCurrency(targetResult.breakevenPrice)}</span>
+              </div>
+            )}
             <div className="pt-2 mt-2 border-t">
               <div className="text-sm font-medium mb-1">Charges Breakdown</div>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
