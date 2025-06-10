@@ -73,13 +73,6 @@ const ProfileDropdown = () => {
             <Receipt className="h-4 w-4" />
             Transactions
           </DropdownMenuItem>
-          <DropdownMenuItem 
-            className="cursor-pointer flex items-center gap-2"
-            onClick={() => navigate("/journal")}
-          >
-            <BookOpen className="h-4 w-4" />
-            Journal
-          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem 
             className="cursor-pointer text-destructive focus:text-destructive flex items-center gap-2"

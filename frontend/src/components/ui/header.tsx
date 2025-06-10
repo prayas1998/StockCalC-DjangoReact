@@ -11,10 +11,12 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useToast } from "@/components/ui/use-toast";
 
 const Header = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { toast } = useToast();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== "undefined") {
@@ -66,17 +68,26 @@ const Header = () => {
           >
             Tools
           </Button>
-          
-          {user && (
-            <Button
-              variant="ghost"
-              onClick={() => navigate("/journal")}
-              className="flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300"
-            >
-              <BookOpen className="h-5 w-5" />
-              Journal
-            </Button>
-          )}
+
+          <Button
+            variant="ghost"
+            onClick={() => {
+              if (user) {
+                navigate("/journal");
+              } else {
+                setAuthDialogOpen(true);
+                toast({
+                  title: "Login Required",
+                  description: "You need to be logged in to add/view journals.",
+                  variant: "default"
+                });
+              }
+            }}
+            className="flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300"
+          >
+            <BookOpen className="h-5 w-5" />
+            Journal
+          </Button>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

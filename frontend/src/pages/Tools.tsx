@@ -21,11 +21,6 @@ import NetPLCalculator from "./Tools/NetPLCalculator";
 
 const Tools = () => {
   const navigate = useNavigate();
-  const [darkMode, setDarkMode] = useState(() => {
-    // Default dark mode for artifact
-    return true;
-  });
-  
   const [platform, setPlatform] = useState("Groww");
 
   // Profit Target Calculator states
@@ -67,14 +62,6 @@ const Tools = () => {
   const [entryPrice, setEntryPrice] = useState("");
   const [positionTradeType, setPositionTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
   const LEVERAGE = 5;
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [darkMode]);
 
   const handlePlatformChange = (newPlatform: string) => {
     setPlatform(newPlatform);
