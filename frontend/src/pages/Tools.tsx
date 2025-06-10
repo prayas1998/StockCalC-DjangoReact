@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/card";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import Header from "@/components/ui/header";
 import { Switch } from "@/components/ui/switch";
-import { calculateCharges, getDpCharge, formatCurrency, Charges } from "./Tools/ChargesUtils";
+import { calculateCharges, getDpCharge, formatCurrency, Charges, calculateBreakevenPrice } from "./Tools/ChargesUtils";
 import PositionSizingCalculator from "./Tools/PositionSizingCalculator";
 import ProfitTargetCalculator from "./Tools/ProfitTargetCalculator";
 import NetPLCalculator from "./Tools/NetPLCalculator";
@@ -74,16 +74,59 @@ const Tools = () => {
 
   // Calculate target selling price (now: target exit price)
   const calculateTargetSellingPrice = () => {
-    if (!targetBuyPrice || !targetQuantity || !targetProfitPercentage) {
+    if (!targetBuyPrice || !targetQuantity) {
       setTargetResult(null);
       return;
     }
 
     const entryPrice = parseFloat(targetBuyPrice);
     const quantity = parseInt(targetQuantity);
+
+    if (isNaN(entryPrice) || isNaN(quantity) || entryPrice <= 0 || quantity <= 0) {
+      setTargetResult(null);
+      return;
+    }
+
+    // Always calculate breakeven price independently
+    const breakevenPrice = calculateBreakevenPrice(
+      quantity,
+      entryPrice,
+      exchange,
+      selectedBroker,
+      selectedTradeType,
+      positionType
+    );
+
+    // If profit percentage is not provided, show breakeven calculation only
+    if (!targetProfitPercentage) {
+      // Calculate charges at breakeven price for display
+      const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
+      const isLong = !isIntradayShort;
+      const entryValue = entryPrice * quantity;
+      const exitValue = breakevenPrice * quantity;
+      const charges = calculateCharges(
+        isLong ? entryValue : exitValue,
+        isLong ? exitValue : entryValue,
+        exchange,
+        selectedBroker,
+        selectedTradeType
+      );
+      setTargetResult({
+        sellingPrice: breakevenPrice,
+        grossProfit: 0,
+        netProfit: 0,
+        charges,
+        breakevenPrice
+      });
+      return;
+    }
+
+    // Avoid redeclaration: use different variable names for inner scope
+    const entryPrice2 = parseFloat(targetBuyPrice);
+    const quantity2 = parseInt(targetQuantity);
     const profitPercentage = parseFloat(targetProfitPercentage);
 
-    if (isNaN(entryPrice) || isNaN(quantity) || isNaN(profitPercentage) || entryPrice <= 0 || quantity <= 0 || profitPercentage <= 0) {
+    if (isNaN(entryPrice2) || isNaN(quantity2) || isNaN(profitPercentage) || entryPrice2 <= 0 || quantity2 <= 0 || profitPercentage <= 0) {
       setTargetResult(null);
       return;
     }
@@ -93,13 +136,13 @@ const Tools = () => {
     const isLong = !isIntradayShort;
 
     // Calculate the total entry value
-    const entryValue = entryPrice * quantity;
+    const entryValue = entryPrice2 * quantity2;
     // Target gross profit amount
     const desiredGrossProfit = entryValue * (profitPercentage / 100);
 
     // Iteratively find the exit price that gives the desired net profit
-    let exitPrice = entryPrice * (isLong ? (1 + profitPercentage / 100) : (1 - profitPercentage / 100));
-    let exitValue = exitPrice * quantity;
+    let exitPrice = entryPrice2 * (isLong ? (1 + profitPercentage / 100) : (1 - profitPercentage / 100));
+    let exitValue = exitPrice * quantity2;
     let charges = calculateCharges(
       isLong ? entryValue : exitValue,
       isLong ? exitValue : entryValue,
@@ -113,8 +156,8 @@ const Tools = () => {
     const targetNetProfit = desiredGrossProfit;
 
     // Binary search to find the exit price
-    let low = isLong ? entryPrice : 0.01;
-    let high = isLong ? entryPrice * 2 : entryPrice;
+    let low = isLong ? entryPrice2 : 0.01;
+    let high = isLong ? entryPrice2 * 2 : entryPrice2;
     const MAX_ITERATIONS = 20;
     let iterations = 0;
 
@@ -128,7 +171,7 @@ const Tools = () => {
         else low = exitPrice;
         exitPrice = (low + exitPrice) / 2;
       }
-      exitValue = exitPrice * quantity;
+      exitValue = exitPrice * quantity2;
       charges = calculateCharges(
         isLong ? entryValue : exitValue,
         isLong ? exitValue : entryValue,
@@ -143,7 +186,7 @@ const Tools = () => {
     }
 
     // Final calculation with the found exit price
-    exitValue = exitPrice * quantity;
+    exitValue = exitPrice * quantity2;
     charges = calculateCharges(
       isLong ? entryValue : exitValue,
       isLong ? exitValue : entryValue,
@@ -153,11 +196,6 @@ const Tools = () => {
     );
     const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
     netProfit = grossProfit - charges.totalCharges;
-
-    // Breakeven price calculation
-    const breakevenPrice = isLong
-      ? entryPrice + (charges.totalCharges / quantity)
-      : entryPrice - (charges.totalCharges / quantity);
 
     setTargetResult({
       sellingPrice: exitPrice,
@@ -170,16 +208,58 @@ const Tools = () => {
 
   // Calculate net profit
   const calculateNetProfit = () => {
-    if (!profitBuyPrice || !profitQuantity || !profitSellPrice) {
+    if (!profitBuyPrice || !profitQuantity) {
       setProfitResult(null);
       return;
     }
 
-    const entryPrice = parseFloat(profitBuyPrice);
-    const quantity = parseInt(profitQuantity);
+    const entryPrice3 = parseFloat(profitBuyPrice);
+    const quantity3 = parseInt(profitQuantity);
+
+    if (isNaN(entryPrice3) || isNaN(quantity3) || entryPrice3 <= 0 || quantity3 <= 0) {
+      setProfitResult(null);
+      return;
+    }
+
+    // Always calculate breakeven price independently
+    const breakevenPrice = calculateBreakevenPrice(
+      quantity3,
+      entryPrice3,
+      exchange,
+      selectedBroker,
+      selectedTradeType,
+      positionType
+    );
+
+    // If exit price is not provided, show breakeven calculation only
+    if (!profitSellPrice) {
+      const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
+      const isLong = !isIntradayShort;
+      const entryValue = entryPrice3 * quantity3;
+      const exitValue = breakevenPrice * quantity3;
+      const charges = calculateCharges(
+        isLong ? entryValue : exitValue,
+        isLong ? exitValue : entryValue,
+        exchange,
+        selectedBroker,
+        selectedTradeType
+      );
+      setProfitResult({
+        grossProfit: 0,
+        netProfit: 0,
+        profitPercentage: 0,
+        isProfit: true,
+        charges,
+        breakevenPrice
+      });
+      return;
+    }
+
+    const entryPrice4 = parseFloat(profitBuyPrice);
+    const quantity4 = parseInt(profitQuantity);
     const exitPrice = parseFloat(profitSellPrice);
 
-    if (isNaN(entryPrice) || isNaN(quantity) || isNaN(exitPrice) || entryPrice <= 0 || quantity <= 0 || exitPrice <= 0) {
+    if (isNaN(entryPrice4) || isNaN(quantity4) || isNaN(exitPrice) || entryPrice4 <= 0 || quantity4 <= 0 || exitPrice <= 0) {
       setProfitResult(null);
       return;
     }
@@ -189,8 +269,8 @@ const Tools = () => {
     const isLong = !isIntradayShort;
 
     // Calculate the total entry and exit values
-    const entryValue = entryPrice * quantity;
-    const exitValue = exitPrice * quantity;
+    const entryValue = entryPrice4 * quantity4;
+    const exitValue = exitPrice * quantity4;
 
     // Calculate charges using the utility function
     const charges = calculateCharges(
@@ -208,11 +288,6 @@ const Tools = () => {
     // Calculate percentage
     const profitPercentage = (netProfit / entryValue) * 100;
     const isProfit = netProfit >= 0;
-
-    // Breakeven price calculation
-    const breakevenPrice = isLong
-      ? entryPrice + (charges.totalCharges / quantity)
-      : entryPrice - (charges.totalCharges / quantity);
 
     setProfitResult({
       grossProfit,

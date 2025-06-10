@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Calculator, AlertTriangle, CheckCircle } from "lucide-react";
+import { calculateBreakevenPrice } from "./ChargesUtils";
 
 // Utility functions for charges and currency formatting
 export type Charges = {
@@ -314,8 +315,17 @@ const PositionSizingCalculator: React.FC<PositionSizingCalculatorProps> = ({
     }
 
     // Calculate breakeven prices for both long and short positions
-    const breakevenPriceLong = ep + (bestResult.charges.totalCharges / optimalQuantity);
-    const breakevenPriceShort = ep - (bestResult.charges.totalCharges / optimalQuantity);
+    let breakevenPriceLong = 0;
+    let breakevenPriceShort = 0;
+    if (optimalQuantity > 0 && !isNaN(ep) && ep > 0) {
+      breakevenPriceLong = calculateBreakevenPrice(optimalQuantity, ep, exchange, selectedBroker, positionTradeType, 'long');
+      // Only calculate short breakeven for intraday
+      if (positionTradeType === 'equity-intraday') {
+        breakevenPriceShort = calculateBreakevenPrice(optimalQuantity, ep, exchange, selectedBroker, positionTradeType, 'short');
+      } else {
+        breakevenPriceShort = 0;
+      }
+    }
     
     // Risk utilization percentage
     const riskUtilization = (bestResult.totalRisk / risk) * 100;
@@ -506,10 +516,12 @@ const PositionSizingCalculator: React.FC<PositionSizingCalculatorProps> = ({
                   <span>Breakeven (Long):</span>
                   <span className="font-medium">₹{positionSizingResult.breakevenPriceLong.toFixed(2)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Breakeven (Short):</span>
-                  <span className="font-medium">₹{positionSizingResult.breakevenPriceShort.toFixed(2)}</span>
-                </div>
+                {positionTradeType === 'equity-intraday' && (
+                  <div className="flex justify-between">
+                    <span>Breakeven (Short):</span>
+                    <span className="font-medium">₹{positionSizingResult.breakevenPriceShort.toFixed(2)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span>Risk Utilization:</span>
                   <span className="font-medium">{positionSizingResult.riskUtilization.toFixed(1)}%</span>

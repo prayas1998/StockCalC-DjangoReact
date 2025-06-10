@@ -112,4 +112,154 @@ export const calculateCharges = (
     totalCharges,
     dpCharges,
   };
-}; 
+};
+
+// New function to calculate breakeven price independently
+/**
+ * Calculates the breakeven exit price for a trade such that net profit is zero or slightly positive.
+ * For long: the minimum sell price to avoid loss.
+ * For short: the maximum buy-back price to avoid loss.
+ */
+export const calculateBreakevenPrice = (
+  quantity: number,
+  entryPrice: number,
+  exchange: string,
+  broker: 'Dhan' | 'Groww',
+  tradeType: 'equity-delivery' | 'equity-intraday',
+  positionType: 'long' | 'short' = 'long'
+): number => {
+  if (quantity <= 0 || entryPrice <= 0) return 0;
+
+  const buyValue = quantity * entryPrice;
+
+  // Set search range based on position type
+  let low: number, high: number;
+  if (positionType === 'long') {
+    low = entryPrice;
+    high = entryPrice * 3;
+  } else {
+    low = 0.01;
+    high = entryPrice;
+  }
+
+  let breakevenPrice = entryPrice;
+  let bestPrice = entryPrice;
+  let bestNetProfit = -Infinity;
+
+  // Binary search to find exact breakeven price
+  for (let i = 0; i < 200; i++) {
+    const testPrice = (low + high) / 2;
+    const sellValue = quantity * testPrice;
+    const charges = calculateCharges(buyValue, sellValue, exchange, broker, tradeType);
+
+    let grossProfit: number;
+    if (positionType === 'long') {
+      grossProfit = sellValue - buyValue;
+    } else {
+      grossProfit = buyValue - sellValue;
+    }
+    const netProfit = grossProfit - charges.totalCharges;
+
+    // Track the best price that gives us net profit >= 0
+    if (netProfit >= 0 && (bestNetProfit < 0 || netProfit < bestNetProfit)) {
+      bestPrice = testPrice;
+      bestNetProfit = netProfit;
+    }
+
+    // If we're very close to zero or slightly positive, we found our answer
+    if (netProfit >= 0 && netProfit < 0.5) {
+      breakevenPrice = testPrice;
+      break;
+    }
+
+    if (positionType === 'long') {
+      if (netProfit < 0) {
+        low = testPrice;
+      } else {
+        high = testPrice;
+      }
+    } else {
+      if (netProfit < 0) {
+        high = testPrice;
+      } else {
+        low = testPrice;
+      }
+    }
+    breakevenPrice = testPrice;
+  }
+
+  // If we found a better price during search, use that
+  if (bestNetProfit >= 0) {
+    breakevenPrice = bestPrice;
+  }
+
+  // Final verification - round up to nearest paisa if needed to ensure no loss
+  const finalSellValue = quantity * breakevenPrice;
+  const finalCharges = calculateCharges(buyValue, finalSellValue, exchange, broker, tradeType);
+  const finalGrossProfit = positionType === 'long' ? finalSellValue - buyValue : buyValue - finalSellValue;
+  const finalNetProfit = finalGrossProfit - finalCharges.totalCharges;
+
+  // If there's still a small loss, add 1 paisa and check again
+  if (finalNetProfit < 0) {
+    if (positionType === 'long') {
+      breakevenPrice += 0.01;
+    } else {
+      breakevenPrice -= 0.01;
+      if (breakevenPrice < 0) breakevenPrice = 0.01;
+    }
+  }
+
+  return parseFloat(breakevenPrice.toFixed(2));
+};
+
+// Enhanced function for profit target calculation
+export const calculateProfitTarget = (
+  quantity: number,
+  entryPrice: number,
+  targetProfitPercentage: number,
+  exchange: string,
+  broker: 'Dhan' | 'Groww',
+  tradeType: 'equity-delivery' | 'equity-intraday',
+  positionType: 'long' | 'short' = 'long'
+): number => {
+  if (quantity <= 0 || entryPrice <= 0 || targetProfitPercentage <= 0) return 0;
+
+  const buyValue = quantity * entryPrice;
+  const targetNetProfit = buyValue * (targetProfitPercentage / 100);
+  
+  // Binary search to find the required exit price
+  let low = 0;
+  let high = entryPrice * 10;
+  let targetPrice = entryPrice;
+  
+  for (let i = 0; i < 100; i++) {
+    const testPrice = (low + high) / 2;
+    const sellValue = quantity * testPrice;
+    
+    const charges = calculateCharges(buyValue, sellValue, exchange, broker, tradeType);
+    
+    let grossProfit: number;
+    if (positionType === 'long') {
+      grossProfit = sellValue - buyValue;
+    } else {
+      grossProfit = buyValue - sellValue;
+    }
+    
+    const netProfit = grossProfit - charges.totalCharges;
+    
+    if (Math.abs(netProfit - targetNetProfit) < 0.01) {
+      targetPrice = testPrice;
+      break;
+    }
+    
+    if (netProfit < targetNetProfit) {
+      low = testPrice;
+    } else {
+      high = testPrice;
+    }
+    
+    targetPrice = testPrice;
+  }
+  
+  return parseFloat(targetPrice.toFixed(2));
+};

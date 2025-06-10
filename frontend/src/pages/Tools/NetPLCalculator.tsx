@@ -1,11 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Calculator } from "lucide-react";
 import { formatCurrency, Charges } from "./ChargesUtils";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 interface NetPLCalculatorProps {
@@ -40,6 +38,11 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
   onCalculate,
   exchange
 }) => {
+  // Real-time calculation effect
+  useEffect(() => {
+    onCalculate();
+  }, [profitBuyPrice, profitQuantity, profitSellPrice, selectedBroker, selectedTradeType, positionType, onCalculate]);
+
   return (
     <Card className="p-6 bg-card shadow-sm" aria-disabled={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww'} style={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
       <div className="flex items-center gap-2 mb-4">
@@ -97,15 +100,6 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
             className="mt-1"
           />
         </div>
-        <Button 
-          onClick={onCalculate}
-          className="w-full mt-2"
-          variant={profitSellPrice && profitBuyPrice && parseFloat(profitSellPrice) < parseFloat(profitBuyPrice) ? "destructive" : "default"}
-        >
-          {profitSellPrice && profitBuyPrice && parseFloat(profitSellPrice) < parseFloat(profitBuyPrice) 
-            ? "Calculate Net Loss" 
-            : "Calculate Net Profit"}
-        </Button>
       </div>
       {profitResult && (
         <div className="mt-6 p-4 border rounded-md bg-secondary/20">
@@ -119,7 +113,7 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
               <span>Total Charges:</span>
               <span className="font-medium">{formatCurrency(profitResult.charges.totalCharges)}</span>
             </div>
-            <div className="flex justify-between font-semibold" style={{ color: positionType === 'long' ? '#16a34a' : '#dc2626' }}>
+            <div className="flex justify-between font-semibold" style={{ color: profitResult.isProfit ? '#16a34a' : '#dc2626' }}>
               <span>Net {profitResult.isProfit ? "Profit" : "Loss"}:</span>
               <span className={profitResult.isProfit ? "text-primary" : "text-destructive"}>
                 {formatCurrency(Math.abs(profitResult.netProfit))} ({profitResult.profitPercentage.toFixed(2)}%)
@@ -174,4 +168,4 @@ const NetPLCalculator: React.FC<NetPLCalculatorProps> = ({
   );
 };
 
-export default NetPLCalculator; 
+export default NetPLCalculator;

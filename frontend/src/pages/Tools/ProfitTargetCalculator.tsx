@@ -1,11 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Calculator } from "lucide-react";
 import { formatCurrency, Charges } from "./ChargesUtils";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@/components/ui/select";
 
 interface ProfitTargetCalculatorProps {
@@ -39,6 +37,11 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
   onCalculate,
   exchange
 }) => {
+  // Real-time calculation effect
+  useEffect(() => {
+    onCalculate();
+  }, [targetBuyPrice, targetQuantity, targetProfitPercentage, selectedBroker, selectedTradeType, positionType, onCalculate]);
+
   return (
     <Card className="p-6 bg-card shadow-sm" aria-disabled={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww'} style={selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' ? { opacity: 0.5, pointerEvents: 'none' } : {}}>
       <div className="flex items-center gap-2 mb-4">
@@ -96,12 +99,6 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
             className="mt-1"
           />
         </div>
-        <Button 
-          onClick={onCalculate}
-          className="w-full mt-2"
-        >
-          Calculate Target Price
-        </Button>
       </div>
       {targetResult && (
         <div className="mt-6 p-4 border rounded-md bg-secondary/20">
@@ -119,7 +116,7 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
               <span>Total Charges:</span>
               <span className="font-medium">{formatCurrency(targetResult.charges.totalCharges)}</span>
             </div>
-            <div className="flex justify-between font-semibold" style={{ color: positionType === 'long' ? '#16a34a' : '#dc2626' }}>
+            <div className="flex justify-between font-semibold" style={{ color: targetResult.netProfit > 0 ? '#16a34a' : '#dc2626' }}>
               <span>Net Profit:</span>
               <span>{formatCurrency(targetResult.netProfit)}</span>
             </div>
@@ -171,4 +168,4 @@ const ProfitTargetCalculator: React.FC<ProfitTargetCalculatorProps> = ({
   );
 };
 
-export default ProfitTargetCalculator; 
+export default ProfitTargetCalculator;
