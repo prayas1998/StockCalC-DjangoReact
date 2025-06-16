@@ -206,8 +206,14 @@ export function TradeForm({
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-8">
+        {/* Basic Trade Information Section */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+            <h3 className="text-lg font-semibold text-foreground">Basic Information</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {/* Company Name */}
           <FormField
             control={form.control}
@@ -289,7 +295,16 @@ export function TradeForm({
               </FormItem>
             )}
           />
+          </div>
+        </div>
 
+        {/* Price Information Section */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+            <h3 className="text-lg font-semibold text-foreground">Price Details</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {/* Entry Price */}
           <FormField
             control={form.control}
@@ -345,7 +360,7 @@ export function TradeForm({
             name="sl"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>SL (Optional)</FormLabel>
+                <FormLabel>Stop Loss (Optional)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -386,6 +401,16 @@ export function TradeForm({
               </FormItem>
             )}
           />
+          </div>
+        </div>
+
+        {/* Date Information Section */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+            <h3 className="text-lg font-semibold text-foreground">Trade Dates</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
           {/* Entry Date - Enhanced */}
           <FormField
@@ -542,145 +567,178 @@ export function TradeForm({
               );
             }}
           />
+          </div>
         </div>
 
-        {/* Trade Status */}
-        <FormField
-          control={form.control}
-          name="status"
-          render={({ field }) => (
-            <FormItem className="space-y-3">
-              <FormLabel>Trade Status</FormLabel>
-              <FormControl>
-                <RadioGroup
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                  className="flex flex-col space-y-1"
-                >
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {Object.values(TradeStatus).map((status) => (
-                      <FormItem key={status} className="flex items-center space-x-3 space-y-0">
-                        <FormControl>
-                          <RadioGroupItem value={status} />
-                        </FormControl>
-                        <FormLabel className="font-normal">
-                          {status.replace("_", " ")}
-                        </FormLabel>
-                      </FormItem>
-                    ))}
-                  </div>
-                </RadioGroup>
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Personal Notes */}
-        <FormField
-          control={form.control}
-          name="personal_notes"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Notes (Optional)</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder="Add any personal notes about this trade..."
-                  className="resize-none min-h-[100px]"
-                  {...field}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        {/* Tags */}
-        {availableTags.length > 0 && (
+        {/* Trade Status Section */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+            <h3 className="text-lg font-semibold text-foreground">Trade Status</h3>
+          </div>
           <FormField
             control={form.control}
-            name="tags"
+            name="status"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Tags (Optional)</FormLabel>
-                <FormDescription>
-                  Select tags to categorize your trade
-                </FormDescription>
-                
-                {/* Tag Selection Dropdown */}
-                {getAvailableTagsForSelection().length > 0 && (
-                  <Select
-                    onValueChange={handleTagSelect}
-                    value=""
+              <FormItem className="space-y-4">
+                <FormLabel className="text-base">Current Status</FormLabel>
+                <FormControl>
+                  <RadioGroup
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                    className="flex flex-col space-y-2"
                   >
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select tags to add" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {getAvailableTagsForSelection().map((tag) => (
-                        <SelectItem key={tag.id} value={tag.id.toString()}>
-                          <div className="flex items-center gap-2">
-                            <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
-                            {tag.name}
-                          </div>
-                        </SelectItem>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {Object.values(TradeStatus).map((status) => (
+                        <FormItem key={status} className="flex items-center space-x-3 space-y-0 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                          <FormControl>
+                            <RadioGroupItem value={status} />
+                          </FormControl>
+                          <FormLabel className="font-normal cursor-pointer flex-1">
+                            {status.replace("_", " ")}
+                          </FormLabel>
+                        </FormItem>
                       ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                
-                {/* Selected Tags Display */}
-                {selectedTags.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    {selectedTags.map((tagId) => {
-                      const tag = availableTags.find((t) => t.id === tagId);
-                      if (!tag) return null;
-                      return (
-                        <Badge
-                          key={tag.id}
-                          variant="secondary"
-                          className="flex items-center gap-1 px-2 py-1"
-                          style={{ 
-                            backgroundColor: tag.color + '20',
-                            borderColor: tag.color,
-                            color: tag.color
-                          }}
-                        >
-                          <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
-                          {tag.name}
-                          <button
-                            type="button"
-                            onClick={() => handleTagRemove(tag.id)}
-                            className="ml-1 hover:text-destructive"
-                          >
-                            <X className="h-3 w-3" />
-                          </button>
-                        </Badge>
-                      );
-                    })}
-                  </div>
-                )}
-                
+                    </div>
+                  </RadioGroup>
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
           />
-        )}
+        </div>
 
-        <div className="flex justify-end space-x-4 pt-4">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "Saving..." : initialData ? "Update Trade" : "Add Trade"}
-          </Button>
+        {/* Additional Information Section */}
+        <div className="space-y-6">
+          <div className="flex items-center gap-2 pb-2 border-b">
+            <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
+            <h3 className="text-lg font-semibold text-foreground">Additional Information</h3>
+          </div>
+          
+          {/* Personal Notes */}
+          <FormField
+            control={form.control}
+            name="personal_notes"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-base">Notes (Optional)</FormLabel>
+                <FormControl>
+                  <Textarea
+                    placeholder="Add any personal notes about this trade, strategy, market conditions, lessons learned, etc..."
+                    className="resize-none min-h-[120px]"
+                    {...field}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          {/* Tags */}
+          {availableTags.length > 0 && (
+            <FormField
+              control={form.control}
+              name="tags"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-base">Tags (Optional)</FormLabel>
+                  <FormDescription className="text-sm">
+                    Select tags to categorize and organize your trades
+                  </FormDescription>
+                  
+                  {/* Tag Selection Dropdown */}
+                  {getAvailableTagsForSelection().length > 0 && (
+                    <Select
+                      onValueChange={handleTagSelect}
+                      value=""
+                    >
+                      <FormControl>
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select tags to add" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {getAvailableTagsForSelection().map((tag) => (
+                          <SelectItem key={tag.id} value={tag.id.toString()}>
+                            <div className="flex items-center gap-2">
+                              <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
+                              {tag.name}
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  
+                  {/* Selected Tags Display */}
+                  {selectedTags.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mt-3 p-3 bg-muted/30 rounded-lg">
+                      {selectedTags.map((tagId) => {
+                        const tag = availableTags.find((t) => t.id === tagId);
+                        if (!tag) return null;
+                        return (
+                          <Badge
+                            key={tag.id}
+                            variant="secondary"
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm"
+                            style={{ 
+                              backgroundColor: tag.color + '20',
+                              borderColor: tag.color,
+                              color: tag.color
+                            }}
+                          >
+                            <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
+                            {tag.name}
+                            <button
+                              type="button"
+                              onClick={() => handleTagRemove(tag.id)}
+                              className="ml-1 hover:text-destructive transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </Badge>
+                        );
+                      })}
+                    </div>
+                  )}
+                  
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          )}
+        </div>
+
+        {/* Form Actions */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t bg-muted/20 -mx-6 px-6 py-4 mt-8">
+          <div className="text-sm text-muted-foreground">
+            {initialData ? "Make changes and click Update to save" : "Fill in the required fields and click Add Trade"}
+          </div>
+          <div className="flex space-x-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={onCancel}
+              disabled={isSubmitting}
+              className="min-w-[100px]"
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="min-w-[120px] bg-primary hover:bg-primary/90"
+            >
+              {isSubmitting ? (
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                  Saving...
+                </div>
+              ) : (
+                initialData ? "Update Trade" : "Add Trade"
+              )}
+            </Button>
+          </div>
         </div>
       </form>
     </Form>

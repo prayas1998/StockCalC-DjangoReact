@@ -73,15 +73,15 @@ export function TradeFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>
+      <DialogContent className="sm:max-w-[900px] lg:max-w-[1000px] max-h-[95vh] overflow-y-auto">
+        <DialogHeader className="space-y-3 pb-6">
+          <DialogTitle className="text-2xl font-semibold">
             {mode === "add" ? "Add New Trade" : "Edit Trade"}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="text-base text-muted-foreground">
             {mode === "add"
-              ? "Add a new trade to your journal"
-              : "Update the details of your trade"}
+              ? "Fill in the details below to add a new trade to your journal"
+              : "Update the details of your trade below"}
           </DialogDescription>
         </DialogHeader>
 
