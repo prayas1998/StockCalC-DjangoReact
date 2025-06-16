@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
-import { CalendarIcon, Check, ChevronsUpDown, Tag as TagIcon, X } from "lucide-react";
+import { CalendarIcon, Check, ChevronsUpDown, Tag as TagIcon, X, Clock } from "lucide-react";
 import * as z from "zod";
 
 import { cn } from "@/lib/utils";
@@ -49,7 +49,7 @@ const tradeFormSchema = z.object({
 }).refine(
   (data) => (data.entry_price && data.entry_price > 0) || (data.exit_price && data.exit_price > 0),
   {
-    message: "Either Entry Price or Exit Price (or both) must be greater than 0 (₹)",
+    message: "Either Entry Price or Exit Price (or both) must be greater than 0",
     path: ["entry_price"],
   }
 );
@@ -117,6 +117,7 @@ export function TradeForm({
   const targetPrice = form.watch("target_price");
   const entryPrice = form.watch("entry_price");
   const selectedTags = form.watch("tags") || [];
+  const exitDate = form.watch("exit_date");
 
   useEffect(() => {
     if (
@@ -132,6 +133,18 @@ export function TradeForm({
       form.setValue("exit_price", undefined);
     }
   }, [status, stopLoss, targetPrice, entryPrice, form]);
+
+  // Auto-fill exit date when status changes to closed
+  useEffect(() => {
+    const isClosedStatus = status === TradeStatus.CLOSED_TARGET || 
+                          status === TradeStatus.CLOSED_STOPLOSS || 
+                          status === TradeStatus.CLOSED_MANUAL;
+    
+    // Only auto-fill if the trade is being closed and exit date is not already set
+    if (isClosedStatus && !exitDate) {
+      form.setValue("exit_date", new Date());
+    }
+  }, [status, exitDate, form]);
 
   // Handle tag selection
   const handleTagSelect = (tagId: string) => {
@@ -284,7 +297,7 @@ export function TradeForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  Entry Price (₹)
+                  Entry Price
                   <span className="ml-2 text-xs text-muted-foreground">
                     {direction === TradeDirection.LONG ? "(Buy Price)" : "(Sell Price)"}
                   </span>
@@ -304,7 +317,7 @@ export function TradeForm({
             render={({ field }) => (
               <FormItem>
                 <FormLabel>
-                  Exit Price (Optional, ₹)
+                  Exit Price (Optional)
                   <span className="ml-2 text-xs text-muted-foreground">
                     {direction === TradeDirection.LONG ? "(Sell Price)" : "(Buy Price)"}
                   </span>
@@ -332,7 +345,7 @@ export function TradeForm({
             name="sl"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>SL (Optional, ₹)</FormLabel>
+                <FormLabel>SL (Optional)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -356,7 +369,7 @@ export function TradeForm({
             name="target_price"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Target Price (Optional, ₹)</FormLabel>
+                <FormLabel>Target Price (Optional)</FormLabel>
                 <FormControl>
                   <Input 
                     type="number" 
@@ -374,7 +387,7 @@ export function TradeForm({
             )}
           />
 
-          {/* Entry Date */}
+          {/* Entry Date - Enhanced */}
           <FormField
             control={form.control}
             name="entry_date"
@@ -387,20 +400,28 @@ export function TradeForm({
                       <Button
                         variant={"outline"}
                         className={cn(
-                          "w-full pl-3 text-left font-normal",
+                          "w-full pl-3 text-left font-normal justify-between",
                           !field.value && "text-muted-foreground"
                         )}
                       >
-                        {field.value ? (
-                          format(field.value, "PPP")
-                        ) : (
-                          <span>Pick a date</span>
-                        )}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                        <span>
+                          {field.value ? (
+                            format(field.value, "EEE, MMM d, yyyy")
+                          ) : (
+                            "Select entry date"
+                          )}
+                        </span>
+                        <CalendarIcon className="h-4 w-4 opacity-50" />
                       </Button>
                     </FormControl>
                   </PopoverTrigger>
                   <PopoverContent className="w-auto p-0" align="start">
+                    <div className="p-3 border-b">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Clock className="h-4 w-4" />
+                        <span>Select the date you entered this trade</span>
+                      </div>
+                    </div>
                     <Calendar
                       mode="single"
                       selected={field.value}
@@ -409,7 +430,18 @@ export function TradeForm({
                         date > new Date() || date < new Date("1900-01-01")
                       }
                       initialFocus
+                      showOutsideDays={false}
                     />
+                    <div className="p-3 border-t">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => field.onChange(new Date())}
+                        className="w-full"
+                      >
+                        Today
+                      </Button>
+                    </div>
                   </PopoverContent>
                 </Popover>
                 <FormMessage />
@@ -417,47 +449,98 @@ export function TradeForm({
             )}
           />
 
-          {/* Exit Date */}
+          {/* Exit Date - Enhanced */}
           <FormField
             control={form.control}
             name="exit_date"
-            render={({ field }) => (
-              <FormItem className="flex flex-col">
-                <FormLabel>Exit Date (Optional)</FormLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant={"outline"}
-                        className={cn(
-                          "w-full pl-3 text-left font-normal",
-                          !field.value && "text-muted-foreground"
+            render={({ field }) => {
+              const isClosedStatus = status === TradeStatus.CLOSED_TARGET || 
+                                   status === TradeStatus.CLOSED_STOPLOSS || 
+                                   status === TradeStatus.CLOSED_MANUAL;
+              
+              return (
+                <FormItem className="flex flex-col">
+                  <FormLabel>
+                    Exit Date 
+                    {!isClosedStatus && <span className="text-muted-foreground"> (Optional)</span>}
+                    {isClosedStatus && <span className="text-red-500"> *</span>}
+                  </FormLabel>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant={"outline"}
+                          className={cn(
+                            "w-full pl-3 text-left font-normal justify-between",
+                            !field.value && "text-muted-foreground"
+                          )}
+                        >
+                          <span>
+                            {field.value ? (
+                              format(field.value, "EEE, MMM d, yyyy")
+                            ) : isClosedStatus ? (
+                              "Select exit date"
+                            ) : (
+                              "No exit date (trade open)"
+                            )}
+                          </span>
+                          <CalendarIcon className="h-4 w-4 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <div className="p-3 border-b">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Clock className="h-4 w-4" />
+                          <span>
+                            {isClosedStatus 
+                              ? "When did you close this trade?" 
+                              : "When will you exit this trade? (optional)"
+                            }
+                          </span>
+                        </div>
+                      </div>
+                      <Calendar
+                        mode="single"
+                        selected={field.value}
+                        onSelect={field.onChange}
+                        disabled={(date) =>
+                          date > new Date() || date < new Date("1900-01-01")
+                        }
+                        initialFocus
+                        showOutsideDays={false}
+                      />
+                      <div className="p-3 border-t space-y-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => field.onChange(new Date())}
+                          className="w-full"
+                        >
+                          Today
+                        </Button>
+                        {!isClosedStatus && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => field.onChange(undefined)}
+                            className="w-full"
+                          >
+                            Clear Date
+                          </Button>
                         )}
-                      >
-                        {field.value ? (
-                          format(field.value, "PPP")
-                        ) : (
-                          <span>Pick a date</span>
-                        )}
-                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={field.onChange}
-                      disabled={(date) =>
-                        date > new Date() || date < new Date("1900-01-01")
-                      }
-                      initialFocus
-                    />
-                  </PopoverContent>
-                </Popover>
-                <FormMessage />
-              </FormItem>
-            )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  {isClosedStatus && (
+                    <FormDescription className="text-xs">
+                      Exit date is required for closed trades
+                    </FormDescription>
+                  )}
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
         </div>
 

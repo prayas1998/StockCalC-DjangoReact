@@ -356,6 +356,40 @@ export const createTradeTag = async (
 };
 
 /**
+ * Update an existing trade tag
+ */
+export const updateTradeTag = async (
+  id: number,
+  tag: { name: string; color: string }
+): Promise<TradeTags | CalculationError> => {
+  try {
+    const options = await addAuthHeader({
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(tag),
+    });
+    
+    const response = await fetch(getApiUrl(`${API_ENDPOINTS.JOURNAL_TAGS}${id}/`), options);
+    
+    if (!response.ok) {
+      return {
+        error: `HTTP error! status: ${response.status}`,
+        detail: await response.text(),
+      };
+    }
+    
+    return await response.json();
+  } catch (error) {
+    return {
+      error: 'Network error',
+      detail: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
+};
+
+/**
  * Delete a trade tag by ID
  */
 export const deleteTradeTag = async (id: number): Promise<{ status: string; message: string } | CalculationError> => {

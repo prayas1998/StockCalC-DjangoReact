@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, Check, Loader2 } from 'lucide-react';
+import { Plus, X, Check, Loader2, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -15,8 +15,9 @@ function isTagsArray(tags: TradeTags[] | CalculationError | undefined): tags is 
 }
 
 export function TagManager() {
-  const { tags, isLoading, createTag, validateTag, refreshTags } = useTradeTags();
+  const { tags, isLoading, createTag, updateTag, validateTag, refreshTags } = useTradeTags();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingTag, setEditingTag] = useState<TradeTags | null>(null);
   const [newTagName, setNewTagName] = useState('');
   const [newTagColor, setNewTagColor] = useState('#3b82f6'); // Default blue color
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -46,24 +47,53 @@ export function TagManager() {
     setIsSubmitting(true);
 
     try {
-      const result = await createTag.mutateAsync({
-        name: newTagName,
-        color: newTagColor,
-      });
+      if (editingTag) {
+        // Update existing tag
+        const result = await updateTag.mutateAsync({
+          id: editingTag.id,
+          tag: {
+            name: newTagName,
+            color: newTagColor,
+          },
+        });
 
-      if ('error' in result) {
-        throw new Error(result.error);
+        if ('error' in result) {
+          throw new Error(result.error);
+        }
+      } else {
+        // Create new tag
+        const result = await createTag.mutateAsync({
+          name: newTagName,
+          color: newTagColor,
+        });
+
+        if ('error' in result) {
+          throw new Error(result.error);
+        }
       }
 
       // Reset form and close dialog
-      setNewTagName('');
-      setNewTagColor('#3b82f6');
-      setIsDialogOpen(false);
+      handleCloseDialog();
     } catch (error) {
-      setValidationError(error instanceof Error ? error.message : 'Failed to create tag');
+      setValidationError(error instanceof Error ? error.message : `Failed to ${editingTag ? 'update' : 'create'} tag`);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleCloseDialog = () => {
+    setNewTagName('');
+    setNewTagColor('#3b82f6');
+    setEditingTag(null);
+    setValidationError(null);
+    setIsDialogOpen(false);
+  };
+
+  const handleEditTag = (tag: TradeTags) => {
+    setEditingTag(tag);
+    setNewTagName(tag.name);
+    setNewTagColor(tag.color);
+    setIsDialogOpen(true);
   };
 
   return (
@@ -88,7 +118,7 @@ export function TagManager() {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
             {tags.map((tag) => (
-              <TagItem key={tag.id} tag={tag} />
+              <TagItem key={tag.id} tag={tag} onEdit={handleEditTag} />
             ))}
           </div>
         )}
@@ -105,9 +135,12 @@ export function TagManager() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create New Tag</DialogTitle>
+              <DialogTitle>{editingTag ? 'Edit Tag' : 'Create New Tag'}</DialogTitle>
               <DialogDescription>
-                Add a new tag to categorize your trades. Choose a name and color.
+                {editingTag 
+                  ? 'Update the tag details. Changes will be reflected in all associated trades.'
+                  : 'Add a new tag to categorize your trades. Choose a name and color.'
+                }
               </DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
@@ -170,17 +203,17 @@ export function TagManager() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+              <Button variant="outline" onClick={handleCloseDialog}>
                 Cancel
               </Button>
               <Button onClick={handleSubmit} disabled={isSubmitting}>
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating...
+                    {editingTag ? 'Updating...' : 'Creating...'}
                   </>
                 ) : (
-                  'Create Tag'
+                  editingTag ? 'Update Tag' : 'Create Tag'
                 )}
               </Button>
             </DialogFooter>
@@ -191,7 +224,7 @@ export function TagManager() {
   );
 }
 
-function TagItem({ tag }: { tag: TradeTags }) {
+function TagItem({ tag, onEdit }: { tag: TradeTags; onEdit: (tag: TradeTags) => void }) {
   const { deleteTag, isLoading } = useTradeTags();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
@@ -207,7 +240,16 @@ function TagItem({ tag }: { tag: TradeTags }) {
         />
         <span>{tag.name}</span>
       </div>
-      <>
+      <div className="flex items-center gap-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-6 w-6 text-muted-foreground hover:text-foreground"
+          onClick={() => onEdit(tag)}
+          disabled={deleteTag.isPending}
+        >
+          <Edit className="h-3 w-3" />
+        </Button>
         <Button
           variant="ghost"
           size="icon"
@@ -217,7 +259,8 @@ function TagItem({ tag }: { tag: TradeTags }) {
         >
           <X className="h-4 w-4" />
         </Button>
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      </div>
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Delete Tag</DialogTitle>
@@ -243,7 +286,6 @@ function TagItem({ tag }: { tag: TradeTags }) {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </>
     </div>
   );
 }

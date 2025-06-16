@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { checkApiConnection, formatApiError } from '@/lib/api-helpers';
-import { getTradeTags, createTradeTag, deleteTradeTag } from '@/services/journalApi';
+import { getTradeTags, createTradeTag, updateTradeTag, deleteTradeTag } from '@/services/journalApi';
 import type { TradeTags } from '@/types/journal';
 
 // Regex for validating hex color codes
@@ -98,6 +98,33 @@ export const useTradeTags = () => {
     }
   });
 
+  // Update an existing tag
+  const updateTag = useMutation({
+    mutationFn: async ({ id, tag }: { id: number; tag: { name: string; color: string } }) => {
+      // Validate tag data
+      const validation = validateTag(tag.name, tag.color);
+      if (!validation.valid) {
+        throw new Error(validation.error);
+      }
+
+      const isConnected = await checkConnection();
+      if (!isConnected) {
+        throw new Error('API connection failed. Please check your connection and try again.');
+      }
+
+      return updateTradeTag(id, tag);
+    },
+    onSuccess: () => {
+      toast.success('Tag updated successfully');
+      queryClient.invalidateQueries({ queryKey: ['tradeTags'] });
+      // Invalidate journal trades to refresh tag data in trades
+      queryClient.invalidateQueries({ queryKey: ['journalTrades'] });
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update tag: ${error.message}`);
+    }
+  });
+
   // Add deleteTag mutation
   const deleteTag = useMutation({
     mutationFn: async (id: number) => {
@@ -110,6 +137,8 @@ export const useTradeTags = () => {
     onSuccess: () => {
       toast.success('Tag deleted successfully');
       queryClient.invalidateQueries({ queryKey: ['tradeTags'] });
+      // Invalidate journal trades to refresh tag data in trades
+      queryClient.invalidateQueries({ queryKey: ['journalTrades'] });
     },
     onError: (error: Error) => {
       toast.error(`Failed to delete tag: ${error.message}`);
@@ -128,6 +157,7 @@ export const useTradeTags = () => {
     isError,
     error,
     createTag,
+    updateTag,
     validateTag,
     refreshTags,
     apiConnectionFailed,
