@@ -56,6 +56,7 @@ CORS_ALLOWED_ORIGINS = [
     "https://stockcalc-frontend.vercel.app",
     "https://stockcalc-frontend-prayas1998s-projects.vercel.app",
     "https://stockcalc-frontend-prayas1998-prayas1998s-projects.vercel.app",
+    "https://tradesmartcalculator.vercel.app",
 ]
 
 CORS_ALLOW_CREDENTIALS = True
