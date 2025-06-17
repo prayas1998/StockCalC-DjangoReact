@@ -56,19 +56,19 @@ export const useJournalAnalytics = () => {
   const derivedMetrics = useCallback(() => {
     if (!analytics) return null;
 
-    // Calculate win rate percentage
+    // Calculate win rate percentage (backend returns decimal, convert to percentage)
     const winRatePercentage = 'win_rate' in analytics ? analytics.win_rate * 100 : 0;
-
-    // Calculate average risk-reward ratio (placeholder as it's not in the interface)
-    const avgRiskReward = 0; // This would need to be added to the backend API
-
-    // Calculate profit factor (placeholder as it's not in the interface)
-    const profitFactor = 'total_pnl' in analytics && analytics.total_pnl > 0 ? analytics.total_pnl / Math.abs(analytics.total_pnl - analytics.total_pnl) : 0;
 
     return {
       winRatePercentage: parseFloat(winRatePercentage.toFixed(2)),
-      avgRiskReward: parseFloat(avgRiskReward.toFixed(2)),
-      profitFactor: parseFloat(profitFactor.toFixed(2)),
+      avgRiskReward: parseFloat((analytics.avg_risk_reward || 0).toFixed(2)),
+      profitFactor: parseFloat((analytics.profit_factor || 0).toFixed(2)),
+      maxDrawdown: parseFloat((analytics.max_drawdown || 0).toFixed(2)),
+      expectancy: parseFloat((analytics.expectancy || 0).toFixed(2)),
+      largestWin: parseFloat((analytics.largest_win || 0).toFixed(2)),
+      largestLoss: parseFloat((analytics.largest_loss || 0).toFixed(2)),
+      avgWin: parseFloat((analytics.avg_win || 0).toFixed(2)),
+      avgLoss: parseFloat((analytics.avg_loss || 0).toFixed(2)),
     };
   }, [analytics]);
 

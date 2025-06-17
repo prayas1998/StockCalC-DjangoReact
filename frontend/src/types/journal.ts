@@ -130,6 +130,16 @@ export interface JournalAnalytics {
   win_rate: number;
   total_pnl: number;
   avg_pnl_per_trade: number;
+  profit_factor: number;
+  max_drawdown: number;
+  largest_win: number;
+  largest_loss: number;
+  avg_win: number;
+  avg_loss: number;
+  expectancy: number;
+  avg_risk_reward: number;
+  profitable_trades: number;
+  losing_trades: number;
   best_performing_stocks: {
     company_name: string;
     total_pnl: number;
@@ -144,6 +154,18 @@ export interface JournalAnalytics {
     month: string;
     total_pnl: number;
     trade_count: number;
+  }[];
+  drawdown_series: {
+    cumulative_pnl: number;
+    drawdown: number;
+  }[];
+  trade_type_distribution: {
+    trade_type: string;
+    count: number;
+  }[];
+  status_distribution: {
+    status: string;
+    count: number;
   }[];
 }
 

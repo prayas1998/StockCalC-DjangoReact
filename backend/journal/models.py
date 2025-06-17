@@ -49,11 +49,59 @@ class TradeJournal(models.Model):
     direction = models.CharField(max_length=10, choices=direction_choices, default="LONG")
 
     def calculate_pnl(self):
-        if self.status.startswith("CLOSED") and self.sell_price is not None:
-            if hasattr(self, 'direction') and self.direction == "SHORT":
-                return float(self.quantity) * (float(self.buy_price) - float(self.sell_price))
-            return float(self.quantity) * (float(self.sell_price) - float(self.buy_price))
-        return None
+        """Calculate Net P&L including approximate charges"""
+        if not (self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] and self.sell_price is not None):
+            return None
+            
+        # Calculate gross P&L based on direction
+        if hasattr(self, 'direction') and self.direction == "SHORT":
+            gross_pnl = float(self.quantity) * (float(self.buy_price) - float(self.sell_price))
+        else:
+            gross_pnl = float(self.quantity) * (float(self.sell_price) - float(self.buy_price))
+        
+        # Calculate approximate charges for net P&L
+        buy_value = float(self.quantity) * float(self.buy_price)
+        sell_value = float(self.quantity) * float(self.sell_price)
+        
+        # Approximate brokerage
+        if self.trade_type == 'EQUITY_DELIVERY':
+            brokerage_rate = 0.0003
+            max_brokerage_per_order = 20
+        else:
+            brokerage_rate = 0.0005
+            max_brokerage_per_order = 20
+            
+        buy_brokerage = min(buy_value * brokerage_rate, max_brokerage_per_order)
+        sell_brokerage = min(sell_value * brokerage_rate, max_brokerage_per_order)
+        total_brokerage = buy_brokerage + sell_brokerage
+        
+        # STT (Securities Transaction Tax)
+        if self.trade_type == 'EQUITY_DELIVERY':
+            stt = sell_value * 0.001  # 0.1% on sell side for delivery
+        else:
+            stt = sell_value * 0.00025  # 0.025% on sell side for intraday
+        
+        # Exchange charges
+        turnover = buy_value + sell_value
+        exchange_charges = turnover * 0.0000345
+        
+        # SEBI charges
+        sebi_charges = turnover * 0.000001
+        
+        # Stamp duty
+        stamp_duty = min(buy_value * 0.00003, 300)
+        
+        # GST on brokerage and other charges (18%)
+        gst_applicable_amount = total_brokerage + exchange_charges + sebi_charges
+        gst = gst_applicable_amount * 0.18
+        
+        # Total charges
+        total_charges = total_brokerage + stt + exchange_charges + sebi_charges + stamp_duty + gst
+        
+        # Net P&L = Gross P&L - Total Charges
+        net_pnl = gross_pnl - total_charges
+        
+        return net_pnl
 
     def calculate_unrealized_pnl(self, current_price):
         if self.status == "OPEN":
