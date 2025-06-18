@@ -1,543 +1,167 @@
-import { Button } from "@/components/ui/button";
-import { User, Moon, Sun, ChevronDown, Calculator } from "lucide-react";
-import { useState, useEffect } from "react";
+import React from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import Header from "@/components/ui/header";
-import { Switch } from "@/components/ui/switch";
-import { calculateCharges, getDpCharge, formatCurrency, Charges, calculateBreakevenPrice } from "./Tools/ChargesUtils";
-import PositionSizingCalculator from "./Tools/PositionSizingCalculator";
-import ProfitTargetCalculator from "./Tools/ProfitTargetCalculator";
-import NetPLCalculator from "./Tools/NetPLCalculator";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useSharedCalculatorState } from "@/hooks/useSharedCalculatorState";
+import { ProfitTargetCalculatorContainer } from "@/components/calculators/ProfitTargetCalculatorContainer";
+import { NetPLCalculatorContainer } from "@/components/calculators/NetPLCalculatorContainer";
+import { PositionSizingCalculatorContainer } from "@/components/calculators/PositionSizingCalculatorContainer";
 
 const Tools = () => {
   const navigate = useNavigate();
-  const [platform, setPlatform] = useState("Groww");
-
-  // Profit Target Calculator states
-  const [targetBuyPrice, setTargetBuyPrice] = useState("");
-  const [targetQuantity, setTargetQuantity] = useState("");
-  const [targetProfitPercentage, setTargetProfitPercentage] = useState("");
-  const [targetResult, setTargetResult] = useState<{
-    sellingPrice: number;
-    grossProfit: number;
-    netProfit: number;
-    charges: Charges;
-    breakevenPrice: number;
-  } | null>(null);
-
-  // Net Profit Calculator states
-  const [profitBuyPrice, setProfitBuyPrice] = useState("");
-  const [profitQuantity, setProfitQuantity] = useState("");
-  const [profitSellPrice, setProfitSellPrice] = useState("");
-  const [profitResult, setProfitResult] = useState<{
-    grossProfit: number;
-    netProfit: number;
-    profitPercentage: number;
-    isProfit: boolean;
-    charges: Charges;
-    breakevenPrice: number;
-  } | null>(null);
-
-  // Exchange state (for both calculators)
-  const exchange = "NSE"; // Fixed to NSE
-
-  // Add toggles for broker and trade type
-  const [selectedBroker, setSelectedBroker] = useState<'Dhan' | 'Groww'>('Dhan');
-  const [selectedTradeType, setSelectedTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
-
-  // Position Sizing Calculator states
-  const [riskMode, setRiskMode] = useState<'amount' | 'percent'>('amount');
-  const [capital, setCapital] = useState("");
-  const [riskAmount, setRiskAmount] = useState("");
-  const [riskPercent, setRiskPercent] = useState("");
-  const [stopLoss, setStopLoss] = useState("");
-  const [entryPrice, setEntryPrice] = useState("");
-  const [positionTradeType, setPositionTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
+  const sharedState = useSharedCalculatorState();
   const LEVERAGE = 5;
-  const [positionType, setPositionType] = useState<'long' | 'short'>('long');
 
-  const handlePlatformChange = (newPlatform: string) => {
-    setPlatform(newPlatform);
-    // navigate function might not be available in artifact
-    console.log(`Navigate to: /${newPlatform.toLowerCase()}`);
-  };
-
-  // Calculate target selling price (now: target exit price)
-  const calculateTargetSellingPrice = () => {
-    if (!targetBuyPrice || !targetQuantity) {
-      setTargetResult(null);
-      return;
-    }
-
-    const entryPrice = parseFloat(targetBuyPrice);
-    const quantity = parseInt(targetQuantity);
-
-    if (isNaN(entryPrice) || isNaN(quantity) || entryPrice <= 0 || quantity <= 0) {
-      setTargetResult(null);
-      return;
-    }
-
-    // Always calculate breakeven price independently
-    const breakevenPrice = calculateBreakevenPrice(
-      quantity,
-      entryPrice,
-      exchange,
-      selectedBroker,
-      selectedTradeType,
-      positionType
-    );
-
-    // If profit percentage is not provided, show breakeven calculation only
-    if (!targetProfitPercentage) {
-      // Calculate charges at breakeven price for display
-      const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
-      const isLong = !isIntradayShort;
-      const entryValue = entryPrice * quantity;
-      const exitValue = breakevenPrice * quantity;
-      const charges = calculateCharges(
-        isLong ? entryValue : exitValue,
-        isLong ? exitValue : entryValue,
-        exchange,
-        selectedBroker,
-        selectedTradeType
-      );
-      setTargetResult({
-        sellingPrice: breakevenPrice,
-        grossProfit: 0,
-        netProfit: 0,
-        charges,
-        breakevenPrice
-      });
-      return;
-    }
-
-    // Avoid redeclaration: use different variable names for inner scope
-    const entryPrice2 = parseFloat(targetBuyPrice);
-    const quantity2 = parseInt(targetQuantity);
-    const profitPercentage = parseFloat(targetProfitPercentage);
-
-    if (isNaN(entryPrice2) || isNaN(quantity2) || isNaN(profitPercentage) || entryPrice2 <= 0 || quantity2 <= 0 || profitPercentage <= 0) {
-      setTargetResult(null);
-      return;
-    }
-
-    // Determine position type
-    const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
-    const isLong = !isIntradayShort;
-
-    // Calculate the total entry value
-    const entryValue = entryPrice2 * quantity2;
-    // Target gross profit amount
-    const desiredGrossProfit = entryValue * (profitPercentage / 100);
-
-    // Iteratively find the exit price that gives the desired net profit
-    let exitPrice = entryPrice2 * (isLong ? (1 + profitPercentage / 100) : (1 - profitPercentage / 100));
-    let exitValue = exitPrice * quantity2;
-    let charges = calculateCharges(
-      isLong ? entryValue : exitValue,
-      isLong ? exitValue : entryValue,
-      exchange,
-      selectedBroker,
-      selectedTradeType
-    );
-    let netProfit = isLong
-      ? exitValue - entryValue - charges.totalCharges
-      : entryValue - exitValue - charges.totalCharges;
-    const targetNetProfit = desiredGrossProfit;
-
-    // Binary search to find the exit price
-    let low = isLong ? entryPrice2 : 0.01;
-    let high = isLong ? entryPrice2 * 2 : entryPrice2;
-    const MAX_ITERATIONS = 20;
-    let iterations = 0;
-
-    while (Math.abs(netProfit - targetNetProfit) > 0.01 && iterations < MAX_ITERATIONS) {
-      if (netProfit < targetNetProfit) {
-        if (isLong) low = exitPrice;
-        else high = exitPrice;
-        exitPrice = (exitPrice + high) / 2;
-      } else {
-        if (isLong) high = exitPrice;
-        else low = exitPrice;
-        exitPrice = (low + exitPrice) / 2;
-      }
-      exitValue = exitPrice * quantity2;
-      charges = calculateCharges(
-        isLong ? entryValue : exitValue,
-        isLong ? exitValue : entryValue,
-        exchange,
-        selectedBroker,
-        selectedTradeType
-      );
-      netProfit = isLong
-        ? exitValue - entryValue - charges.totalCharges
-        : entryValue - exitValue - charges.totalCharges;
-      iterations++;
-    }
-
-    // Final calculation with the found exit price
-    exitValue = exitPrice * quantity2;
-    charges = calculateCharges(
-      isLong ? entryValue : exitValue,
-      isLong ? exitValue : entryValue,
-      exchange,
-      selectedBroker,
-      selectedTradeType
-    );
-    const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
-    netProfit = grossProfit - charges.totalCharges;
-
-    setTargetResult({
-      sellingPrice: exitPrice,
-      grossProfit,
-      netProfit,
-      charges,
-      breakevenPrice
-    });
-  };
-
-  // Calculate net profit
-  const calculateNetProfit = () => {
-    if (!profitBuyPrice || !profitQuantity) {
-      setProfitResult(null);
-      return;
-    }
-
-    const entryPrice3 = parseFloat(profitBuyPrice);
-    const quantity3 = parseInt(profitQuantity);
-
-    if (isNaN(entryPrice3) || isNaN(quantity3) || entryPrice3 <= 0 || quantity3 <= 0) {
-      setProfitResult(null);
-      return;
-    }
-
-    // Always calculate breakeven price independently
-    const breakevenPrice = calculateBreakevenPrice(
-      quantity3,
-      entryPrice3,
-      exchange,
-      selectedBroker,
-      selectedTradeType,
-      positionType
-    );
-
-    // If exit price is not provided, show breakeven calculation only
-    if (!profitSellPrice) {
-      const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
-      const isLong = !isIntradayShort;
-      const entryValue = entryPrice3 * quantity3;
-      const exitValue = breakevenPrice * quantity3;
-      const charges = calculateCharges(
-        isLong ? entryValue : exitValue,
-        isLong ? exitValue : entryValue,
-        exchange,
-        selectedBroker,
-        selectedTradeType
-      );
-      setProfitResult({
-        grossProfit: 0,
-        netProfit: 0,
-        profitPercentage: 0,
-        isProfit: true,
-        charges,
-        breakevenPrice
-      });
-      return;
-    }
-
-    const entryPrice4 = parseFloat(profitBuyPrice);
-    const quantity4 = parseInt(profitQuantity);
-    const exitPrice = parseFloat(profitSellPrice);
-
-    if (isNaN(entryPrice4) || isNaN(quantity4) || isNaN(exitPrice) || entryPrice4 <= 0 || quantity4 <= 0 || exitPrice <= 0) {
-      setProfitResult(null);
-      return;
-    }
-
-    // Determine position type
-    const isIntradayShort = selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && positionType === 'short';
-    const isLong = !isIntradayShort;
-
-    // Calculate the total entry and exit values
-    const entryValue = entryPrice4 * quantity4;
-    const exitValue = exitPrice * quantity4;
-
-    // Calculate charges using the utility function
-    const charges = calculateCharges(
-      isLong ? entryValue : exitValue,
-      isLong ? exitValue : entryValue,
-      exchange,
-      selectedBroker,
-      selectedTradeType
-    );
-
-    // Calculate profits
-    const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
-    const netProfit = grossProfit - charges.totalCharges;
-
-    // Calculate percentage
-    const profitPercentage = (netProfit / entryValue) * 100;
-    const isProfit = netProfit >= 0;
-
-    setProfitResult({
-      grossProfit,
-      netProfit,
-      profitPercentage,
-      isProfit,
-      charges,
-      breakevenPrice
-    });
-  };
-
-  // Handle input changes with validation
-  const handleInputChange = (setter: React.Dispatch<React.SetStateAction<string>>, value: string) => {
-    // Only allow numbers and decimal point
-    if (value === '' || /^\d*\.?\d*$/.test(value)) {
-      setter(value);
-    }
-  };
-
-  // Position Sizing Calculation - Now using the utility function
-  const getRiskValue = () => {
-    if (riskMode === 'amount') {
-      const amt = parseFloat(riskAmount);
-      return isNaN(amt) ? 0 : amt;
-    } else {
-      const cap = parseFloat(capital);
-      const pct = parseFloat(riskPercent);
-      if (isNaN(cap) || isNaN(pct)) return 0;
-      return (cap * pct) / 100;
-    }
-  };
-
-  // FIXED Position Sizing Calculation with Charges Consideration - Using utility function
-  const positionSizingResult = (() => {
-    const risk = getRiskValue();
-    const sl = parseFloat(stopLoss);
-    const cap = parseFloat(capital);
-    const ep = parseFloat(entryPrice);
-
-    if (isNaN(risk) || risk <= 0 || isNaN(sl) || sl <= 0) {
-      return null;
-    }
-
-    // If we don't have entry price, we can't calculate charges, so fall back to simple calculation
-    if (isNaN(ep) || ep <= 0) {
-      const quantity = Math.floor(risk / sl);
-      return {
-        quantity,
-        positionValue: undefined,
-        capitalUsed: undefined,
-        buyingPower: undefined,
-        hasCapital: !isNaN(cap) && cap > 0,
-        hasEntryPrice: false,
-        chargesConsidered: false
-      };
-    }
-
-    // With entry price available, we can calculate charges-adjusted quantity
-    let optimalQuantity = 0;
-    let bestNetRisk = 0;
-
-    // Start with simple calculation as initial estimate
-    const initialQuantity = Math.floor(risk / sl);
-
-    // Try quantities around the initial estimate to find the best one
-    // We'll test from 50% to 150% of initial quantity to find optimal
-    const minQty = Math.max(1, Math.floor(initialQuantity * 0.5));
-    const maxQty = Math.ceil(initialQuantity * 1.5);
-
-    for (let qty = minQty; qty <= maxQty; qty++) {
-      const buyValue = qty * ep;
-      const sellValue = qty * (ep - sl); // Worst case scenario (stop loss hit)
-
-      // Calculate charges for this quantity using utility function
-      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, selectedBroker, selectedTradeType);
-
-      // Total cost includes the stop loss amount plus all charges
-      const totalRiskAmount = (qty * sl) + charges.totalCharges;
-
-      // Check if this quantity fits within our risk budget
-      if (totalRiskAmount <= risk) {
-        optimalQuantity = qty;
-        bestNetRisk = totalRiskAmount;
-      } else {
-        break; // If we exceed risk budget, stop searching
-      }
-    }
-
-    // If no quantity fits within risk budget, use quantity 1 as minimum
-    if (optimalQuantity === 0) {
-      optimalQuantity = 1;
-      const buyValue = optimalQuantity * ep;
-      const sellValue = optimalQuantity * (ep - sl);
-      const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, selectedBroker, selectedTradeType);
-      bestNetRisk = (optimalQuantity * sl) + charges.totalCharges;
-    }
-
-    const positionValue = optimalQuantity * ep;
-    let capitalUsed: number | undefined;
-    let buyingPower: number | undefined;
-
-    if (selectedTradeType === 'equity-intraday') {
-      if (!isNaN(cap) && cap > 0) {
-        buyingPower = cap * LEVERAGE;
-        // Check if position fits within buying power
-        const maxQtyByLeverage = Math.floor(buyingPower / ep);
-        if (optimalQuantity > maxQtyByLeverage) {
-          optimalQuantity = maxQtyByLeverage;
-        }
-        capitalUsed = (optimalQuantity * ep) / LEVERAGE;
-      } else {
-        capitalUsed = positionValue / LEVERAGE;
-      }
-    } else {
-      capitalUsed = positionValue;
-    }
-
-    // Final charges calculation for display using utility function
-    const finalBuyValue = optimalQuantity * ep;
-    const finalSellValue = optimalQuantity * (ep - sl);
-    const finalCharges = calculateCharges(finalBuyValue, Math.abs(finalSellValue), exchange, selectedBroker, selectedTradeType);
-    const actualRiskWithCharges = (optimalQuantity * sl) + finalCharges.totalCharges;
-
-    return {
-      quantity: optimalQuantity,
-      positionValue,
-      capitalUsed,
-      buyingPower,
-      hasCapital: !isNaN(cap) && cap > 0,
-      hasEntryPrice: true,
-      chargesConsidered: true,
-      estimatedCharges: finalCharges.totalCharges,
-      actualRiskAmount: actualRiskWithCharges,
-      riskBudget: risk
-    };
-  })();
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
         {/* Position Sizing Calculator */}
-        <PositionSizingCalculator
-          riskMode={riskMode}
-          capital={capital}
-          riskAmount={riskAmount}
-          riskPercent={riskPercent}
-          stopLoss={stopLoss}
-          entryPrice={entryPrice}
-          onChange={(field, value) => {
-            if (field === 'riskMode') setRiskMode(value as 'amount' | 'percent');
-            else if (field === 'capital') setCapital(value);
-            else if (field === 'riskAmount') setRiskAmount(value);
-            else if (field === 'riskPercent') setRiskPercent(value);
-            else if (field === 'stopLoss') setStopLoss(value);
-            else if (field === 'entryPrice') setEntryPrice(value);
-          }}
+        <PositionSizingCalculatorContainer
+          selectedBroker={sharedState.selectedBroker}
+          selectedTradeType={sharedState.selectedTradeType}
+          exchange={sharedState.exchange}
           LEVERAGE={LEVERAGE}
+          onBrokerChange={sharedState.setSelectedBroker}
+          onTradeTypeChange={sharedState.setSelectedTradeType}
         />
 
-
-
-        {/* Broker and Trade Type Toggles */}
-        {/* <div className="flex flex-wrap gap-4 mb-8">
-          <div>
-            <Label className="mb-2 block">Broker</Label>
-            <ToggleGroup type="single" value={selectedBroker} onValueChange={val => val && setSelectedBroker(val as 'Dhan' | 'Groww')}>
-              <ToggleGroupItem value="Dhan">Dhan</ToggleGroupItem>
-              <ToggleGroupItem value="Groww">Groww</ToggleGroupItem>
-            </ToggleGroup>
+        {/* P&L Calculators Section - with improved spacing */}
+        <div className="mt-16 mb-6">
+          <div className="mb-6">
+            <h2 className="text-2xl font-semibold text-gray-800">P&L Calculators</h2>
+            <p className="text-sm text-gray-600 mt-1">Calculate profit and loss with different scenarios</p>
           </div>
-          <div>
-            <Label className="mb-2 block">Trade Type</Label>
-            <ToggleGroup type="single" value={selectedTradeType} onValueChange={val => val && setSelectedTradeType(val as 'equity-delivery' | 'equity-intraday')}>
-              <ToggleGroupItem value="equity-delivery">Equity Delivery</ToggleGroupItem>
-              <ToggleGroupItem value="equity-intraday">Equity Intraday</ToggleGroupItem>
-            </ToggleGroup>
-          </div>
-        </div> */}
-
-        {/* Show warning and disable calculators if Groww + Intraday selected */}
-        {selectedTradeType === 'equity-intraday' && selectedBroker === 'Groww' && (
-          <div className="mb-8 p-4 bg-yellow-100 border-l-4 border-yellow-500 text-yellow-800 rounded">
-            <strong>Note:</strong> Equity Intraday calculations are only supported for Dhan broker at this time.
-          </div>
-        )}
-
-        {/* Shared Settings Header */}
-        <div className="mb-4 p-4 bg-gray-50 rounded-lg border">
-          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <div className="flex items-center gap-2">
-              <Calculator className="h-4 w-4 text-primary" />
-              <span className="font-medium text-gray-700">P&L Calculators</span>
-            </div>
-            <div className="flex flex-wrap gap-4">
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium text-gray-600">Broker:</Label>
-                <ToggleGroup type="single" value={selectedBroker} onValueChange={val => val && setSelectedBroker(val as 'Dhan' | 'Groww')} className="h-8">
-                  <ToggleGroupItem value="Dhan" className="px-3 py-1 text-xs">Dhan</ToggleGroupItem>
-                  <ToggleGroupItem value="Groww" className="px-3 py-1 text-xs">Groww</ToggleGroupItem>
-                </ToggleGroup>
+          
+          {/* Shared Broker Selector for P&L Calculators - more compact and elegant design */}
+          <div className="mb-6 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
+            <div className="flex flex-wrap items-center px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+              <div className="flex items-center mr-4">
+                <div className="h-4 w-1 bg-primary rounded-full mr-2"></div>
+                <h3 className="text-sm font-medium text-gray-700">Settings</h3>
               </div>
-              <div className="flex items-center gap-2">
-                <Label className="text-sm font-medium text-gray-600">Type:</Label>
-                <ToggleGroup type="single" value={selectedTradeType} onValueChange={val => val && setSelectedTradeType(val as 'equity-delivery' | 'equity-intraday')} className="h-8">
-                  <ToggleGroupItem value="equity-delivery" className="px-3 py-1 text-xs">Delivery</ToggleGroupItem>
-                  <ToggleGroupItem value="equity-intraday" className="px-3 py-1 text-xs">Intraday</ToggleGroupItem>
-                </ToggleGroup>
+              
+              {/* Exchange Badge - moved to header */}
+              <div className="ml-auto">
+                <div className="px-2 py-1 bg-slate-100 text-slate-700 text-xs font-medium rounded-full">
+                  Exchange: {sharedState.exchange}
+                </div>
               </div>
             </div>
+            
+            <div className="p-4">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                {/* Broker Selector */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs font-medium text-gray-500 whitespace-nowrap">Broker:</Label>
+                  <Select value={sharedState.selectedBroker} onValueChange={sharedState.setSelectedBroker}>
+                    <SelectTrigger className="w-[100px] h-8 text-sm">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Dhan">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                          <span>Dhan</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="Groww">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>Groww</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* Trade Type Selector */}
+                <div className="flex items-center gap-2">
+                  <Label className="text-xs font-medium text-gray-500 whitespace-nowrap">Type:</Label>
+                  <Select value={sharedState.selectedTradeType} onValueChange={sharedState.setSelectedTradeType}>
+                    <SelectTrigger className="w-[100px] h-8 text-sm">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="equity-delivery">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                          <span>Delivery</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="equity-intraday">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
+                          <span>Intraday</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                {/* Position Type (only shown for Dhan + Intraday) */}
+                {sharedState.selectedTradeType === 'equity-intraday' && sharedState.selectedBroker === 'Dhan' && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs font-medium text-gray-500 whitespace-nowrap">Position:</Label>
+                    <Select value={sharedState.positionType} onValueChange={sharedState.setPositionType}>
+                      <SelectTrigger className="w-[110px] h-8 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="long">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                            <span>Long</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="short">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+                            <span>Short</span>
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+              
+              {/* Warning for Groww + Intraday */}
+              {sharedState.selectedTradeType === 'equity-intraday' && sharedState.selectedBroker === 'Groww' && (
+                <div className="mt-3 p-2 bg-yellow-50 border-l-4 border-yellow-400 text-yellow-800 text-xs rounded flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-yellow-500 mr-1.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <div>
+                    <strong className="font-medium">Note:</strong> Equity Intraday calculations are only supported for Dhan broker.
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-6">
-          <ProfitTargetCalculator
-            selectedBroker={selectedBroker}
-            selectedTradeType={selectedTradeType}
-            positionType={positionType}
-            targetBuyPrice={targetBuyPrice}
-            targetQuantity={targetQuantity}
-            targetProfitPercentage={targetProfitPercentage}
-            targetResult={targetResult}
-            onChange={(field, value) => {
-              if (field === 'targetBuyPrice') setTargetBuyPrice(value);
-              else if (field === 'targetQuantity') setTargetQuantity(value);
-              else if (field === 'targetProfitPercentage') setTargetProfitPercentage(value);
-              else if (field === 'positionType') setPositionType(value as 'long' | 'short');
-            }}
-            onCalculate={calculateTargetSellingPrice}
-            exchange={exchange}
-          />
-          <NetPLCalculator
-            selectedBroker={selectedBroker}
-            selectedTradeType={selectedTradeType}
-            positionType={positionType}
-            profitBuyPrice={profitBuyPrice}
-            profitQuantity={profitQuantity}
-            profitSellPrice={profitSellPrice}
-            profitResult={profitResult}
-            onChange={(field, value) => {
-              if (field === 'profitBuyPrice') setProfitBuyPrice(value);
-              else if (field === 'profitQuantity') setProfitQuantity(value);
-              else if (field === 'profitSellPrice') setProfitSellPrice(value);
-              else if (field === 'positionType') setPositionType(value as 'long' | 'short');
-            }}
-            onCalculate={calculateNetProfit}
-            exchange={exchange}
-          />
+          
+          {/* P&L Calculators Grid - enhanced layout */}
+          <div className="grid md:grid-cols-2 gap-6">
+            <div className="transition-all duration-200 hover:shadow-md">
+              <ProfitTargetCalculatorContainer
+                sharedState={sharedState}
+                onPositionTypeChange={sharedState.setPositionType}
+                onBrokerChange={sharedState.setSelectedBroker}
+                onTradeTypeChange={sharedState.setSelectedTradeType}
+              />
+            </div>
+            <div className="transition-all duration-200 hover:shadow-md">
+              <NetPLCalculatorContainer
+                sharedState={sharedState}
+                onPositionTypeChange={sharedState.setPositionType}
+                onBrokerChange={sharedState.setSelectedBroker}
+                onTradeTypeChange={sharedState.setSelectedTradeType}
+              />
+            </div>
+          </div>
         </div>
       </div>
     </div>

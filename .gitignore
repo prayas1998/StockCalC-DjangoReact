@@ -10,6 +10,7 @@ frontend/.env.production
 frontend/.env.development
 frontend/.vercel
 Docs/
+report.md
 
 
 # Build artifacts
