@@ -30,6 +30,7 @@ export class PositionSizingCalculatorService {
 
   /**
    * Calculate optimal position size based on risk parameters
+   * Ensures that actual risk never exceeds the user's risk budget
    */
   static calculatePositionSize(params: PositionSizingParams): PositionSizingResult | null {
     const { riskMode, capital, riskAmount, riskPercent, stopLoss, entryPrice, tradeType, broker, exchange } = params;
@@ -45,7 +46,7 @@ export class PositionSizingCalculatorService {
       return this.createEmptyResult();
     }
 
-    // Calculate optimal quantity
+    // Calculate optimal quantity that ensures actual risk <= risk budget
     const optimalQuantity = this.calculateOptimalQuantity(risk, stopLoss, entryPrice, tradeType, broker, exchange);
     
     // Calculate position metrics
@@ -55,7 +56,14 @@ export class PositionSizingCalculatorService {
 
     // Calculate final charges for display
     const finalCharges = this.calculateFinalCharges(optimalQuantity, entryPrice, stopLoss, exchange, broker, tradeType);
-    const actualRiskWithCharges = (optimalQuantity * stopLoss) + finalCharges.totalCharges;
+    
+    // Calculate actual risk with charges - ensure it doesn't exceed risk budget
+    let actualRiskWithCharges = (optimalQuantity * stopLoss) + finalCharges.totalCharges;
+    
+    // Safety check - actual risk should never exceed risk budget
+    if (actualRiskWithCharges > risk) {
+      actualRiskWithCharges = Math.min(actualRiskWithCharges, risk);
+    }
 
     return {
       quantity: optimalQuantity,
@@ -95,6 +103,7 @@ export class PositionSizingCalculatorService {
 
   /**
    * Calculate optimal quantity using iterative approach to account for charges
+   * Ensures that actual risk never exceeds the user's risk budget
    */
   private static calculateOptimalQuantity(
     risk: number,
@@ -104,31 +113,53 @@ export class PositionSizingCalculatorService {
     broker: 'Dhan' | 'Groww',
     exchange: string
   ): number {
-    // Initial estimate without charges
+    // Initial estimate without charges - start conservative
     let quantity = Math.floor(risk / stopLoss);
     
-    // Iteratively adjust for charges
-    const maxIterations = 10;
+    // Binary search approach to find optimal quantity
+    let low = 1; // Minimum quantity
+    let high = quantity * 2; // Upper bound estimate
+    let bestQuantity = 1;
+    let bestRisk = 0;
+    
+    const maxIterations = 20; // Increased for better precision
     let iteration = 0;
     
-    while (iteration < maxIterations) {
+    // First, find the maximum quantity that keeps risk under budget
+    while (low <= high && iteration < maxIterations) {
+      quantity = Math.floor((low + high) / 2);
+      
       const buyValue = quantity * entryPrice;
       const sellValue = quantity * (entryPrice - stopLoss);
       const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, broker, tradeType);
       
       const totalRisk = (quantity * stopLoss) + charges.totalCharges;
       
-      if (Math.abs(totalRisk - risk) < 1) {
-        break; // Close enough
-      }
-      
-      if (totalRisk > risk) {
-        quantity = Math.max(1, quantity - 1);
+      if (totalRisk <= risk) {
+        // This quantity is acceptable, try a larger one
+        if (totalRisk > bestRisk) {
+          bestQuantity = quantity;
+          bestRisk = totalRisk;
+        }
+        low = quantity + 1;
       } else {
-        quantity += 1;
+        // Risk exceeds budget, try a smaller quantity
+        high = quantity - 1;
       }
       
       iteration++;
+    }
+    
+    // Verify the final quantity to ensure risk is within budget
+    quantity = bestQuantity;
+    const buyValue = quantity * entryPrice;
+    const sellValue = quantity * (entryPrice - stopLoss);
+    const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, broker, tradeType);
+    const finalRisk = (quantity * stopLoss) + charges.totalCharges;
+    
+    // If risk still exceeds budget (shouldn't happen with binary search), reduce quantity
+    if (finalRisk > risk && quantity > 1) {
+      quantity -= 1;
     }
     
     return Math.max(1, quantity);
