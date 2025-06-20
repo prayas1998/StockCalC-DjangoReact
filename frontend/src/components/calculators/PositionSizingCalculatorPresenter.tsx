@@ -1,6 +1,6 @@
 import React, { useMemo, useEffect } from 'react';
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calculator, AlertTriangle, CheckCircle } from "lucide-react";
 import { CalculatorCard } from '@/components/shared/CalculatorCard';
@@ -63,13 +63,15 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
         {state.riskMode === 'percent' && (
           <div>
             <Label htmlFor="capital">Total Capital</Label>
-            <Input
+            <NumericInput
               id="capital"
-              type="text"
               placeholder="Enter total capital"
               value={state.capital}
-              onChange={e => updateField('capital', e.target.value)}
+              onChange={value => updateField('capital', value)}
               className="mt-1"
+              allowDecimal={true}
+              min={1}
+              maxDecimalPlaces={2}
             />
           </div>
         )}
@@ -78,37 +80,44 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
           <Label htmlFor={state.riskMode === 'amount' ? 'riskAmount' : 'riskPercent'}>
             {state.riskMode === 'amount' ? 'Risk Amount' : 'Risk Percentage'}
           </Label>
-          <Input
+          <NumericInput
             id={state.riskMode === 'amount' ? 'riskAmount' : 'riskPercent'}
-            type="text"
             placeholder={state.riskMode === 'amount' ? 'Enter risk amount' : 'Enter risk percentage'}
             value={state.riskMode === 'amount' ? state.riskAmount : state.riskPercent}
-            onChange={e => updateField(state.riskMode === 'amount' ? 'riskAmount' : 'riskPercent', e.target.value)}
+            onChange={value => updateField(state.riskMode === 'amount' ? 'riskAmount' : 'riskPercent', value)}
             className="mt-1"
+            allowDecimal={true}
+            min={0.01}
+            maxDecimalPlaces={state.riskMode === 'amount' ? 2 : 2}
+            max={state.riskMode === 'percent' ? 100 : undefined}
           />
         </div>
 
         <div>
           <Label htmlFor="entryPrice">Entry Price</Label>
-          <Input
+          <NumericInput
             id="entryPrice"
-            type="text"
             placeholder="Enter entry price"
             value={state.entryPrice}
-            onChange={e => updateField('entryPrice', e.target.value)}
+            onChange={value => updateField('entryPrice', value)}
             className="mt-1"
+            allowDecimal={true}
+            min={0.01}
+            maxDecimalPlaces={2}
           />
         </div>
 
         <div>
           <Label htmlFor="stopLoss">Stop Loss (per share)</Label>
-          <Input
+          <NumericInput
             id="stopLoss"
-            type="text"
             placeholder="Enter stop loss amount"
             value={state.stopLoss}
-            onChange={e => updateField('stopLoss', e.target.value)}
+            onChange={value => updateField('stopLoss', value)}
             className="mt-1"
+            allowDecimal={true}
+            min={0.01}
+            maxDecimalPlaces={2}
           />
         </div>
 

@@ -1,6 +1,6 @@
 import React from 'react';
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { CalculatorCard } from '@/components/shared/CalculatorCard';
 import { ResultsPanel } from '@/components/shared/ResultsPanel';
 import { formatCurrency } from '@/pages/Tools/ChargesUtils';
@@ -36,35 +36,40 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
       <div className="space-y-4">
         <div>
           <Label htmlFor="quantity">Quantity</Label>
-          <Input
+          <NumericInput
             id="quantity"
-            type="text"
             placeholder="Enter quantity"
             value={state.quantity}
-            onChange={e => updateField('quantity', e.target.value)}
+            onChange={value => updateField('quantity', value)}
             className="mt-1"
+            allowDecimal={false}
+            min={1}
           />
         </div>
         <div>
           <Label htmlFor="buyPrice">Entry Price Per Share</Label>
-          <Input
+          <NumericInput
             id="buyPrice"
-            type="text"
             placeholder="Enter entry price"
             value={state.buyPrice}
-            onChange={e => updateField('buyPrice', e.target.value)}
+            onChange={value => updateField('buyPrice', value)}
             className="mt-1"
+            allowDecimal={true}
+            min={0.01}
+            maxDecimalPlaces={2}
           />
         </div>
         <div>
           <Label htmlFor="profitPercentage">Target Profit Percentage</Label>
-          <Input
+          <NumericInput
             id="profitPercentage"
-            type="text"
             placeholder="Enter percentage (e.g. 5 for 5%)"
             value={state.profitPercentage}
-            onChange={e => updateField('profitPercentage', e.target.value)}
+            onChange={value => updateField('profitPercentage', value)}
             className="mt-1"
+            allowDecimal={true}
+            min={0}
+            maxDecimalPlaces={2}
           />
         </div>
       </div>
