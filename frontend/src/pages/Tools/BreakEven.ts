@@ -1,4 +1,4 @@
-// Utility functions for charges and currency formatting
+// Fixed breakeven price calculation with proper short position handling
 
 export type Charges = {
     brokerage: number;
@@ -10,15 +10,6 @@ export type Charges = {
     ipft: number;
     totalCharges: number;
     dpCharges: number;
-  };
-  
-  export const formatCurrency = (value: number) => {
-    return value.toLocaleString('en-IN', {
-      style: 'currency',
-      currency: 'INR',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    });
   };
   
   export const getDpCharge = (broker: string) => {
@@ -114,152 +105,121 @@ export type Charges = {
     };
   };
   
-  // New function to calculate breakeven price independently
   /**
    * Calculates the breakeven exit price for a trade such that net profit is zero or slightly positive.
    * For long: the minimum sell price to avoid loss.
    * For short: the maximum buy-back price to avoid loss.
    */
-  // export const calculateBreakevenPrice = (
-  //   quantity: number,
-  //   entryPrice: number,
-  //   exchange: string,
-  //   broker: 'Dhan' | 'Groww',
-  //   tradeType: 'equity-delivery' | 'equity-intraday',
-  //   positionType: 'long' | 'short' = 'long'
-  // ): number => {
-  //   if (quantity <= 0 || entryPrice <= 0) return 0;
-  
-  //   const buyValue = quantity * entryPrice;
-  
-  //   // Set search range based on position type
-  //   let low: number, high: number;
-  //   if (positionType === 'long') {
-  //     low = entryPrice;
-  //     high = entryPrice * 3;
-  //   } else {
-  //     low = 0.01;
-  //     high = entryPrice;
-  //   }
-  
-  //   let breakevenPrice = entryPrice;
-  //   let bestPrice = entryPrice;
-  //   let bestNetProfit = -Infinity;
-  
-  //   // Binary search to find exact breakeven price
-  //   for (let i = 0; i < 200; i++) {
-  //     const testPrice = (low + high) / 2;
-  //     const sellValue = quantity * testPrice;
-  //     const charges = calculateCharges(buyValue, sellValue, exchange, broker, tradeType);
-  
-  //     let grossProfit: number;
-  //     if (positionType === 'long') {
-  //       grossProfit = sellValue - buyValue;
-  //     } else {
-  //       grossProfit = buyValue - sellValue;
-  //     }
-  //     const netProfit = grossProfit - charges.totalCharges;
-  
-  //     // Track the best price that gives us net profit >= 0
-  //     if (netProfit >= 0 && (bestNetProfit < 0 || netProfit < bestNetProfit)) {
-  //       bestPrice = testPrice;
-  //       bestNetProfit = netProfit;
-  //     }
-  
-  //     // If we're very close to zero or slightly positive, we found our answer
-  //     if (netProfit >= 0 && netProfit < 0.5) {
-  //       breakevenPrice = testPrice;
-  //       break;
-  //     }
-  
-  //     if (positionType === 'long') {
-  //       if (netProfit < 0) {
-  //         low = testPrice;
-  //       } else {
-  //         high = testPrice;
-  //       }
-  //     } else {
-  //       if (netProfit < 0) {
-  //         high = testPrice;
-  //       } else {
-  //         low = testPrice;
-  //       }
-  //     }
-  //     breakevenPrice = testPrice;
-  //   }
-  
-  //   // If we found a better price during search, use that
-  //   if (bestNetProfit >= 0) {
-  //     breakevenPrice = bestPrice;
-  //   }
-  
-  //   // Final verification - round up to nearest paisa if needed to ensure no loss
-  //   const finalSellValue = quantity * breakevenPrice;
-  //   const finalCharges = calculateCharges(buyValue, finalSellValue, exchange, broker, tradeType);
-  //   const finalGrossProfit = positionType === 'long' ? finalSellValue - buyValue : buyValue - finalSellValue;
-  //   const finalNetProfit = finalGrossProfit - finalCharges.totalCharges;
-  
-  //   // If there's still a small loss, add 1 paisa and check again
-  //   if (finalNetProfit < 0) {
-  //     if (positionType === 'long') {
-  //       breakevenPrice += 0.01;
-  //     } else {
-  //       breakevenPrice -= 0.01;
-  //       if (breakevenPrice < 0) breakevenPrice = 0.01;
-  //     }
-  //   }
-  
-  //   return parseFloat(breakevenPrice.toFixed(2));
-  // };
-  
-  // Enhanced function for profit target calculation
-  export const calculateProfitTarget = (
+  export const calculateBreakevenPrice = (
     quantity: number,
     entryPrice: number,
-    targetProfitPercentage: number,
     exchange: string,
     broker: 'Dhan' | 'Groww',
     tradeType: 'equity-delivery' | 'equity-intraday',
     positionType: 'long' | 'short' = 'long'
   ): number => {
-    if (quantity <= 0 || entryPrice <= 0 || targetProfitPercentage <= 0) return 0;
+    if (quantity <= 0 || entryPrice <= 0) return 0;
   
-    const buyValue = quantity * entryPrice;
-    const targetNetProfit = buyValue * (targetProfitPercentage / 100);
+    // Set search range based on position type
+    let low: number, high: number;
+    const tolerance = 0.01; // 1 paisa tolerance for breakeven
     
-    // Binary search to find the required exit price
-    let low = 0;
-    let high = entryPrice * 10;
-    let targetPrice = entryPrice;
-    
-    for (let i = 0; i < 100; i++) {
-      const testPrice = (low + high) / 2;
-      const sellValue = quantity * testPrice;
+    if (positionType === 'long') {
+      // For long positions, exit price should be >= entry price typically
+      low = entryPrice * 0.5; // Allow for some flexibility
+      high = entryPrice * 5; // Reasonable upper bound
+    } else {
+      // For short positions, exit price should be <= entry price typically
+      low = 0.05; // Minimum possible stock price
+      high = entryPrice * 1.5; // Allow some flexibility above entry
+    }
+  
+    let breakevenPrice = entryPrice;
+    let iterations = 0;
+    const maxIterations = 100;
+  
+    // Binary search to find exact breakeven price
+    while (iterations < maxIterations && (high - low) > 0.01) {
+      const testPrice = parseFloat(((low + high) / 2).toFixed(2));
+      
+      // Calculate charges based on position type
+      let buyValue: number, sellValue: number;
+      
+      if (positionType === 'long') {
+        // Long: Buy at entry, sell at test price
+        buyValue = quantity * entryPrice;
+        sellValue = quantity * testPrice;
+      } else {
+        // Short: Sell at entry, buy back at test price
+        sellValue = quantity * entryPrice;  // Initial sell (short)
+        buyValue = quantity * testPrice;    // Buy back (cover)
+      }
       
       const charges = calculateCharges(buyValue, sellValue, exchange, broker, tradeType);
       
+      // Calculate gross and net profit
       let grossProfit: number;
       if (positionType === 'long') {
-        grossProfit = sellValue - buyValue;
+        grossProfit = sellValue - buyValue; // Sell high, bought low
       } else {
-        grossProfit = buyValue - sellValue;
+        grossProfit = sellValue - buyValue; // Sold high, buy back low
       }
       
       const netProfit = grossProfit - charges.totalCharges;
       
-      if (Math.abs(netProfit - targetNetProfit) < 0.01) {
-        targetPrice = testPrice;
+      // Check if we've found breakeven (small profit or loss within tolerance)
+      if (Math.abs(netProfit) <= tolerance) {
+        breakevenPrice = testPrice;
         break;
       }
       
-      if (netProfit < targetNetProfit) {
-        low = testPrice;
+      // Adjust search range based on position type and profit/loss
+      if (positionType === 'long') {
+        if (netProfit < 0) {
+          // Still making loss, need higher exit price
+          low = testPrice;
+        } else {
+          // Making profit, can try lower exit price
+          high = testPrice;
+        }
       } else {
-        high = testPrice;
+        if (netProfit < 0) {
+          // Still making loss, need lower buyback price
+          high = testPrice;
+        } else {
+          // Making profit, can try higher buyback price
+          low = testPrice;
+        }
       }
       
-      targetPrice = testPrice;
+      breakevenPrice = testPrice;
+      iterations++;
+    }
+  
+    // Final verification and adjustment
+    let finalBuyValue: number, finalSellValue: number;
+    
+    if (positionType === 'long') {
+      finalBuyValue = quantity * entryPrice;
+      finalSellValue = quantity * breakevenPrice;
+    } else {
+      finalSellValue = quantity * entryPrice;
+      finalBuyValue = quantity * breakevenPrice;
     }
     
-    return parseFloat(targetPrice.toFixed(2));
+    const finalCharges = calculateCharges(finalBuyValue, finalSellValue, exchange, broker, tradeType);
+    const finalGrossProfit = finalSellValue - finalBuyValue;
+    const finalNetProfit = finalGrossProfit - finalCharges.totalCharges;
+  
+    // If there's still a loss, adjust by 1 paisa in the right direction
+    if (finalNetProfit < -tolerance) {
+      if (positionType === 'long') {
+        breakevenPrice += 0.01; // Increase sell price
+      } else {
+        breakevenPrice -= 0.01; // Decrease buyback price
+        if (breakevenPrice <= 0) breakevenPrice = 0.05; // Ensure positive price
+      }
+    }
+  
+    return parseFloat(breakevenPrice.toFixed(2));
   };
