@@ -13,7 +13,10 @@ const TransactionItem = ({
   removeTransaction,
   canRemove,
   averageBuyPrice,
+  tradeType = 'equity-delivery',
 }: TransactionItemProps) => {
+  // Determine if this is intraday trading
+  const isIntraday = tradeType === 'equity-intraday';
   return (
     <Card key={transaction.id} className="p-4">
       <div className="space-y-4">
@@ -98,7 +101,7 @@ const TransactionItem = ({
           </div>
           <div>
             <Label htmlFor={`buyPrice-${transaction.id}`} className="flex justify-between mb-1">
-              <span>Buy Price</span>
+              <span>{isIntraday ? 'Entry Price' : 'Buy Price'}</span>
               {transaction.error && transaction.error.includes("buy price") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
               )}
@@ -144,7 +147,7 @@ const TransactionItem = ({
           </div>
           <div>
             <Label htmlFor={`sellPrice-${transaction.id}`} className="flex justify-between mb-1">
-              <span>Sell Price</span>
+              <span>{isIntraday ? 'Exit Price' : 'Sell Price'}</span>
               {transaction.error && transaction.error.includes("sell price") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
               )}
@@ -190,7 +193,7 @@ const TransactionItem = ({
           </div>
           <div className="flex flex-col justify-end text-sm text-muted-foreground space-y-1">
             <div>
-              Avg. Buy Price:{" "}
+              {isIntraday ? 'Avg. Entry Price: ' : 'Avg. Buy Price: '}
               {formatCurrency(averageBuyPrice)}
             </div>
           </div>

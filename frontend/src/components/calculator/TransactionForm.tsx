@@ -65,6 +65,7 @@ const TransactionForm = ({
             removeTransaction={removeTransaction}
             canRemove={transactions.length > 1}
             averageBuyPrice={averageBuyPrice}
+            tradeType={tradeType}
           />
         );
       })}

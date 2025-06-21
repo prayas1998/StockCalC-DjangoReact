@@ -29,6 +29,7 @@ export interface TransactionItemProps {
   removeTransaction: (id: string) => void;
   canRemove: boolean;
   averageBuyPrice: number;
+  tradeType?: string;
 }
 
 export interface CalculatorOptionsProps {
