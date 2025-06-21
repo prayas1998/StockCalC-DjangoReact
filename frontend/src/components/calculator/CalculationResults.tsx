@@ -136,11 +136,9 @@ const CalculationResults = ({
                 <div className="flex justify-between pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">
                   <span className="font-medium text-primary">Breakeven Price</span>
                   <span className="font-medium text-primary">
-                    {calculationState.result 
-                      ? (breakEvenPrice 
-                          ? formatCurrency(breakEvenPrice) 
-                          : formatCurrency("0"))
-                      : "Calculating..."}
+                    {breakEvenPrice 
+                      ? formatCurrency(breakEvenPrice) 
+                      : formatCurrency("0")}
                   </span>
                 </div>
               </div>

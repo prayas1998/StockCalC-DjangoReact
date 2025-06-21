@@ -20,6 +20,7 @@ export interface TransactionFormProps {
   platform: string;
   exchange: string;
   tradeType: string;
+  positionType?: 'long' | 'short';
 }
 
 export interface TransactionItemProps {
@@ -30,6 +31,7 @@ export interface TransactionItemProps {
   canRemove: boolean;
   averageBuyPrice: number;
   tradeType?: string;
+  positionType?: 'long' | 'short';
 }
 
 export interface CalculatorOptionsProps {

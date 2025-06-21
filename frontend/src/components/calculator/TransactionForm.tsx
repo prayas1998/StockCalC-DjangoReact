@@ -10,6 +10,7 @@ const TransactionForm = ({
   platform,
   exchange,
   tradeType,
+  positionType = 'long',
 }: TransactionFormProps) => {
   const updateTransaction = (
     id: string,
@@ -66,6 +67,7 @@ const TransactionForm = ({
             canRemove={transactions.length > 1}
             averageBuyPrice={averageBuyPrice}
             tradeType={tradeType}
+            positionType={positionType}
           />
         );
       })}

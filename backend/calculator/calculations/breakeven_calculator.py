@@ -19,18 +19,18 @@ class BreakevenCalculator:
         Returns:
             Decimal: The breakeven price
         """
-        if quantity <= 0:
+        if quantity <= 0 or buy_value <= 0:
             return Decimal("0")
             
-        # For delivery positions, we need to find the minimum sell price
-        # Exit value (sell_value) - Entry value (buy_value) - charges = 0
-        # Solve for sell_value: sell_value = buy_value + charges
-        # Then breakeven price = sell_value / quantity
+        # For delivery positions, the breakeven price is simply:
+        # (buy_value + total_charges) / quantity
+        # This is the price at which selling would result in zero net profit
         breakeven_price = (buy_value + total_charges) / quantity
-        return breakeven_price
+        return breakeven_price.quantize(Decimal("0.01"))
     
     @staticmethod
-    def calculate_intraday_breakeven(quantity, buy_value, sell_value, total_charges, position_type='long'):
+    def calculate_intraday_breakeven(quantity, buy_value, sell_value, total_charges, position_type='long', 
+                                    broker=None, exchange=None):
         """
         Calculate the breakeven price for an intraday position.
         For long positions: The minimum exit (sell) price to avoid loss.
@@ -49,18 +49,28 @@ class BreakevenCalculator:
         if quantity <= 0:
             return Decimal("0")
             
-        if position_type == 'short':
-            # For short positions, we need to find the maximum buy-back price
-            # Entry value (sell_value) - Exit value (buy_value) - charges = 0
-            # Solve for buy_value: buy_value = sell_value - charges
-            # Then breakeven price = buy_value / quantity
-            breakeven_price = (sell_value - total_charges) / quantity
-            # Ensure the price is not negative
-            return max(breakeven_price, Decimal("0.01"))
-        else:
-            # For long positions, we need to find the minimum sell price
-            # Exit value (sell_value) - Entry value (buy_value) - charges = 0
-            # Solve for sell_value: sell_value = buy_value + charges
-            # Then breakeven price = sell_value / quantity
-            breakeven_price = (buy_value + total_charges) / quantity
-            return breakeven_price
+        # For intraday positions, we only need quantity and entry price
+        if position_type == 'long':
+            # For long positions, entry is buy_value
+            entry_value = buy_value
+            entry_price = entry_value / quantity if quantity > 0 else Decimal("0")
+            
+            # Breakeven price = (entry_value + charges) / quantity
+            breakeven_price = (entry_value + total_charges) / quantity
+        else:  # short position
+            # For short positions, entry is sell_value
+            entry_value = sell_value
+            entry_price = entry_value / quantity if quantity > 0 else Decimal("0")
+            
+            # Breakeven price = (entry_value - charges) / quantity
+            # This is the maximum price at which buying back would result in zero net profit
+            breakeven_price = (entry_value - total_charges) / quantity
+            
+            # Ensure the price is not negative for short positions
+            if breakeven_price <= Decimal("0"):
+                breakeven_price = Decimal("0.01")
+                
+            # Debug print to verify calculation
+            print(f"Short position breakeven: sell_value (entry)={sell_value}, buy_value (exit)={buy_value}, charges={total_charges}, quantity={quantity}, breakeven={breakeven_price}")
+                
+        return breakeven_price.quantize(Decimal("0.01"))

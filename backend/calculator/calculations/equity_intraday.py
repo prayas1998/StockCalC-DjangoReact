@@ -19,17 +19,24 @@ class EquityIntradayCalculator(BaseTradeCalculator):
             buy_price = Decimal(str(transaction["buyPrice"]))
             sell_price = Decimal(str(transaction["sellPrice"]))
 
-            # For short positions, we swap buy and sell values for calculation
+            # For short positions, we need to interpret the inputs correctly
             if position_type == 'short':
                 # In short positions, we sell first (at entry price) and buy later (at exit price)
+                # For short positions, sellPrice is the entry price and buyPrice is the exit price
+                
+                # Calculate values directly from the input prices
+                sell_value = quantity * sell_price  # Entry value (sell high)
+                buy_value = quantity * buy_price    # Exit value (buy low)
+                
+                # Store these for reference
                 entry_price = sell_price
                 exit_price = buy_price
-                entry_value = quantity * entry_price
-                exit_value = quantity * exit_price
+                entry_value = sell_value
+                exit_value = buy_value
                 
-                # For accounting purposes, we still track buy_value and sell_value
-                buy_value = exit_value  # Buy back (cover) value
-                sell_value = entry_value  # Initial sell (short) value
+                # Debug print to verify the values
+                print(f"SHORT POSITION - quantity: {quantity}, entry price (sell): {entry_price}, exit price (buy): {exit_price}")
+                print(f"SHORT POSITION - entry value (sell): {entry_value}, exit value (buy): {exit_value}")
             else:
                 # Long position - traditional buy then sell
                 entry_price = buy_price
@@ -77,9 +84,15 @@ class EquityIntradayCalculator(BaseTradeCalculator):
         ])
         # Calculate gross P&L based on position type
         if position_type == 'short':
-            gross_pnl = total_sell_value - total_buy_value  # For short: sell_value (entry) - buy_value (exit)
+            # For short positions: entry (sell) - exit (buy)
+            # For short: profit = sell_value (entry) - buy_value (exit)
+            gross_pnl = total_sell_value - total_buy_value
+            
+            # Debug print to verify calculation
+            print(f"Short position: sell_value (entry)={total_sell_value}, buy_value (exit)={total_buy_value}, gross_pnl={gross_pnl}")
         else:
-            gross_pnl = total_sell_value - total_buy_value  # For long: sell_value (exit) - buy_value (entry)
+            # For long positions: exit (sell) - entry (buy)
+            gross_pnl = total_sell_value - total_buy_value
             
         net_pnl = gross_pnl - total_charges
         
@@ -122,4 +135,10 @@ class EquityIntradayCalculator(BaseTradeCalculator):
         For long positions: The minimum exit (sell) price to avoid loss.
         For short positions: The maximum exit (buy) price to avoid loss.
         """
-        return BreakevenCalculator.calculate_intraday_breakeven(quantity, buy_value, sell_value, total_charges, position_type)
+        return BreakevenCalculator.calculate_intraday_breakeven(
+            quantity, 
+            buy_value, 
+            sell_value, 
+            total_charges, 
+            position_type
+        )

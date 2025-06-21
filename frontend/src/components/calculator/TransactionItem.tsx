@@ -14,9 +14,12 @@ const TransactionItem = ({
   canRemove,
   averageBuyPrice,
   tradeType = 'equity-delivery',
+  positionType = 'long',
 }: TransactionItemProps) => {
   // Determine if this is intraday trading
   const isIntraday = tradeType === 'equity-intraday';
+  // Use the passed positionType prop if available, otherwise fall back to window.positionType
+  const currentPositionType = positionType || window.positionType || 'long';
   return (
     <Card key={transaction.id} className="p-4">
       <div className="space-y-4">
@@ -101,7 +104,13 @@ const TransactionItem = ({
           </div>
           <div>
             <Label htmlFor={`buyPrice-${transaction.id}`} className="flex justify-between mb-1">
-              <span>{isIntraday ? 'Entry Price' : 'Buy Price'}</span>
+              <span>
+                {isIntraday 
+                  ? (tradeType === 'equity-intraday' && currentPositionType === 'short' 
+                    ? 'Entry Price (Sell)' 
+                    : 'Entry Price (Buy)')
+                  : 'Buy Price'}
+              </span>
               {transaction.error && transaction.error.includes("buy price") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
               )}
@@ -110,7 +119,7 @@ const TransactionItem = ({
               id={`buyPrice-${transaction.id}`}
               type="number"
               min="0"
-              placeholder="Buy Price"
+              placeholder={isIntraday && currentPositionType === 'short' ? "Entry Price (Sell)" : "Buy Price"}
               value={transaction.buyPrice}
               onFocus={() => {
                 if (transaction.buyPrice === "0") {
@@ -147,7 +156,13 @@ const TransactionItem = ({
           </div>
           <div>
             <Label htmlFor={`sellPrice-${transaction.id}`} className="flex justify-between mb-1">
-              <span>{isIntraday ? 'Exit Price' : 'Sell Price'}</span>
+              <span>
+                {isIntraday 
+                  ? (tradeType === 'equity-intraday' && currentPositionType === 'short' 
+                    ? 'Exit Price (Buy)' 
+                    : 'Exit Price (Sell)')
+                  : 'Sell Price'}
+              </span>
               {transaction.error && transaction.error.includes("sell price") && (
                 <span className="text-xs text-destructive">{transaction.error}</span>
               )}
@@ -156,7 +171,7 @@ const TransactionItem = ({
               id={`sellPrice-${transaction.id}`}
               type="number"
               min="0"
-              placeholder="Sell Price"
+              placeholder={isIntraday && currentPositionType === 'short' ? "Exit Price (Buy)" : "Sell Price"}
               value={transaction.sellPrice}
               onFocus={() => {
                 if (transaction.sellPrice === "0") {

@@ -46,6 +46,11 @@ const Index = () => {
   const [exchange, setExchange] = useState("NSE");
   const [tradeType, setTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
   const [positionType, setPositionType] = useState<'long' | 'short'>('long');
+  
+  // Make positionType available globally for UI components
+  useEffect(() => {
+    window.positionType = positionType;
+  }, [positionType]);
 
   const [platform, setPlatform] = useState<'Dhan' | 'Groww' | 'Rise' | 'Others'>(() => {
     const path = window.location.pathname.slice(1).toLowerCase();
@@ -212,6 +217,7 @@ const Index = () => {
                   platform={platform}
                   exchange={exchange}
                   tradeType={tradeType}
+                  positionType={positionType}
                 />
 
                 <div className="flex gap-4 justify-end">

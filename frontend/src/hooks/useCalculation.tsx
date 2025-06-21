@@ -44,11 +44,27 @@ export const useCalculation = (
         throw new Error("Please fix validation errors before calculating.");
       }
 
-      const formattedTransactions = transactions.map((t) => ({
-        quantity: t.quantity,
-        buyPrice: t.buyPrice || "0",
-        sellPrice: t.sellPrice || "0",
-      }));
+      // For intraday short positions, we need to swap the interpretation of buyPrice and sellPrice
+      // because in short positions: entry = sell, exit = buy (opposite of long positions)
+      const formattedTransactions = transactions.map((t) => {
+        if (tradeType === 'equity-intraday' && positionType === 'short') {
+          // For short positions, the UI's "Entry Price" is stored in buyPrice but represents selling price
+          // and "Exit Price" is stored in sellPrice but represents buying price
+          // So we need to swap them for the backend to interpret correctly
+          return {
+            quantity: t.quantity,
+            buyPrice: t.sellPrice || "0",  // Exit price (buy back)
+            sellPrice: t.buyPrice || "0",  // Entry price (sell)
+          };
+        } else {
+          // For long positions, keep as is
+          return {
+            quantity: t.quantity,
+            buyPrice: t.buyPrice || "0",
+            sellPrice: t.sellPrice || "0",
+          };
+        }
+      });
 
       const result = await calculateCharges(
         platform.toLowerCase(),
@@ -128,11 +144,24 @@ export const useCalculation = (
 
     setIsSaving(true);
     try {
-      const formattedTransactions = transactions.map((t) => ({
-        quantity: t.quantity,
-        buyPrice: t.buyPrice || "0",
-        sellPrice: t.sellPrice || "0",
-      }));
+      // Apply the same logic for formatting transactions as in handleCalculateCharges
+      const formattedTransactions = transactions.map((t) => {
+        if (tradeType === 'equity-intraday' && positionType === 'short') {
+          // For short positions, swap buyPrice and sellPrice
+          return {
+            quantity: t.quantity,
+            buyPrice: t.sellPrice || "0",  // Exit price (buy back)
+            sellPrice: t.buyPrice || "0",  // Entry price (sell)
+          };
+        } else {
+          // For long positions, keep as is
+          return {
+            quantity: t.quantity,
+            buyPrice: t.buyPrice || "0",
+            sellPrice: t.sellPrice || "0",
+          };
+        }
+      });
 
       const result = await saveTransactions(
         transactions[0].companyName || "Untitled Transaction",
