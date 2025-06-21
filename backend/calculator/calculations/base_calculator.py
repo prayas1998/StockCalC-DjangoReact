@@ -12,7 +12,7 @@ class BaseTradeCalculator(ABC):
         self.govt_charges = self._get_government_charges()
 
     @abstractmethod
-    def calculate_transaction_charges(self, transactions):
+    def calculate_transaction_charges(self, transactions, position_type='long'):
         pass
 
     def _get_broker(self):

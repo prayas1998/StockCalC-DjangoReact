@@ -12,14 +12,27 @@ export interface CalculationResponse {
     averageBuyPrice: string;
   }[];
   charges: {
-    totalCharges: number;
-    brokerage: number;
-    [key: string]: number;
+    totalCharges: string;
+    brokerage: string;
+    stt: string;
+    exchangeCharges: string;
+    stampDuty: string;
+    sebiFee: string;
+    ipft: string;
+    gst: string;
+    dpCharges: string;
+    [key: string]: string;
   };
   summary: {
-    turnover: number;
-    grossPnL: number;
-    netPnL: number;
+    totalQuantity: string;
+    totalBuyValue: string;
+    totalSellValue: string;
+    averageBuyPrice: string;
+    turnover: string;
+    grossPnL: string;
+    netPnL: string;
+    breakevenPrice: string;
+    [key: string]: string; // Allow for any additional properties
   };
 }
 

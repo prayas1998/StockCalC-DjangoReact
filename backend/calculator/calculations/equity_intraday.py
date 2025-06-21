@@ -1,8 +1,9 @@
 from .base_calculator import BaseTradeCalculator
+from .breakeven_calculator import BreakevenCalculator
 from decimal import Decimal
 
 class EquityIntradayCalculator(BaseTradeCalculator):
-    def calculate_transaction_charges(self, transactions):
+    def calculate_transaction_charges(self, transactions, position_type='long'):
         if self.platform != 'dhan':
             return {"error": "Intraday calculations are only implemented for Dhan broker at this time."}
 
@@ -18,8 +19,26 @@ class EquityIntradayCalculator(BaseTradeCalculator):
             buy_price = Decimal(str(transaction["buyPrice"]))
             sell_price = Decimal(str(transaction["sellPrice"]))
 
-            buy_value = quantity * buy_price
-            sell_value = quantity * sell_price
+            # For short positions, we swap buy and sell values for calculation
+            if position_type == 'short':
+                # In short positions, we sell first (at entry price) and buy later (at exit price)
+                entry_price = sell_price
+                exit_price = buy_price
+                entry_value = quantity * entry_price
+                exit_value = quantity * exit_price
+                
+                # For accounting purposes, we still track buy_value and sell_value
+                buy_value = exit_value  # Buy back (cover) value
+                sell_value = entry_value  # Initial sell (short) value
+            else:
+                # Long position - traditional buy then sell
+                entry_price = buy_price
+                exit_price = sell_price
+                entry_value = quantity * entry_price
+                exit_value = quantity * exit_price
+                
+                buy_value = entry_value
+                sell_value = exit_value
 
             cumulative_quantity += quantity
             cumulative_buy_value += buy_value
@@ -56,8 +75,16 @@ class EquityIntradayCalculator(BaseTradeCalculator):
         total_charges = sum([
             total_brokerage, stt, exchange_charges, stamp_duty, sebi_fee, ipft, gst
         ])
-        gross_pnl = total_sell_value - total_buy_value
+        # Calculate gross P&L based on position type
+        if position_type == 'short':
+            gross_pnl = total_sell_value - total_buy_value  # For short: sell_value (entry) - buy_value (exit)
+        else:
+            gross_pnl = total_sell_value - total_buy_value  # For long: sell_value (exit) - buy_value (entry)
+            
         net_pnl = gross_pnl - total_charges
+        
+        # Calculate breakeven price
+        breakeven_price = self.calculate_breakeven_price(cumulative_quantity, total_buy_value, total_sell_value, total_charges, position_type)
 
         response_data = {
             "summary": {
@@ -72,6 +99,7 @@ class EquityIntradayCalculator(BaseTradeCalculator):
                 "turnover": str(total_turnover.quantize(Decimal("0.01"))),
                 "grossPnL": str(gross_pnl.quantize(Decimal("0.01"))),
                 "netPnL": str(net_pnl.quantize(Decimal("0.01"))),
+                "breakevenPrice": str(breakeven_price.quantize(Decimal("0.01"))),
             },
             "charges": {
                 "brokerage": str(total_brokerage.quantize(Decimal("0.01"))),
@@ -87,3 +115,11 @@ class EquityIntradayCalculator(BaseTradeCalculator):
             "transactions": transactions_data,
         }
         return response_data 
+        
+    def calculate_breakeven_price(self, quantity, buy_value, sell_value, total_charges, position_type='long'):
+        """
+        Calculate the breakeven price for a position.
+        For long positions: The minimum exit (sell) price to avoid loss.
+        For short positions: The maximum exit (buy) price to avoid loss.
+        """
+        return BreakevenCalculator.calculate_intraday_breakeven(quantity, buy_value, sell_value, total_charges, position_type)

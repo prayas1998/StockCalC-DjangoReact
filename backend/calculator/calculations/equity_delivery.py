@@ -1,8 +1,9 @@
 from .base_calculator import BaseTradeCalculator
+from .breakeven_calculator import BreakevenCalculator
 from decimal import Decimal
 
 class EquityDeliveryCalculator(BaseTradeCalculator):
-    def calculate_transaction_charges(self, transactions):
+    def calculate_transaction_charges(self, transactions, position_type='long'):
         cumulative_quantity = Decimal("0")
         cumulative_buy_value = Decimal("0")
         total_buy_value = Decimal("0")
@@ -57,6 +58,9 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
         ])
         gross_pnl = total_sell_value - total_buy_value
         net_pnl = gross_pnl - total_charges
+        
+        # Calculate breakeven price (only for long positions in delivery)
+        breakeven_price = self.calculate_breakeven_price(cumulative_quantity, total_buy_value, total_charges)
 
         response_data = {
             "summary": {
@@ -71,6 +75,7 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
                 "turnover": str(total_turnover.quantize(Decimal("0.01"))),
                 "grossPnL": str(gross_pnl.quantize(Decimal("0.01"))),
                 "netPnL": str(net_pnl.quantize(Decimal("0.01"))),
+                "breakevenPrice": str(breakeven_price.quantize(Decimal("0.01"))),
             },
             "charges": {
                 "brokerage": str(total_brokerage.quantize(Decimal("0.01"))),
@@ -86,3 +91,10 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
             "transactions": transactions_data,
         }
         return response_data 
+        
+    def calculate_breakeven_price(self, quantity, buy_value, total_charges):
+        """
+        Calculate the breakeven price for a delivery position.
+        For delivery trades, this is always the minimum sell price to avoid loss.
+        """
+        return BreakevenCalculator.calculate_delivery_breakeven(quantity, buy_value, total_charges)

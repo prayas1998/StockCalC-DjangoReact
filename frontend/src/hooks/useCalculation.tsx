@@ -62,6 +62,7 @@ export const useCalculation = (
         throw new Error(`${result.error}: ${result.detail || ""}`);
       }
 
+
       setCalculationState({
         error: null,
         result,

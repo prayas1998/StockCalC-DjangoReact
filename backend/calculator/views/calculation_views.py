@@ -15,6 +15,7 @@ def calculate_charges(request):
         exchange = request.data.get("exchange", "NSE").upper()
         trade_type = request.data.get("tradeType", "equity-delivery")
         transactions = request.data.get("transactions", [])
+        position_type = request.data.get("positionType", "long")
 
         # Select the appropriate calculator
         if trade_type == 'equity-delivery':
@@ -25,7 +26,8 @@ def calculate_charges(request):
             return Response({"error": f"Unsupported trade type: {trade_type}"}, status=400)
 
         # Delegate all calculation logic to the calculator
-        response_data = calculator.calculate_transaction_charges(transactions)
+        response_data = calculator.calculate_transaction_charges(transactions, position_type)
+        
         return Response(response_data)
 
     except (KeyError, ValueError, TypeError, ZeroDivisionError) as e:

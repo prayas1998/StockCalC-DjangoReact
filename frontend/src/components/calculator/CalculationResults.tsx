@@ -6,6 +6,50 @@ const CalculationResults = ({
   formatCurrency,
   exchange,
 }: CalculationResultsProps) => {
+  
+  // Find the breakeven price regardless of property name casing
+  const getBreakevenPrice = () => {
+    if (!calculationState.result?.summary) return null;
+    
+    const summary = calculationState.result.summary as Record<string, any>;
+    // Check all possible variations of the property name
+    const possibleNames = ['breakevenPrice', 'breakeven_price', 'breakevenPrice', 'breakeven_price', 'BreakevenPrice'];
+    
+    for (const name of possibleNames) {
+      if (name in summary) {
+        return summary[name];
+      }
+    }
+    
+    // If we still can't find it, try to find any key containing 'breakeven'
+    const key = Object.keys(summary).find(k => 
+      k.toLowerCase().includes('breakeven') || k.toLowerCase().includes('break_even')
+    );
+    
+    if (key) {
+      return summary[key];
+    }
+    
+    // Fallback calculation if breakeven price is not provided
+    if (summary.totalBuyValue && summary.totalQuantity && calculationState.result?.charges?.totalCharges) {
+      try {
+        const buyValue = parseFloat(summary.totalBuyValue);
+        const charges = parseFloat(calculationState.result.charges.totalCharges || "0");
+        const quantity = parseFloat(summary.totalQuantity);
+        
+        if (quantity > 0) {
+          const calculatedBreakeven = (buyValue + charges) / quantity;
+          return calculatedBreakeven.toFixed(2);
+        }
+      } catch (error) {
+        console.error("Error calculating fallback breakeven price:", error);
+      }
+    }
+    
+    return null;
+  }
+  
+  const breakEvenPrice = getBreakevenPrice();
   return (
     <Card className="p-6 glass mt-8">
       {calculationState.error && (
@@ -13,6 +57,7 @@ const CalculationResults = ({
           Error: {calculationState.error}
         </div>
       )}
+      
 
       <div className="space-y-6">
         <div>
@@ -60,6 +105,7 @@ const CalculationResults = ({
                 Other Charges
               </h4>
               <div className="space-y-3">
+                {/* Standard charges */}
                 {[
                   {
                     key: "stt",
@@ -85,15 +131,31 @@ const CalculationResults = ({
                     </span>
                   </div>
                 ))}
+                
+                {/* Breakeven Price - Always show if result exists */}
+                <div className="flex justify-between pt-3 mt-3 border-t border-gray-200 dark:border-gray-700">
+                  <span className="font-medium text-primary">Breakeven Price</span>
+                  <span className="font-medium text-primary">
+                    {calculationState.result 
+                      ? (breakEvenPrice 
+                          ? formatCurrency(breakEvenPrice) 
+                          : formatCurrency("0"))
+                      : "Calculating..."}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
         <div className="pt-4 border-t">
-          <div className="text-sm text-muted-foreground">Net P&L</div>
-          <div className="text-3xl font-bold text-primary">
-            {formatCurrency(calculationState.result?.summary.netPnL ?? 0)}
+          <div className="flex justify-between items-start">
+            <div>
+              <div className="text-sm text-muted-foreground">Net P&L</div>
+              <div className="text-3xl font-bold text-primary">
+                {formatCurrency(calculationState.result?.summary.netPnL ?? 0)}
+              </div>
+            </div>
           </div>
         </div>
       </div>
