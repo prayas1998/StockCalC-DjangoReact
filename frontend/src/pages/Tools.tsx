@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Header from "@/components/ui/header";
 import { Label } from "@/components/ui/label";
@@ -10,23 +10,29 @@ import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSele
 
 const Tools = () => {
   const navigate = useNavigate();
+  // Shared state for P&L calculators
   const sharedState = useSharedCalculatorState();
+  
+  // Independent state for Position Sizing Calculator
+  const [positionSizingBroker, setPositionSizingBroker] = useState<'Dhan' | 'Groww'>('Dhan');
+  const [positionSizingTradeType, setPositionSizingTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
+  
   const LEVERAGE = 5;
-
+  const exchange = "NSE"; // Fixed to NSE as in original
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Position Sizing Calculator */}
+        {/* Position Sizing Calculator - with independent state */}
         <PositionSizingCalculatorContainer
-          selectedBroker={sharedState.selectedBroker}
-          selectedTradeType={sharedState.selectedTradeType}
-          exchange={sharedState.exchange}
+          selectedBroker={positionSizingBroker}
+          selectedTradeType={positionSizingTradeType}
+          exchange={exchange}
           LEVERAGE={LEVERAGE}
-          onBrokerChange={sharedState.setSelectedBroker}
-          onTradeTypeChange={sharedState.setSelectedTradeType}
+          onBrokerChange={setPositionSizingBroker}
+          onTradeTypeChange={setPositionSizingTradeType}
         />
 
         {/* P&L Calculators Section - with improved spacing */}
@@ -53,14 +59,26 @@ const Tools = () => {
             </div>
             
             <div className="p-4">
-              {/* Use the shared BrokerTradeTypeSelector component */}
+              {/* Use the shared BrokerTradeTypeSelector component - only for P&L calculators */}
               <BrokerTradeTypeSelector
                 selectedBroker={sharedState.selectedBroker}
                 selectedTradeType={sharedState.selectedTradeType}
                 onBrokerChange={sharedState.setSelectedBroker}
                 onTradeTypeChange={sharedState.setSelectedTradeType}
+                positionType={sharedState.positionType}
+                onPositionTypeChange={sharedState.setPositionType}
                 compact={false}
               />
+              
+              {/* Note about independent calculator settings */}
+              <div className="mt-3 p-2 bg-blue-50 border-l-4 border-blue-400 text-blue-800 text-xs rounded">
+                <div className="flex items-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-blue-500 mr-1.5 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2h-1V9a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                  <span>These settings apply only to the P&L calculators below. The Position Sizing Calculator above has its own independent settings.</span>
+                </div>
+              </div>
             </div>
           </div>
           

@@ -4,7 +4,8 @@ import type React from "react"
 import { useMemo, useEffect } from "react"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
-import { Calculator, CheckCircle, TrendingUp, TrendingDown, Zap, RotateCcw } from "lucide-react"
+import { Calculator, CheckCircle, TrendingUp, TrendingDown, Zap } from "lucide-react"
+import { ClearButton } from "@/components/shared/ClearButton"
 import { CalculatorCard } from "@/components/shared/CalculatorCard"
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector"
 import { formatCurrency } from "@/pages/Tools/ChargesUtils"
@@ -103,20 +104,15 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
       <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 via-purple-50 to-orange-50 rounded-lg border border-gray-200">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm text-gray-600">Configure your position parameters</div>
-          <button
-            onClick={() => {
+          <ClearButton 
+            onClear={() => {
               updateField("capital", "")
               updateField("riskAmount", "")
               updateField("riskPercent", "")
               updateField("entryPrice", "")
               updateField("stopLoss", "")
             }}
-            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors"
-            title="Clear all fields"
-          >
-            <RotateCcw className="h-3 w-3" />
-            Clear
-          </button>
+          />
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">

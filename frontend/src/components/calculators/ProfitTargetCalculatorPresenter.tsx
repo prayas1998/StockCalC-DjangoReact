@@ -3,6 +3,7 @@ import { Label } from "@/components/ui/label";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { CalculatorCard } from '@/components/shared/CalculatorCard';
 import { ResultsPanel } from '@/components/shared/ResultsPanel';
+import { ClearButton } from '@/components/shared/ClearButton';
 import { formatCurrency } from '@/pages/Tools/ChargesUtils';
 import { ProfitTargetCalculatorHook } from '@/hooks/useProfitTargetCalculator';
 import { SharedCalculatorState } from '@/hooks/useSharedCalculatorState';
@@ -32,6 +33,17 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
       disabled={isDisabled}
     >
       {/* Broker selector moved to shared section in Tools.tsx */}
+      
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm text-gray-600">Enter your trade details</div>
+        <ClearButton 
+          onClear={() => {
+            updateField('quantity', '');
+            updateField('buyPrice', '');
+            updateField('profitPercentage', '');
+          }} 
+        />
+      </div>
       
       <div className="space-y-4">
         <div>
