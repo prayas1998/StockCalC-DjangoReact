@@ -1,4 +1,4 @@
-import React, { ChangeEvent, KeyboardEvent, forwardRef } from 'react';
+import React, { ChangeEvent, KeyboardEvent, forwardRef, ClipboardEvent, useState } from 'react';
 import { Input } from "./input";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +22,9 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
     className,
     ...props 
   }, ref) => {
+    const [showError, setShowError] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
+    
     // Handle key press to prevent non-numeric input
     const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
       // Allow: backspace, delete, tab, escape, enter, arrows, home, end
@@ -40,6 +43,91 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
       // If not an allowed key, prevent default
       if (!isNumeric && !allowedKeys.includes(e.key) && !decimalAllowed && !minusAllowed) {
         e.preventDefault();
+      }
+    };
+    
+    // Handle paste event
+    const handlePaste = (e: ClipboardEvent<HTMLInputElement>) => {
+      const pastedText = e.clipboardData.getData('text');
+      
+      // Check if pasted content is a valid number according to our rules
+      let isValid = true;
+      let validationMessage = "";
+      
+      // Check for non-numeric characters (allow empty string)
+      if (pastedText === '') {
+        // Allow empty paste - will be handled as empty string
+        isValid = true;
+      } else if (allowDecimal) {
+        // For decimal numbers, allow numbers with optional decimal point and optional negative sign
+        // This regex allows for: empty string, just a decimal point, just a minus sign, or valid decimal number
+        if (!/^-?\d*\.?\d*$/.test(pastedText.trim())) {
+          isValid = false;
+          validationMessage = "Only numbers and decimal point are allowed";
+        }
+      } else {
+        // For integers, only allow digits with optional negative sign
+        if (!/^-?\d+$/.test(pastedText.trim())) {
+          isValid = false;
+          validationMessage = "Only whole numbers are allowed";
+        }
+      }
+      
+      // Check for decimal places limit
+      if (isValid && allowDecimal && maxDecimalPlaces !== undefined) {
+        const parts = pastedText.split('.');
+        if (parts.length > 1 && parts[1].length > maxDecimalPlaces) {
+          isValid = false;
+          validationMessage = `Maximum ${maxDecimalPlaces} decimal places allowed`;
+        }
+      }
+      
+      // Check min/max constraints
+      if (isValid && pastedText !== '' && pastedText !== '-' && pastedText !== '.') {
+        const numValue = parseFloat(pastedText);
+        if (!isNaN(numValue)) {
+          if (min !== undefined && numValue < min) {
+            isValid = false;
+            validationMessage = `Value must be at least ${min}`;
+          }
+          if (max !== undefined && numValue > max) {
+            isValid = false;
+            validationMessage = `Value must be at most ${max}`;
+          }
+        }
+      }
+      
+      if (isValid) {
+        // For valid pastes, prevent default and manually update the value
+        e.preventDefault();
+        
+        // Format the pasted text to handle special cases
+        let processedValue = pastedText.trim();
+        
+        // If the value starts with a decimal point, add a leading zero
+        if (allowDecimal && processedValue.startsWith('.')) {
+          processedValue = '0' + processedValue;
+        }
+        
+        // Create a synthetic event to pass to handleChange
+        const syntheticEvent = {
+          target: {
+            value: processedValue
+          }
+        } as ChangeEvent<HTMLInputElement>;
+        
+        // Process the pasted value through our normal change handler
+        handleChange(syntheticEvent);
+      } else {
+        // For invalid pastes, show error and prevent default paste behavior
+        e.preventDefault();
+        setErrorMessage(validationMessage);
+        setShowError(true);
+        
+        // Hide error after 3 seconds
+        setTimeout(() => {
+          setShowError(false);
+        }, 3000);
       }
     };
 
@@ -108,16 +196,24 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
     };
 
     return (
-      <Input
-        ref={ref}
-        type="text"
-        inputMode={allowDecimal ? "decimal" : "numeric"}
-        value={value}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        className={cn(className)}
-        {...props}
-      />
+      <div className="relative">
+        <Input
+          ref={ref}
+          type="text"
+          inputMode={allowDecimal ? "decimal" : "numeric"}
+          value={value}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          className={cn(className)}
+          {...props}
+        />
+        {showError && (
+          <div className="absolute z-10 top-full mt-1 left-0 right-0 bg-red-100 dark:bg-red-900/50 text-red-800 dark:text-red-200 text-xs p-1 rounded border border-red-200 dark:border-red-800">
+            {errorMessage}
+          </div>
+        )}
+      </div>
     );
   }
 );

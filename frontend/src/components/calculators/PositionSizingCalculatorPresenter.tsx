@@ -85,7 +85,7 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
       description="Calculate optimal position size based on your risk tolerance and stop loss."
     >
       {/* Compact Broker/Trade Type Selector */}
-      <div className="bg-gradient-to-r from-slate-50 to-gray-50 p-3 rounded-lg border border-gray-200">
+      <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-800 dark:to-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
         <BrokerTradeTypeSelector
           selectedBroker={selectedBroker}
           selectedTradeType={selectedTradeType}
@@ -101,9 +101,9 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
       </div>
 
       {/* Combined Input Fields - Flexible Layout */}
-      <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 via-purple-50 to-orange-50 rounded-lg border border-gray-200">
+      <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 via-purple-50 to-orange-50 dark:from-blue-900/20 dark:via-purple-900/20 dark:to-orange-900/20 rounded-lg border border-gray-200 dark:border-gray-700">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm text-gray-600">Configure your position parameters</div>
+          <div className="text-sm text-gray-600 dark:text-gray-300">Configure your position parameters</div>
           <ClearButton 
             onClear={() => {
               updateField("capital", "")
@@ -193,22 +193,22 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
       {positionSizingResult && (
         <div className="mt-4">
           {/* Compact Results Section */}
-          <div className="p-3 bg-white rounded-lg border border-gray-200 shadow-sm">
+          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
             {/* Header with status indicators */}
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <Calculator className="h-4 w-4 text-gray-600" />
-                <h3 className="font-medium text-gray-800">Position Analysis</h3>
+                <Calculator className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                <h3 className="font-medium text-gray-800 dark:text-gray-100">Position Analysis</h3>
               </div>
               <div className="flex items-center gap-2">
                 {positionSizingResult.chargesConsidered && (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
+                  <div className="flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded text-xs">
                     <CheckCircle className="h-3 w-3" />
                     <span>Charges included</span>
                   </div>
                 )}
                 {state.tradeType === "equity-intraday" && (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">
+                  <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs">
                     <Zap className="h-3 w-3" />
                     <span>Leverage: {LEVERAGE}x</span>
                   </div>
@@ -218,32 +218,32 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
 
             {/* Compact 4x2 Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-gray-600">Quantity:</span>
-                <span className="font-bold text-gray-800">{positionSizingResult.quantity.toLocaleString()}</span>
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                <span className="text-gray-600 dark:text-gray-300">Quantity:</span>
+                <span className="font-bold text-gray-800 dark:text-gray-100">{positionSizingResult.quantity.toLocaleString()}</span>
               </div>
 
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-gray-600">Actual Risk:</span>
-                <span className="font-bold text-red-600">{formatCurrency(positionSizingResult.actualRiskAmount)}</span>
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                <span className="text-gray-600 dark:text-gray-300">Actual Risk:</span>
+                <span className="font-bold text-red-600 dark:text-red-400">{formatCurrency(positionSizingResult.actualRiskAmount)}</span>
               </div>
 
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                 <div className="flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3 text-green-600" />
-                  <span className="text-gray-600">Long BreakEven:</span>
+                  <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
+                  <span className="text-gray-600 dark:text-gray-300">Long BreakEven:</span>
                 </div>
-                <span className="font-bold text-green-600">
+                <span className="font-bold text-green-600 dark:text-green-400">
                   {breakevenPrices ? formatCurrency(breakevenPrices.longBreakeven) : "-"}
                 </span>
               </div>
 
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                 <div className="flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3 text-red-600" />
-                  <span className="text-gray-600">Short BreakEven:</span>
+                  <TrendingDown className="h-3 w-3 text-red-600 dark:text-red-400" />
+                  <span className="text-gray-600 dark:text-gray-300">Short BreakEven:</span>
                 </div>
-                <span className="font-bold text-red-600">
+                <span className="font-bold text-red-600 dark:text-red-400">
                   {breakevenPrices ? formatCurrency(breakevenPrices.shortBreakeven) : "-"}
                 </span>
               </div>
@@ -251,24 +251,24 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
 
             {/* Secondary metrics in a more compact row */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-xs">
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-gray-500">Position Value:</span>
-                <span className="font-medium text-gray-700">{formatCurrency(positionSizingResult.positionValue)}</span>
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                <span className="text-gray-500 dark:text-gray-400">Position Value:</span>
+                <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(positionSizingResult.positionValue)}</span>
               </div>
 
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-gray-500">Capital Used:</span>
-                <span className="font-medium text-gray-700">{formatCurrency(positionSizingResult.capitalUsed)}</span>
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                <span className="text-gray-500 dark:text-gray-400">Capital Used:</span>
+                <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(positionSizingResult.capitalUsed)}</span>
               </div>
 
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-gray-500">Risk Budget:</span>
-                <span className="font-medium text-gray-700">{formatCurrency(positionSizingResult.riskBudget)}</span>
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                <span className="text-gray-500 dark:text-gray-400">Risk Budget:</span>
+                <span className="font-medium text-gray-700 dark:text-gray-200">{formatCurrency(positionSizingResult.riskBudget)}</span>
               </div>
 
-              <div className="flex justify-between items-center p-2 bg-gray-50 rounded">
-                <span className="text-gray-500">Est. Charges:</span>
-                <span className="font-medium text-amber-600">
+              <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
+                <span className="text-gray-500 dark:text-gray-400">Est. Charges:</span>
+                <span className="font-medium text-amber-600 dark:text-amber-400">
                   {formatCurrency(positionSizingResult.estimatedCharges)}
                 </span>
               </div>
@@ -276,7 +276,7 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
 
             {/* Buying power if available */}
             {positionSizingResult.hasCapital && (
-              <div className="mt-2 text-center text-xs text-gray-600">
+              <div className="mt-2 text-center text-xs text-gray-600 dark:text-gray-300">
                 Buying Power: <span className="font-medium">{formatCurrency(positionSizingResult.buyingPower)}</span>
               </div>
             )}

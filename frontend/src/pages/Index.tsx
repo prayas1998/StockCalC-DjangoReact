@@ -151,7 +151,7 @@ const IndexContent = () => {
 
       <section className="section-padding bg-secondary/50 dark:bg-secondary/10">
         <div className="max-w-7xl mx-auto">
-          <Card className="p-6 glass">
+          <Card className="p-6 glass dark:bg-gray-800/70 dark:border-gray-700">
             <div className="space-y-6">
               {/* Broker, Trade Type Selector and Exchange Toggle */}
               <div className="mb-6 flex flex-wrap items-center justify-between">
@@ -169,14 +169,14 @@ const IndexContent = () => {
                 
                 {/* Exchange Toggle */}
                 <div className="flex items-center gap-2 mt-3 md:mt-0">
-                  <div className="text-xs font-medium text-gray-500 whitespace-nowrap">Exchange:</div>
+                  <div className="text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">Exchange:</div>
                   <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 rounded-md p-1">
                     <button
                       onClick={() => setExchange("NSE")}
                       className={`px-3 py-1 text-sm rounded-sm ${
                         exchange === "NSE"
-                          ? "bg-white dark:bg-slate-700 shadow-sm"
-                          : "text-gray-600 dark:text-gray-400"
+                          ? "bg-white dark:bg-slate-700 shadow-sm dark:text-gray-100"
+                          : "text-gray-600 dark:text-gray-300"
                       }`}
                       aria-label="Select NSE exchange"
                       aria-pressed={exchange === "NSE"}
@@ -187,8 +187,8 @@ const IndexContent = () => {
                       onClick={() => setExchange("BSE")}
                       className={`px-3 py-1 text-sm rounded-sm ${
                         exchange === "BSE"
-                          ? "bg-white dark:bg-slate-700 shadow-sm"
-                          : "text-gray-600 dark:text-gray-400"
+                          ? "bg-white dark:bg-slate-700 shadow-sm dark:text-gray-100"
+                          : "text-gray-600 dark:text-gray-300"
                       }`}
                       aria-label="Select BSE exchange"
                       aria-pressed={exchange === "BSE"}
