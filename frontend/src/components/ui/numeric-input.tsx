@@ -30,6 +30,10 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
       // Allow: backspace, delete, tab, escape, enter, arrows, home, end
       const allowedKeys = ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
       
+      // Allow keyboard shortcuts (Ctrl+C, Ctrl+V, Ctrl+A, etc.)
+      const isKeyboardShortcut = (e.ctrlKey || e.metaKey) && 
+        ['c', 'v', 'a', 'x', 'z'].includes(e.key.toLowerCase());
+      
       // Allow decimal point if decimals are allowed and there isn't one already
       const decimalAllowed = allowDecimal && !value.includes('.') && e.key === '.';
       
@@ -41,9 +45,16 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
       const isNumeric = /^\d$/.test(e.key);
       
       // If not an allowed key, prevent default
-      if (!isNumeric && !allowedKeys.includes(e.key) && !decimalAllowed && !minusAllowed) {
+      if (!isNumeric && !allowedKeys.includes(e.key) && !decimalAllowed && !minusAllowed && !isKeyboardShortcut) {
         e.preventDefault();
       }
+    };
+    
+    // Handle copy event
+    const handleCopy = (e: ClipboardEvent<HTMLInputElement>) => {
+      // The default copy behavior works fine for input elements,
+      // but we can add custom feedback or analytics here if needed
+      // No need to preventDefault() as we want the default copy behavior
     };
     
     // Handle paste event
@@ -54,73 +65,97 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
       let isValid = true;
       let validationMessage = "";
       
-      // Check for non-numeric characters (allow empty string)
-      if (pastedText === '') {
-        // Allow empty paste - will be handled as empty string
-        isValid = true;
-      } else if (allowDecimal) {
-        // For decimal numbers, allow numbers with optional decimal point and optional negative sign
-        // This regex allows for: empty string, just a decimal point, just a minus sign, or valid decimal number
-        if (!/^-?\d*\.?\d*$/.test(pastedText.trim())) {
+      // Try to extract numeric value from pasted text (for user convenience)
+      let processedValue = pastedText.trim();
+      
+      // Extract only the numeric parts (including decimal point and minus sign)
+      if (allowDecimal) {
+        // For decimal numbers, extract digits, decimal point, and minus sign
+        processedValue = processedValue.replace(/[^\d.-]/g, '');
+        
+        // Ensure only one decimal point
+        const parts = processedValue.split('.');
+        if (parts.length > 2) {
+          processedValue = parts[0] + '.' + parts.slice(1).join('');
+        }
+        
+        // Ensure minus sign is only at the beginning
+        if (processedValue.includes('-') && !processedValue.startsWith('-')) {
+          processedValue = '-' + processedValue.replace(/-/g, '');
+        } else if (processedValue.startsWith('-')) {
+          processedValue = '-' + processedValue.substring(1).replace(/-/g, '');
+        }
+        
+        // Check if the processed value is a valid decimal number
+        if (!/^-?\d*\.?\d*$/.test(processedValue)) {
           isValid = false;
           validationMessage = "Only numbers and decimal point are allowed";
         }
       } else {
-        // For integers, only allow digits with optional negative sign
-        if (!/^-?\d+$/.test(pastedText.trim())) {
+        // For integers, extract digits and optional minus sign
+        processedValue = processedValue.replace(/[^\d-]/g, '');
+        
+        // Ensure minus sign is only at the beginning
+        if (processedValue.includes('-') && !processedValue.startsWith('-')) {
+          processedValue = '-' + processedValue.replace(/-/g, '');
+        } else if (processedValue.startsWith('-')) {
+          processedValue = '-' + processedValue.substring(1).replace(/-/g, '');
+        }
+        
+        // Check if the processed value is a valid integer
+        if (processedValue !== '' && processedValue !== '-' && !/^-?\d+$/.test(processedValue)) {
           isValid = false;
           validationMessage = "Only whole numbers are allowed";
         }
       }
       
+      // If the value is empty after processing, consider it valid (empty input)
+      if (processedValue === '') {
+        isValid = true;
+      }
+      
       // Check for decimal places limit
       if (isValid && allowDecimal && maxDecimalPlaces !== undefined) {
-        const parts = pastedText.split('.');
+        const parts = processedValue.split('.');
         if (parts.length > 1 && parts[1].length > maxDecimalPlaces) {
-          isValid = false;
-          validationMessage = `Maximum ${maxDecimalPlaces} decimal places allowed`;
+          // Truncate to max decimal places instead of rejecting
+          processedValue = parts[0] + '.' + parts[1].substring(0, maxDecimalPlaces);
         }
       }
       
       // Check min/max constraints
-      if (isValid && pastedText !== '' && pastedText !== '-' && pastedText !== '.') {
-        const numValue = parseFloat(pastedText);
+      if (isValid && processedValue !== '' && processedValue !== '-' && processedValue !== '.') {
+        const numValue = parseFloat(processedValue);
         if (!isNaN(numValue)) {
           if (min !== undefined && numValue < min) {
-            isValid = false;
-            validationMessage = `Value must be at least ${min}`;
+            processedValue = min.toString();
           }
           if (max !== undefined && numValue > max) {
-            isValid = false;
-            validationMessage = `Value must be at most ${max}`;
+            processedValue = max.toString();
           }
         }
       }
       
-      if (isValid) {
-        // For valid pastes, prevent default and manually update the value
-        e.preventDefault();
-        
-        // Format the pasted text to handle special cases
-        let processedValue = pastedText.trim();
-        
-        // If the value starts with a decimal point, add a leading zero
-        if (allowDecimal && processedValue.startsWith('.')) {
-          processedValue = '0' + processedValue;
+      // For all pastes, prevent default and manually update the value
+      e.preventDefault();
+      
+      // If the value starts with a decimal point, add a leading zero
+      if (allowDecimal && processedValue.startsWith('.')) {
+        processedValue = '0' + processedValue;
+      }
+      
+      // Create a synthetic event to pass to handleChange
+      const syntheticEvent = {
+        target: {
+          value: processedValue
         }
-        
-        // Create a synthetic event to pass to handleChange
-        const syntheticEvent = {
-          target: {
-            value: processedValue
-          }
-        } as ChangeEvent<HTMLInputElement>;
-        
-        // Process the pasted value through our normal change handler
-        handleChange(syntheticEvent);
-      } else {
-        // For invalid pastes, show error and prevent default paste behavior
-        e.preventDefault();
+      } as ChangeEvent<HTMLInputElement>;
+      
+      // Process the pasted value through our normal change handler
+      handleChange(syntheticEvent);
+      
+      // Show error message if needed
+      if (!isValid) {
         setErrorMessage(validationMessage);
         setShowError(true);
         
@@ -205,6 +240,7 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          onCopy={handleCopy}
           className={cn(className)}
           {...props}
         />
