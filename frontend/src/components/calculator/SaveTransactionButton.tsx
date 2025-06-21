@@ -1,3 +1,4 @@
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { Save } from "lucide-react";
 import { 
@@ -6,18 +7,23 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { SaveTransactionButtonProps } from "@/types/calculator";
+import { useCalculatorContext } from "@/context/CalculatorContext";
+import { validateTransaction } from "@/utils/transactionUtils";
 
-const SaveTransactionButton = ({
+interface SaveTransactionButtonProps {
+  user: any;
+  setAuthDialogOpen: (open: boolean) => void;
+  handleSaveTransactions: (user: any, setAuthDialogOpen: (open: boolean) => void) => void;
+  isSaving: boolean;
+}
+
+const SaveTransactionButton: React.FC<SaveTransactionButtonProps> = ({
   user,
-  transactions,
-  platform,
-  exchange,
-  tradeType,
   setAuthDialogOpen,
   handleSaveTransactions,
   isSaving
-}: SaveTransactionButtonProps) => {
+}) => {
+  const { transactions } = useCalculatorContext();
   const hasValidationErrors = transactions.some(t => 
     !t.quantity || Number(t.quantity) <= 0 || 
     ((Number(t.buyPrice) <= 0 || t.buyPrice === "") && 

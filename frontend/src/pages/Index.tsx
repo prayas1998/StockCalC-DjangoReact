@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import AuthDialog from "@/components/auth/AuthDialog";
 import Header from "@/components/ui/header";
 import { formatCurrency } from "@/lib/utils";
-import { useTransactions } from "@/hooks/useTransactions";
 import { useCalculation } from "@/hooks/useCalculation";
 
 // Layout Components
@@ -20,12 +19,10 @@ import TransactionForm from "@/components/calculator/TransactionForm";
 import CalculationResults from "@/components/calculator/CalculationResults";
 import SaveTransactionButton from "@/components/calculator/SaveTransactionButton";
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector";
+import { CalculatorProvider, useCalculatorContext } from "@/context/CalculatorContext";
 
-const Index = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
-  const { user } = useAuth();
-  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+// Custom hook for theme management
+const useThemeManager = () => {
   const [darkMode, setDarkMode] = useState(() => {
     // Check localStorage on initial load
     if (typeof window !== "undefined") {
@@ -35,6 +32,35 @@ const Index = () => {
     return false; // Fallback for server-side
   });
 
+  useEffect(() => {
+    localStorage.setItem("darkMode", JSON.stringify(darkMode));
+    
+    if (darkMode) {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }, [darkMode]);
+
+  // First-run initialization
+  useEffect(() => {
+    const savedMode = localStorage.getItem("darkMode");
+    if (savedMode === null) {
+      // Only set default if no existing preference
+      document.documentElement.classList.remove("dark");
+    }
+  }, []); // Empty array = runs only once
+
+  return { darkMode, setDarkMode };
+};
+
+const IndexContent = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
+  const [authDialogOpen, setAuthDialogOpen] = useState(false);
+  const { darkMode, setDarkMode } = useThemeManager();
+
   const [showFirstVisitAlert, setShowFirstVisitAlert] = useState(() => {
     if (typeof window !== "undefined") {
       const hasSeenAlert = localStorage.getItem("hasSeenAlert");
@@ -43,36 +69,24 @@ const Index = () => {
     return true;
   });
 
-  const [exchange, setExchange] = useState("NSE");
-  const [tradeType, setTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
-  const [positionType, setPositionType] = useState<'long' | 'short'>('long');
-  
-  // Make positionType available globally for UI components
-  useEffect(() => {
-    window.positionType = positionType;
-  }, [positionType]);
-
-  const [platform, setPlatform] = useState<'Dhan' | 'Groww' | 'Rise' | 'Others'>(() => {
-    const path = window.location.pathname.slice(1).toLowerCase();
-    if (["groww", "dhan", "rise", "others"].includes(path)) {
-      const capitalized = path.charAt(0).toUpperCase() + path.slice(1);
-      return capitalized as 'Dhan' | 'Groww' | 'Rise' | 'Others';
-    }
-    return "Groww";
-  });
-
-  // Use custom hook for transactions
   const { 
-    transactions, 
-    setTransactions
-  } = useTransactions();
+    platform, 
+    setPlatform, 
+    exchange, 
+    setExchange, 
+    tradeType, 
+    setTradeType, 
+    positionType, 
+    setPositionType,
+    setTransactions 
+  } = useCalculatorContext();
 
   // Use custom hook for calculations
   const { 
     calculationState, 
     handleSaveTransactions,
     isSaving 
-  } = useCalculation(platform, exchange, tradeType, transactions, positionType);
+  } = useCalculation();
 
   // If redirected for editing, pre-fill the form with the transaction data
   useEffect(() => {
@@ -91,38 +105,10 @@ const Index = () => {
   }, [location.state, setTransactions]);
 
   useEffect(() => {
-    localStorage.setItem("darkMode", JSON.stringify(darkMode));
-  }, [darkMode]); // Save to localStorage on change
-
-  useEffect(() => {
     if (showFirstVisitAlert) {
       localStorage.setItem("hasSeenAlert", "true");
     }
   }, [showFirstVisitAlert]);
-
-  // First-run initialization
-  useEffect(() => {
-    const savedMode = localStorage.getItem("darkMode");
-    if (savedMode === null) {
-      // Only set default if no existing preference
-      document.documentElement.classList.remove("dark");
-    }
-  }, []); // Empty array = runs only once
-
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
-  }, [darkMode]);
-
-  useEffect(() => {
-    // Reset transactions when platform changes
-    setTransactions([
-      { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }
-    ]);
-  }, [platform]);
 
   const handlePlatformChange = (newPlatform: 'Dhan' | 'Groww') => {
     setPlatform(newPlatform);
@@ -172,7 +158,7 @@ const Index = () => {
                 <div className="flex-1">
                   <BrokerTradeTypeSelector
                     selectedBroker={platform as 'Dhan' | 'Groww'}
-                    selectedTradeType={tradeType as 'equity-delivery' | 'equity-intraday'}
+                    selectedTradeType={tradeType}
                     onBrokerChange={handlePlatformChange}
                     onTradeTypeChange={handleTradeTypeChange}
                     positionType={positionType}
@@ -192,6 +178,8 @@ const Index = () => {
                           ? "bg-white dark:bg-slate-700 shadow-sm"
                           : "text-gray-600 dark:text-gray-400"
                       }`}
+                      aria-label="Select NSE exchange"
+                      aria-pressed={exchange === "NSE"}
                     >
                       NSE
                     </button>
@@ -202,6 +190,8 @@ const Index = () => {
                           ? "bg-white dark:bg-slate-700 shadow-sm"
                           : "text-gray-600 dark:text-gray-400"
                       }`}
+                      aria-label="Select BSE exchange"
+                      aria-pressed={exchange === "BSE"}
                     >
                       BSE
                     </button>
@@ -211,14 +201,7 @@ const Index = () => {
 
               {/* Transaction Form Component */}
               <div className="space-y-6">
-                <TransactionForm 
-                  transactions={transactions}
-                  setTransactions={setTransactions}
-                  platform={platform}
-                  exchange={exchange}
-                  tradeType={tradeType}
-                  positionType={positionType}
-                />
+                <TransactionForm />
 
                 <div className="flex gap-4 justify-end">
                   <Button
@@ -229,10 +212,6 @@ const Index = () => {
                   </Button>
                   <SaveTransactionButton 
                     user={user}
-                    transactions={transactions}
-                    platform={platform}
-                    exchange={exchange}
-                    tradeType={tradeType}
                     setAuthDialogOpen={setAuthDialogOpen}
                     handleSaveTransactions={handleSaveTransactions}
                     isSaving={isSaving}
@@ -257,6 +236,15 @@ const Index = () => {
         </div>
       </section>
     </div>
+  );
+};
+
+// Wrap the component with the CalculatorProvider
+const Index = () => {
+  return (
+    <CalculatorProvider>
+      <IndexContent />
+    </CalculatorProvider>
   );
 };
 

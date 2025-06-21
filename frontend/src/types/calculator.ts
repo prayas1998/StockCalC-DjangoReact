@@ -1,4 +1,5 @@
 import type { CalculationResponse } from "../services/api";
+import { PositionType, TradeType, Exchange, BrokerType } from "@/context/CalculatorContext";
 
 export interface Transaction {
   id: string;
@@ -15,23 +16,14 @@ export interface CalculationState {
 }
 
 export interface TransactionFormProps {
-  transactions: Transaction[];
-  setTransactions: (transactions: Transaction[]) => void;
-  platform: string;
-  exchange: string;
-  tradeType: string;
-  positionType?: 'long' | 'short';
+  showTitle?: boolean;
 }
 
 export interface TransactionItemProps {
   transaction: Transaction;
   index: number;
-  updateTransaction: (id: string, field: keyof Transaction, value: string) => void;
-  removeTransaction: (id: string) => void;
   canRemove: boolean;
   averageBuyPrice: number;
-  tradeType?: string;
-  positionType?: 'long' | 'short';
 }
 
 export interface CalculatorOptionsProps {

@@ -1,16 +1,20 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { calculateCharges, saveTransactions } from "@/services/api";
 import type { CalculationState, Transaction } from "@/types/calculator";
 import { toast } from "@/components/ui/use-toast";
 import { checkApiConnection, formatApiError } from "@/lib/api-helpers";
+import { formatTransactionsForApi, validateTransaction } from "@/utils/transactionUtils";
+import { useCalculatorContext } from "@/context/CalculatorContext";
 
-export const useCalculation = (
-  platform: string,
-  exchange: string,
-  tradeType: string,
-  transactions: Transaction[],
-  positionType: 'long' | 'short' = 'long'
-) => {
+export const useCalculation = () => {
+  const { 
+    platform, 
+    exchange, 
+    tradeType, 
+    transactions, 
+    positionType 
+  } = useCalculatorContext();
+  
   const [calculationState, setCalculationState] = useState<CalculationState>({
     error: null,
     result: null,
@@ -18,18 +22,10 @@ export const useCalculation = (
 
   const [isSaving, setIsSaving] = useState(false);
 
-  const validateTransactions = (transactions: Transaction[]): boolean => {
-    return transactions.every(t => {
-      const qty = Number(t.quantity);
-      const buyPrice = Number(t.buyPrice);
-      const sellPrice = Number(t.sellPrice);
-      
-      return (
-        qty > 0 && 
-        (buyPrice > 0 || sellPrice > 0)
-      );
-    });
-  };
+  // Memoized validation function
+  const validateTransactions = useCallback((transactions: Transaction[]): boolean => {
+    return transactions.every(validateTransaction);
+  }, []);
 
   const handleCalculateCharges = useCallback(async () => {
     setCalculationState({
@@ -44,27 +40,12 @@ export const useCalculation = (
         throw new Error("Please fix validation errors before calculating.");
       }
 
-      // For intraday short positions, we need to swap the interpretation of buyPrice and sellPrice
-      // because in short positions: entry = sell, exit = buy (opposite of long positions)
-      const formattedTransactions = transactions.map((t) => {
-        if (tradeType === 'equity-intraday' && positionType === 'short') {
-          // For short positions, the UI's "Entry Price" is stored in buyPrice but represents selling price
-          // and "Exit Price" is stored in sellPrice but represents buying price
-          // So we need to swap them for the backend to interpret correctly
-          return {
-            quantity: t.quantity,
-            buyPrice: t.sellPrice || "0",  // Exit price (buy back)
-            sellPrice: t.buyPrice || "0",  // Entry price (sell)
-          };
-        } else {
-          // For long positions, keep as is
-          return {
-            quantity: t.quantity,
-            buyPrice: t.buyPrice || "0",
-            sellPrice: t.sellPrice || "0",
-          };
-        }
-      });
+      // Format transactions for API using our utility function
+      const formattedTransactions = formatTransactionsForApi(
+        transactions, 
+        tradeType, 
+        positionType
+      );
 
       const result = await calculateCharges(
         platform.toLowerCase(),
@@ -78,7 +59,6 @@ export const useCalculation = (
         throw new Error(`${result.error}: ${result.detail || ""}`);
       }
 
-
       setCalculationState({
         error: null,
         result,
@@ -90,7 +70,7 @@ export const useCalculation = (
         result: null,
       });
     }
-  }, [platform, exchange, tradeType, transactions, positionType]);
+  }, [platform, exchange, tradeType, transactions, positionType, validateTransactions]);
 
   // Trigger calculation when inputs change
   useEffect(() => {
@@ -105,9 +85,9 @@ export const useCalculation = (
         result: null,
       });
     }
-  }, [exchange, tradeType, transactions, positionType, handleCalculateCharges]);
+  }, [exchange, tradeType, transactions, positionType, handleCalculateCharges, validateTransactions]);
 
-  const handleSaveTransactions = async (user: any, setAuthDialogOpen: (open: boolean) => void) => {
+  const handleSaveTransactions = useCallback(async (user: any, setAuthDialogOpen: (open: boolean) => void) => {
     if (!user) {
       setAuthDialogOpen(true);
       return;
@@ -144,24 +124,12 @@ export const useCalculation = (
 
     setIsSaving(true);
     try {
-      // Apply the same logic for formatting transactions as in handleCalculateCharges
-      const formattedTransactions = transactions.map((t) => {
-        if (tradeType === 'equity-intraday' && positionType === 'short') {
-          // For short positions, swap buyPrice and sellPrice
-          return {
-            quantity: t.quantity,
-            buyPrice: t.sellPrice || "0",  // Exit price (buy back)
-            sellPrice: t.buyPrice || "0",  // Entry price (sell)
-          };
-        } else {
-          // For long positions, keep as is
-          return {
-            quantity: t.quantity,
-            buyPrice: t.buyPrice || "0",
-            sellPrice: t.sellPrice || "0",
-          };
-        }
-      });
+      // Format transactions for API using our utility function
+      const formattedTransactions = formatTransactionsForApi(
+        transactions, 
+        tradeType, 
+        positionType
+      );
 
       const result = await saveTransactions(
         transactions[0].companyName || "Untitled Transaction",
@@ -190,7 +158,7 @@ export const useCalculation = (
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [platform, exchange, tradeType, transactions, positionType, validateTransactions]);
 
   return {
     calculationState,

@@ -1,17 +1,18 @@
 import React from 'react';
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { BrokerType, TradeType, PositionType } from '@/context/CalculatorContext';
 
 interface BrokerTradeTypeSelectorProps {
-  selectedBroker: 'Dhan' | 'Groww';
-  selectedTradeType: 'equity-delivery' | 'equity-intraday';
-  onBrokerChange: (broker: 'Dhan' | 'Groww') => void;
-  onTradeTypeChange: (tradeType: 'equity-delivery' | 'equity-intraday') => void;
+  selectedBroker: BrokerType;
+  selectedTradeType: TradeType;
+  onBrokerChange: (broker: BrokerType) => void;
+  onTradeTypeChange: (tradeType: TradeType) => void;
   showRiskMode?: boolean;
   riskMode?: 'amount' | 'percent';
   onRiskModeChange?: (riskMode: 'amount' | 'percent') => void;
-  positionType?: 'long' | 'short';
-  onPositionTypeChange?: (positionType: 'long' | 'short') => void;
+  positionType?: PositionType;
+  onPositionTypeChange?: (positionType: PositionType) => void;
   compact?: boolean;
 }
 
