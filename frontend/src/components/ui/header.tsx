@@ -1,20 +1,15 @@
 import { Button } from "@/components/ui/button";
-import { User, Moon, Sun, ChevronDown, BarChart, BookOpen } from "lucide-react";
+import { User, Moon, Sun, BookOpen } from "lucide-react";
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import AuthDialog from "@/components/auth/AuthDialog";
 import ProfileDropdown from "@/components/auth/ProfileDropdown";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/components/ui/use-toast";
 
 const Header = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [authDialogOpen, setAuthDialogOpen] = useState(false);
@@ -25,11 +20,12 @@ const Header = () => {
     }
     return false;
   });
-
-  const [platform, setPlatform] = useState(() => {
-    const path = window.location.pathname.slice(1);
-    return path.charAt(0).toUpperCase() + path.slice(1) || "Groww";
-  });
+  
+  // Determine current page
+  const currentPath = location.pathname;
+  const isHomePage = currentPath === "/" || /^\/(groww|dhan|rise|others)/.test(currentPath);
+  const isToolsPage = currentPath === "/tools";
+  const isJournalPage = currentPath === "/journal" || currentPath.startsWith("/journal/");
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
@@ -43,11 +39,6 @@ const Header = () => {
     }
   }, [darkMode]);
 
-  const handlePlatformChange = (newPlatform: string) => {
-    setPlatform(newPlatform);
-    navigate(`/${newPlatform.toLowerCase()}`);
-  };
-
   return (
     <nav className="relative border-b bg-gradient-to-r from-blue-100 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 shadow-md backdrop-blur-sm">
       <div className="absolute inset-0 bg-white/40 dark:bg-black/40" />
@@ -55,20 +46,41 @@ const Header = () => {
         <div>
           <h1
             className="text-xl font-bold cursor-pointer text-blue-900 dark:text-blue-100 hover:text-primary transition-colors duration-300"
-            onClick={() => navigate("/dhan")}
+            onClick={() => navigate("/")}
           >
             TradeSmart
           </h1>
         </div>
         <div className="flex items-center gap-4">
+          {/* Home button with active state */}
+          <Button
+            variant="ghost"
+            onClick={() => navigate("/")}
+            className={`relative flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300 ${
+              isHomePage ? "font-medium" : ""
+            }`}
+          >
+            Home
+            {isHomePage && (
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>
+            )}
+          </Button>
+
+          {/* Tools button with active state */}
           <Button
             variant="ghost"
             onClick={() => navigate("/tools")}
-            className="flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300"
+            className={`relative flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300 ${
+              isToolsPage ? "font-medium" : ""
+            }`}
           >
             Tools
+            {isToolsPage && (
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>
+            )}
           </Button>
 
+          {/* Journal button with active state */}
           <Button
             variant="ghost"
             onClick={() => {
@@ -83,49 +95,16 @@ const Header = () => {
                 });
               }
             }}
-            className="flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300"
+            className={`relative flex items-center gap-2 text-blue-800 dark:text-blue-100 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300 ${
+              isJournalPage ? "font-medium" : ""
+            }`}
           >
             <BookOpen className="h-5 w-5" />
             Journal
+            {isJournalPage && (
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary rounded-full"></div>
+            )}
           </Button>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button 
-                variant="outline" 
-                className="flex items-center gap-2 bg-white/50 dark:bg-gray-900/50 hover:bg-blue-200/50 dark:hover:bg-blue-900/50 transition-all duration-300 border-blue-200 dark:border-gray-700"
-              >
-                {platform}
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg">
-              <DropdownMenuItem 
-                onClick={() => handlePlatformChange("Groww")}
-                className="hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors duration-200"
-              >
-                Groww
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handlePlatformChange("Dhan")}
-                className="hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors duration-200"
-              >
-                Dhan
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handlePlatformChange("Rise")}
-                className="hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors duration-200"
-              >
-                Rise
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => handlePlatformChange("Others")}
-                className="hover:bg-blue-100/50 dark:hover:bg-blue-900/50 transition-colors duration-200"
-              >
-                Others
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
 
           {user ? (
             <ProfileDropdown />

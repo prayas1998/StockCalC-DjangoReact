@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthDialog from "@/components/auth/AuthDialog";
-import HeaderWithoutBroker from "@/components/ui/header-without-broker";
+import Header from "@/components/ui/header";
 import { formatCurrency } from "@/lib/utils";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCalculation } from "@/hooks/useCalculation";
@@ -130,7 +130,7 @@ const Index = () => {
 
   return (
     <div className="min-h-screen">
-      <HeaderWithoutBroker />
+      <Header />
       
       {showFirstVisitAlert && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
