@@ -107,7 +107,8 @@ export const calculateCharges = async (
     quantity: string;
     buyPrice: string;
     sellPrice: string;
-  }>
+  }>,
+  positionType: 'long' | 'short' = 'long'
 ): Promise<CalculationResponse | CalculationError> => {
   try {
     const response = await fetch(getApiUrl(API_ENDPOINTS.CALCULATE), {
@@ -120,6 +121,7 @@ export const calculateCharges = async (
         exchange,
         tradeType,
         transactions,
+        positionType,
       }),
     });
 
@@ -148,7 +150,8 @@ export const saveTransactions = async (
     quantity: string;
     buyPrice: string;
     sellPrice: string;
-  }>
+  }>,
+  positionType: 'long' | 'short' = 'long'
 ): Promise<SaveTransactionResponse | CalculationError> => {
   try {
     const options = await addAuthHeader({
@@ -162,6 +165,7 @@ export const saveTransactions = async (
         exchange,
         tradeType,
         transactions,
+        positionType,
       }),
     });
     

@@ -5,7 +5,7 @@ import { useAuth } from "@/context/AuthContext";
 import { Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import AuthDialog from "@/components/auth/AuthDialog";
-import Header from "@/components/ui/header";
+import HeaderWithoutBroker from "@/components/ui/header-without-broker";
 import { formatCurrency } from "@/lib/utils";
 import { useTransactions } from "@/hooks/useTransactions";
 import { useCalculation } from "@/hooks/useCalculation";
@@ -16,10 +16,10 @@ import Features from "@/components/layout/Features";
 import Footer from "@/components/layout/Footer";
 
 // Calculator Components
-import CalculatorOptions from "@/components/calculator/CalculatorOptions";
 import TransactionForm from "@/components/calculator/TransactionForm";
 import CalculationResults from "@/components/calculator/CalculationResults";
 import SaveTransactionButton from "@/components/calculator/SaveTransactionButton";
+import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -44,13 +44,14 @@ const Index = () => {
   });
 
   const [exchange, setExchange] = useState("NSE");
-  const [tradeType, setTradeType] = useState("equity-delivery");
-  const [instrumentType, setInstrumentType] = useState("future");
+  const [tradeType, setTradeType] = useState<'equity-delivery' | 'equity-intraday'>('equity-delivery');
+  const [positionType, setPositionType] = useState<'long' | 'short'>('long');
 
-  const [platform, setPlatform] = useState(() => {
+  const [platform, setPlatform] = useState<'Dhan' | 'Groww' | 'Rise' | 'Others'>(() => {
     const path = window.location.pathname.slice(1).toLowerCase();
     if (["groww", "dhan", "rise", "others"].includes(path)) {
-      return path.charAt(0).toUpperCase() + path.slice(1);
+      const capitalized = path.charAt(0).toUpperCase() + path.slice(1);
+      return capitalized as 'Dhan' | 'Groww' | 'Rise' | 'Others';
     }
     return "Groww";
   });
@@ -66,7 +67,7 @@ const Index = () => {
     calculationState, 
     handleSaveTransactions,
     isSaving 
-  } = useCalculation(platform, exchange, tradeType, transactions);
+  } = useCalculation(platform, exchange, tradeType, transactions, positionType);
 
   // If redirected for editing, pre-fill the form with the transaction data
   useEffect(() => {
@@ -118,14 +119,18 @@ const Index = () => {
     ]);
   }, [platform]);
 
-  const handlePlatformChange = (newPlatform: string) => {
+  const handlePlatformChange = (newPlatform: 'Dhan' | 'Groww') => {
     setPlatform(newPlatform);
     navigate(`/${newPlatform.toLowerCase()}`);
+  };
+  
+  const handleTradeTypeChange = (newTradeType: 'equity-delivery' | 'equity-intraday') => {
+    setTradeType(newTradeType);
   };
 
   return (
     <div className="min-h-screen">
-      <Header />
+      <HeaderWithoutBroker />
       
       {showFirstVisitAlert && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -157,15 +162,47 @@ const Index = () => {
         <div className="max-w-7xl mx-auto">
           <Card className="p-6 glass">
             <div className="space-y-6">
-              {/* Calculator Options Component */}
-              <CalculatorOptions 
-                exchange={exchange}
-                setExchange={setExchange}
-                tradeType={tradeType}
-                setTradeType={setTradeType}
-                instrumentType={instrumentType}
-                setInstrumentType={setInstrumentType}
-              />
+              {/* Broker, Trade Type Selector and Exchange Toggle */}
+              <div className="mb-6 flex flex-wrap items-center justify-between">
+                <div className="flex-1">
+                  <BrokerTradeTypeSelector
+                    selectedBroker={platform as 'Dhan' | 'Groww'}
+                    selectedTradeType={tradeType as 'equity-delivery' | 'equity-intraday'}
+                    onBrokerChange={handlePlatformChange}
+                    onTradeTypeChange={handleTradeTypeChange}
+                    positionType={positionType}
+                    onPositionTypeChange={setPositionType}
+                    compact={false}
+                  />
+                </div>
+                
+                {/* Exchange Toggle */}
+                <div className="flex items-center gap-2 mt-3 md:mt-0">
+                  <div className="text-xs font-medium text-gray-500 whitespace-nowrap">Exchange:</div>
+                  <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 rounded-md p-1">
+                    <button
+                      onClick={() => setExchange("NSE")}
+                      className={`px-3 py-1 text-sm rounded-sm ${
+                        exchange === "NSE"
+                          ? "bg-white dark:bg-slate-700 shadow-sm"
+                          : "text-gray-600 dark:text-gray-400"
+                      }`}
+                    >
+                      NSE
+                    </button>
+                    <button
+                      onClick={() => setExchange("BSE")}
+                      className={`px-3 py-1 text-sm rounded-sm ${
+                        exchange === "BSE"
+                          ? "bg-white dark:bg-slate-700 shadow-sm"
+                          : "text-gray-600 dark:text-gray-400"
+                      }`}
+                    >
+                      BSE
+                    </button>
+                  </div>
+                </div>
+              </div>
 
               {/* Transaction Form Component */}
               <div className="space-y-6">

@@ -8,7 +8,8 @@ export const useCalculation = (
   platform: string,
   exchange: string,
   tradeType: string,
-  transactions: Transaction[]
+  transactions: Transaction[],
+  positionType: 'long' | 'short' = 'long'
 ) => {
   const [calculationState, setCalculationState] = useState<CalculationState>({
     error: null,
@@ -53,7 +54,8 @@ export const useCalculation = (
         platform.toLowerCase(),
         exchange,
         tradeType,
-        formattedTransactions
+        formattedTransactions,
+        positionType
       );
 
       if ("error" in result) {
@@ -71,7 +73,7 @@ export const useCalculation = (
         result: null,
       });
     }
-  }, [platform, exchange, tradeType, transactions]);
+  }, [platform, exchange, tradeType, transactions, positionType]);
 
   // Trigger calculation when inputs change
   useEffect(() => {
@@ -86,7 +88,7 @@ export const useCalculation = (
         result: null,
       });
     }
-  }, [exchange, tradeType, transactions, handleCalculateCharges]);
+  }, [exchange, tradeType, transactions, positionType, handleCalculateCharges]);
 
   const handleSaveTransactions = async (user: any, setAuthDialogOpen: (open: boolean) => void) => {
     if (!user) {
@@ -136,7 +138,8 @@ export const useCalculation = (
         platform.toLowerCase(),
         exchange,
         tradeType,
-        formattedTransactions
+        formattedTransactions,
+        positionType
       );
 
       if ("error" in result) {
