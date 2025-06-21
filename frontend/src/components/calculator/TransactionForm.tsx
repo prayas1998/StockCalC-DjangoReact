@@ -4,11 +4,12 @@ import TransactionItem from "./TransactionItem";
 import { Plus } from "lucide-react";
 import type { TransactionFormProps } from "@/types/calculator";
 import { useCalculatorContext } from "@/context/CalculatorContext";
+import { ClearButton } from "@/components/shared/ClearButton";
 
 const TransactionForm: React.FC<TransactionFormProps> = ({
   showTitle = true
 }) => {
-  const { transactions, addTransaction } = useCalculatorContext();
+  const { transactions, addTransaction, setTransactions } = useCalculatorContext();
 
   // Calculate running totals and average buy prices for each transaction
   const transactionsWithAverages = useMemo(() => {
@@ -37,8 +38,22 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
     return transactions[0]?.companyName || "this company";
   };
 
+  // Function to clear all transactions
+  const handleClearAll = () => {
+    setTransactions([
+      { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }
+    ]);
+  };
+
   return (
     <div className="space-y-6">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-sm text-gray-600">Enter your transaction details</div>
+        <ClearButton 
+          onClear={handleClearAll}
+        />
+      </div>
+      
       {transactionsWithAverages.map(({ transaction, index, averageBuyPrice, canRemove }) => (
         <TransactionItem
           key={transaction.id}

@@ -58,7 +58,7 @@ export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }
     setTransactions(prev => 
       prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
     );
-  }, []);
+  }, [setTransactions]);
 
   const addTransaction = useCallback(() => {
     setTransactions(prev => [
@@ -71,7 +71,7 @@ export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }
         sellPrice: "0",
       },
     ]);
-  }, []);
+  }, [setTransactions]);
 
   const removeTransaction = useCallback((id: string) => {
     setTransactions(prev => {
@@ -80,7 +80,7 @@ export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }
       }
       return prev;
     });
-  }, []);
+  }, [setTransactions]);
 
   return (
     <CalculatorContext.Provider value={{

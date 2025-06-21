@@ -97,5 +97,18 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
         Calculate the breakeven price for a delivery position.
         For delivery trades, this is always the minimum sell price to avoid loss.
         """
-        # For delivery trades, we can use the simpler formula since charges are more straightforward
-        return BreakevenCalculator.calculate_delivery_breakeven(quantity, buy_value, total_charges)
+        if quantity <= 0 or buy_value <= 0:
+            return Decimal("0")
+            
+        # Calculate entry price per share
+        entry_price = buy_value / quantity
+        
+        # Use the binary search method for more accurate breakeven calculation
+        return BreakevenCalculator.calculate_breakeven_price(
+            quantity=quantity,
+            entry_price=entry_price,
+            broker=self.broker,
+            exchange=self.exchange,
+            trade_type=self.trade_type,
+            position_type='long'  # Delivery is always long
+        )

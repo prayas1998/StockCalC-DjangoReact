@@ -135,10 +135,23 @@ class EquityIntradayCalculator(BaseTradeCalculator):
         For long positions: The minimum exit (sell) price to avoid loss.
         For short positions: The maximum exit (buy) price to avoid loss.
         """
-        return BreakevenCalculator.calculate_intraday_breakeven(
-            quantity, 
-            buy_value, 
-            sell_value, 
-            total_charges, 
-            position_type
+        if quantity <= 0:
+            return Decimal("0")
+        
+        # Calculate entry price per share based on position type
+        if position_type == 'long':
+            # For long positions, entry is buy
+            entry_price = buy_value / quantity if quantity > 0 else Decimal("0")
+        else:
+            # For short positions, entry is sell
+            entry_price = sell_value / quantity if quantity > 0 else Decimal("0")
+        
+        # Use the binary search method for more accurate breakeven calculation
+        return BreakevenCalculator.calculate_breakeven_price(
+            quantity=quantity,
+            entry_price=entry_price,
+            broker=self.broker,
+            exchange=self.exchange,
+            trade_type=self.trade_type,
+            position_type=position_type
         )
