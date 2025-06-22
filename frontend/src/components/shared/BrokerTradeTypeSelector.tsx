@@ -31,7 +31,7 @@ export const BrokerTradeTypeSelector: React.FC<BrokerTradeTypeSelectorProps> = (
   if (compact) {
     // Compact version for individual calculators
     return (
-      <div className="flex flex-wrap gap-4 mb-6 p-3 bg-slate-50 dark:bg-slate-800 rounded-md border-l-4 border-primary">
+      <div className="flex flex-wrap gap-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-md border-l-4 border-primary">
         <div className="flex items-center gap-2">
           <Label className="text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wide">Broker:</Label>
           <Select value={selectedBroker} onValueChange={onBrokerChange}>

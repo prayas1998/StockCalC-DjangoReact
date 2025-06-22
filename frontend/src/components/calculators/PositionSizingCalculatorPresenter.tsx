@@ -85,7 +85,7 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
       description="Calculate optimal position size based on your risk tolerance and stop loss."
     >
       {/* Compact Broker/Trade Type Selector */}
-      <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-800 dark:to-gray-800 p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-800 dark:to-gray-800 py-4 px-3 rounded-lg border border-gray-200 dark:border-gray-700">
         <BrokerTradeTypeSelector
           selectedBroker={selectedBroker}
           selectedTradeType={selectedTradeType}
