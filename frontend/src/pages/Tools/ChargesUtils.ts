@@ -26,6 +26,22 @@ export type Charges = {
     if (broker === 'Groww') return 21.54;
     return 0;
   };
+
+  /**
+   * Round Half Up implementation to match backend Decimal precision
+   * This ensures consistency with regulatory calculations
+   */
+  const roundHalfUp = (value: number, decimals: number): number => {
+    const factor = Math.pow(10, decimals);
+    return Math.floor(value * factor + 0.5) / factor;
+  };
+
+  /**
+   * Round to nearest rupee using Round Half Up
+   */
+  const roundToRupee = (value: number): number => {
+    return Math.floor(value + 0.5);
+  };
   
   export const calculateCharges = (
     buyValue: number,
@@ -54,38 +70,40 @@ export type Charges = {
       } else if (broker === 'Dhan') {
         brokerage = 0;
       }
-      stt = Math.round(totalTurnover * 0.001);
+      
+      // Use Round Half Up for all calculations to match backend
+      stt = roundToRupee(totalTurnover * 0.001);
       exchangeCharges = exchange === "NSE"
-        ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
-        : parseFloat((totalTurnover * 0.0000375).toFixed(2));
-      stampDuty = Math.round(buyValue * 0.00015);
-      sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
+        ? roundHalfUp(totalTurnover * 0.0000297, 2)
+        : roundHalfUp(totalTurnover * 0.0000375, 2);
+      stampDuty = roundToRupee(buyValue * 0.00015);
+      sebiCharges = roundHalfUp(totalTurnover * 0.000001, 2);
       ipft = exchange === "NSE"
-        ? parseFloat((totalTurnover * 0.000001).toFixed(2))
+        ? roundHalfUp(totalTurnover * 0.000001, 2)
         : 0;
       const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-      gst = parseFloat((taxableAmount * 0.18).toFixed(2));
+      gst = roundHalfUp(taxableAmount * 0.18, 2);
       // DP charge only if sellValue > 0
       dpCharges = sellValue > 0 ? getDpCharge(broker) : 0;
       totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst + dpCharges;
     } else if (tradeType === 'equity-intraday') {
       if (broker === 'Dhan') {
         // Dhan intraday logic
-        // Brokerage: min(₹20, 0.03% of turnover per leg) for buy and sell
-        const buyBrokerage = buyValue > 0 ? Math.min(20, parseFloat((buyValue * 0.0003).toFixed(2))) : 0;
-        const sellBrokerage = sellValue > 0 ? Math.min(20, parseFloat((sellValue * 0.0003).toFixed(2))) : 0;
+        // Brokerage: min(20, 0.03% of turnover per leg) for buy and sell
+        const buyBrokerage = buyValue > 0 ? Math.min(20, roundHalfUp(buyValue * 0.0003, 2)) : 0;
+        const sellBrokerage = sellValue > 0 ? Math.min(20, roundHalfUp(sellValue * 0.0003, 2)) : 0;
         brokerage = buyBrokerage + sellBrokerage;
-        stt = Math.round(sellValue * 0.00025); // STT only on sell
+        stt = roundToRupee(sellValue * 0.00025); // STT only on sell
         exchangeCharges = exchange === "NSE"
-          ? parseFloat((totalTurnover * 0.0000297).toFixed(2))
-          : parseFloat((totalTurnover * 0.0000375).toFixed(2));
-        stampDuty = buyValue > 0 ? Math.round(buyValue * 0.00003) : 0; // Only on buy
-        sebiCharges = parseFloat((totalTurnover * 0.000001).toFixed(2));
+          ? roundHalfUp(totalTurnover * 0.0000297, 2)
+          : roundHalfUp(totalTurnover * 0.0000375, 2);
+        stampDuty = buyValue > 0 ? roundToRupee(buyValue * 0.00003) : 0; // Only on buy
+        sebiCharges = roundHalfUp(totalTurnover * 0.000001, 2);
         ipft = exchange === "NSE"
-          ? parseFloat((totalTurnover * 0.000001).toFixed(2))
+          ? roundHalfUp(totalTurnover * 0.000001, 2)
           : 0;
         const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-        gst = parseFloat((taxableAmount * 0.18).toFixed(2));
+        gst = roundHalfUp(taxableAmount * 0.18, 2);
         dpCharges = 0; // No DP charges for intraday
         totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst;
       } else {
@@ -113,104 +131,6 @@ export type Charges = {
       dpCharges,
     };
   };
-  
-  // New function to calculate breakeven price independently
-  /**
-   * Calculates the breakeven exit price for a trade such that net profit is zero or slightly positive.
-   * For long: the minimum sell price to avoid loss.
-   * For short: the maximum buy-back price to avoid loss.
-   */
-  // export const calculateBreakevenPrice = (
-  //   quantity: number,
-  //   entryPrice: number,
-  //   exchange: string,
-  //   broker: 'Dhan' | 'Groww',
-  //   tradeType: 'equity-delivery' | 'equity-intraday',
-  //   positionType: 'long' | 'short' = 'long'
-  // ): number => {
-  //   if (quantity <= 0 || entryPrice <= 0) return 0;
-  
-  //   const buyValue = quantity * entryPrice;
-  
-  //   // Set search range based on position type
-  //   let low: number, high: number;
-  //   if (positionType === 'long') {
-  //     low = entryPrice;
-  //     high = entryPrice * 3;
-  //   } else {
-  //     low = 0.01;
-  //     high = entryPrice;
-  //   }
-  
-  //   let breakevenPrice = entryPrice;
-  //   let bestPrice = entryPrice;
-  //   let bestNetProfit = -Infinity;
-  
-  //   // Binary search to find exact breakeven price
-  //   for (let i = 0; i < 200; i++) {
-  //     const testPrice = (low + high) / 2;
-  //     const sellValue = quantity * testPrice;
-  //     const charges = calculateCharges(buyValue, sellValue, exchange, broker, tradeType);
-  
-  //     let grossProfit: number;
-  //     if (positionType === 'long') {
-  //       grossProfit = sellValue - buyValue;
-  //     } else {
-  //       grossProfit = buyValue - sellValue;
-  //     }
-  //     const netProfit = grossProfit - charges.totalCharges;
-  
-  //     // Track the best price that gives us net profit >= 0
-  //     if (netProfit >= 0 && (bestNetProfit < 0 || netProfit < bestNetProfit)) {
-  //       bestPrice = testPrice;
-  //       bestNetProfit = netProfit;
-  //     }
-  
-  //     // If we're very close to zero or slightly positive, we found our answer
-  //     if (netProfit >= 0 && netProfit < 0.5) {
-  //       breakevenPrice = testPrice;
-  //       break;
-  //     }
-  
-  //     if (positionType === 'long') {
-  //       if (netProfit < 0) {
-  //         low = testPrice;
-  //       } else {
-  //         high = testPrice;
-  //       }
-  //     } else {
-  //       if (netProfit < 0) {
-  //         high = testPrice;
-  //       } else {
-  //         low = testPrice;
-  //       }
-  //     }
-  //     breakevenPrice = testPrice;
-  //   }
-  
-  //   // If we found a better price during search, use that
-  //   if (bestNetProfit >= 0) {
-  //     breakevenPrice = bestPrice;
-  //   }
-  
-  //   // Final verification - round up to nearest paisa if needed to ensure no loss
-  //   const finalSellValue = quantity * breakevenPrice;
-  //   const finalCharges = calculateCharges(buyValue, finalSellValue, exchange, broker, tradeType);
-  //   const finalGrossProfit = positionType === 'long' ? finalSellValue - buyValue : buyValue - finalSellValue;
-  //   const finalNetProfit = finalGrossProfit - finalCharges.totalCharges;
-  
-  //   // If there's still a small loss, add 1 paisa and check again
-  //   if (finalNetProfit < 0) {
-  //     if (positionType === 'long') {
-  //       breakevenPrice += 0.01;
-  //     } else {
-  //       breakevenPrice -= 0.01;
-  //       if (breakevenPrice < 0) breakevenPrice = 0.01;
-  //     }
-  //   }
-  
-  //   return parseFloat(breakevenPrice.toFixed(2));
-  // };
   
   // Enhanced function for profit target calculation
   export const calculateProfitTarget = (

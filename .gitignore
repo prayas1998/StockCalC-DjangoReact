@@ -11,6 +11,7 @@ frontend/.env.development
 frontend/.vercel
 Docs/
 report.md
+# .rovodev/
 
 
 # Build artifacts
