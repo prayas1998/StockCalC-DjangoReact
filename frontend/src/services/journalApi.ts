@@ -154,9 +154,17 @@ export const updateJournalTrade = async (
     const response = await fetch(getApiUrl(`${API_ENDPOINTS.JOURNAL}${id}/`), options);
     
     if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Update trade error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorText: errorText,
+        url: response.url,
+        requestBody: trade
+      });
       return {
         error: `HTTP error! status: ${response.status}`,
-        detail: await response.text(),
+        detail: errorText,
       };
     }
     

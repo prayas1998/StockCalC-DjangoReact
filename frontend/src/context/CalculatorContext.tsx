@@ -4,7 +4,7 @@ import { Transaction } from '@/types/calculator';
 export type PositionType = 'long' | 'short';
 export type TradeType = 'equity-delivery' | 'equity-intraday';
 export type Exchange = 'NSE' | 'BSE';
-export type BrokerType = 'Dhan' | 'Groww' | 'Rise' | 'Others';
+export type BrokerType = 'Dhan' | 'Groww';
 
 interface CalculatorContextType {
   positionType: PositionType;

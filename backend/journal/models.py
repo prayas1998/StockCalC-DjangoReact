@@ -14,9 +14,6 @@ class TradeJournal(models.Model):
     TRADE_TYPE_CHOICES = [
         ("EQUITY_DELIVERY", "Equity Delivery"),
         ("EQUITY_INTRADAY", "Equity Intraday"),
-        ("ETF", "ETF"),
-        ("FUTURES", "Futures"),
-        ("OPTIONS", "Options"),
     ]
 
     STATUS_CHOICES = [
@@ -30,8 +27,6 @@ class TradeJournal(models.Model):
     BROKER_CHOICES = [
         ("Dhan", "Dhan"),
         ("Groww", "Groww"),
-        ("Rise", "Rise"),
-        ("Others", "Others"),
     ]
 
     EXCHANGE_CHOICES = [
@@ -62,120 +57,216 @@ class TradeJournal(models.Model):
     broker = models.CharField(max_length=20, choices=BROKER_CHOICES, default="Dhan")
     exchange = models.CharField(max_length=10, choices=EXCHANGE_CHOICES, default="NSE")
 
+    def get_exit_price(self):
+        """
+        Determine the exit price based on trade status:
+        - CLOSED_TARGET: Use target_price
+        - CLOSED_STOPLOSS: Use stop_loss
+        - CLOSED_MANUAL: Use sell_price
+        - CANCELLED/OPEN: Return None
+        """
+        if self.status == 'CLOSED_TARGET':
+            return self.target_price
+        elif self.status == 'CLOSED_STOPLOSS':
+            return self.stop_loss
+        elif self.status == 'CLOSED_MANUAL':
+            return self.sell_price
+        else:
+            return None
+
+    def get_missing_fields_for_pnl(self):
+        """
+        Get list of missing fields required for P&L calculation based on trade status
+        """
+        missing_fields = []
+        
+        if self.status == 'CLOSED_TARGET':
+            if not self.target_price:
+                missing_fields.append('target_price')
+        elif self.status == 'CLOSED_STOPLOSS':
+            if not self.stop_loss:
+                missing_fields.append('stop_loss')
+        elif self.status == 'CLOSED_MANUAL':
+            if not self.sell_price:
+                missing_fields.append('sell_price')
+        
+        # Check exit date for all closed trades
+        if self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            if not self.exit_date:
+                missing_fields.append('exit_date')
+        
+        return missing_fields
+
     def calculate_pnl(self):
-        """Calculate Net P&L using broker-specific charges"""
-        if not (self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] and self.sell_price is not None):
+        """Calculate Net P&L using backend calculator API"""
+        # Only calculate P&L for closed trades (not CANCELLED or OPEN)
+        if self.status not in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            return None
+        
+        # Determine exit price based on trade status
+        exit_price = self.get_exit_price()
+        if exit_price is None:
             return None
         
         try:
-            # Import here to avoid circular imports
-            from ..calculator.calculations.equity_delivery import EquityDeliveryCalculator
-            from ..calculator.calculations.equity_intraday import EquityIntradayCalculator
+            # Import calculator classes directly (same logic as the view)
+            from calculator.calculations.equity_delivery import EquityDeliveryCalculator
+            from calculator.calculations.equity_intraday import EquityIntradayCalculator
             
-            # Map trade type to calculator format
-            trade_type_map = {
+            # Map journal trade type to calculator trade type
+            trade_type_mapping = {
                 'EQUITY_DELIVERY': 'equity-delivery',
-                'EQUITY_INTRADAY': 'equity-intraday'
+                'EQUITY_INTRADAY': 'equity-intraday',
             }
             
-            calculator_trade_type = trade_type_map.get(self.trade_type)
+            calculator_trade_type = trade_type_mapping.get(self.trade_type)
             if not calculator_trade_type:
-                # Fallback to old calculation for unsupported trade types
-                return self._calculate_pnl_fallback()
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Unsupported trade type '{self.trade_type}' for P&L calculation")
+                return None
             
             # Prepare transaction data for calculator
-            transaction_data = [{
-                'quantity': str(self.quantity),
-                'buyPrice': str(self.buy_price),
-                'sellPrice': str(self.sell_price)
-            }]
-            
-            # Select appropriate calculator
-            if calculator_trade_type == 'equity-delivery':
-                calculator = EquityDeliveryCalculator(
-                    platform=self.broker.lower(),
-                    exchange=self.exchange,
-                    trade_type=calculator_trade_type
-                )
-            elif calculator_trade_type == 'equity-intraday':
-                calculator = EquityIntradayCalculator(
-                    platform=self.broker.lower(),
-                    exchange=self.exchange,
-                    trade_type=calculator_trade_type
-                )
+            # For SHORT positions, we need to swap buy/sell prices for the calculator
+            if self.direction == "SHORT":
+                # For short positions: entry is exit_price, exit is buy_price
+                transaction_data = [{
+                    'quantity': str(self.quantity),
+                    'buyPrice': str(exit_price),     # Exit price (buy to close)
+                    'sellPrice': str(self.buy_price) # Entry price (sell to open)
+                }]
             else:
-                return self._calculate_pnl_fallback()
+                # For long positions: normal buy then sell
+                transaction_data = [{
+                    'quantity': str(self.quantity),
+                    'buyPrice': str(self.buy_price),
+                    'sellPrice': str(exit_price)
+                }]
             
-            # Calculate charges using the sophisticated calculator
+            # Get the appropriate calculator (same logic as calculate_charges view)
+            platform = self.broker.lower()
+            exchange = self.exchange.upper()
             position_type = 'short' if self.direction == 'SHORT' else 'long'
+            
+            if calculator_trade_type == 'equity-delivery':
+                calculator = EquityDeliveryCalculator(platform, exchange, calculator_trade_type)
+            elif calculator_trade_type == 'equity-intraday':
+                calculator = EquityIntradayCalculator(platform, exchange, calculator_trade_type)
+            else:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Unsupported trade type: {calculator_trade_type}")
+                return None
+            
+            # Calculate charges using the same logic as the view
             result = calculator.calculate_transaction_charges(transaction_data, position_type)
             
-            # Check for errors (e.g., unsupported broker for intraday)
+            # Check for errors (intraday calculator returns error dict for unsupported brokers)
             if isinstance(result, dict) and 'error' in result:
-                return self._calculate_pnl_fallback()
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.warning(f"Calculator returned error for trade {self.id}: {result.get('error')}")
+                return None
             
             # Extract net P&L from result
-            net_pnl = float(result['summary']['netPnL'])
-            return net_pnl
+            if 'summary' in result and 'netPnL' in result['summary']:
+                return float(result['summary']['netPnL'])
             
-        except Exception as e:
-            # Fallback to old calculation if anything goes wrong
-            return self._calculate_pnl_fallback()
-    
-    def _calculate_pnl_fallback(self):
-        """Fallback P&L calculation with approximate charges"""
-        if not (self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] and self.sell_price is not None):
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Calculator result missing netPnL for trade {self.id}")
             return None
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"P&L calculation failed for trade {self.id}: {str(e)}")
+            return None
+    
+    def get_detailed_calculation(self):
+        """Get detailed calculation results including charges breakdown"""
+        # Only calculate for closed trades (not CANCELLED or OPEN)
+        if self.status not in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            return None
+        
+        # Determine exit price based on trade status
+        exit_price = self.get_exit_price()
+        if exit_price is None:
+            return None
+        
+        try:
+            # Import calculator classes directly (same logic as the view)
+            from calculator.calculations.equity_delivery import EquityDeliveryCalculator
+            from calculator.calculations.equity_intraday import EquityIntradayCalculator
             
-        # Calculate gross P&L based on direction
-        if hasattr(self, 'direction') and self.direction == "SHORT":
-            gross_pnl = float(self.quantity) * (float(self.buy_price) - float(self.sell_price))
-        else:
-            gross_pnl = float(self.quantity) * (float(self.sell_price) - float(self.buy_price))
-        
-        # Calculate approximate charges for net P&L
-        buy_value = float(self.quantity) * float(self.buy_price)
-        sell_value = float(self.quantity) * float(self.sell_price)
-        
-        # Approximate brokerage
-        if self.trade_type == 'EQUITY_DELIVERY':
-            brokerage_rate = 0.0003
-            max_brokerage_per_order = 20
-        else:
-            brokerage_rate = 0.0005
-            max_brokerage_per_order = 20
+            # Map journal trade type to calculator trade type
+            trade_type_mapping = {
+                'EQUITY_DELIVERY': 'equity-delivery',
+                'EQUITY_INTRADAY': 'equity-intraday',
+            }
             
-        buy_brokerage = min(buy_value * brokerage_rate, max_brokerage_per_order)
-        sell_brokerage = min(sell_value * brokerage_rate, max_brokerage_per_order)
-        total_brokerage = buy_brokerage + sell_brokerage
+            calculator_trade_type = trade_type_mapping.get(self.trade_type)
+            if not calculator_trade_type:
+                return None
+            
+            # Prepare transaction data for calculator
+            # For SHORT positions, we need to swap buy/sell prices for the calculator
+            if self.direction == "SHORT":
+                # For short positions: entry is exit_price, exit is buy_price
+                transaction_data = [{
+                    'quantity': str(self.quantity),
+                    'buyPrice': str(exit_price),     # Exit price (buy to close)
+                    'sellPrice': str(self.buy_price) # Entry price (sell to open)
+                }]
+            else:
+                # For long positions: normal buy then sell
+                transaction_data = [{
+                    'quantity': str(self.quantity),
+                    'buyPrice': str(self.buy_price),
+                    'sellPrice': str(exit_price)
+                }]
+            
+            # Get the appropriate calculator (same logic as calculate_charges view)
+            platform = self.broker.lower()
+            exchange = self.exchange.upper()
+            position_type = 'short' if self.direction == 'SHORT' else 'long'
+            
+            if calculator_trade_type == 'equity-delivery':
+                calculator = EquityDeliveryCalculator(platform, exchange, calculator_trade_type)
+            elif calculator_trade_type == 'equity-intraday':
+                calculator = EquityIntradayCalculator(platform, exchange, calculator_trade_type)
+            else:
+                return None
+            
+            # Calculate charges using the same logic as the view
+            result = calculator.calculate_transaction_charges(transaction_data, position_type)
+            
+            # Check for errors (intraday calculator returns error dict for unsupported brokers)
+            if isinstance(result, dict) and 'error' in result:
+                return None
+            
+            # Return the full calculation result
+            return result
+                
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Detailed calculation failed for trade {self.id}: {str(e)}")
+            return None
+    
+    def is_precise_calculation_available(self):
+        """Check if precise calculation is available for this trade"""
+        # Since we only support EQUITY_DELIVERY and EQUITY_INTRADAY with Dhan and Groww
+        supported_trade_types = ['EQUITY_DELIVERY', 'EQUITY_INTRADAY']
+        supported_brokers = ['Dhan', 'Groww']
         
-        # STT (Securities Transaction Tax)
-        if self.trade_type == 'EQUITY_DELIVERY':
-            stt = sell_value * 0.001  # 0.1% on sell side for delivery
-        else:
-            stt = sell_value * 0.00025  # 0.025% on sell side for intraday
+        # For EQUITY_INTRADAY, only Dhan is supported
+        if self.trade_type == 'EQUITY_INTRADAY':
+            return self.broker == 'Dhan'
         
-        # Exchange charges
-        turnover = buy_value + sell_value
-        exchange_charges = turnover * 0.0000345
-        
-        # SEBI charges
-        sebi_charges = turnover * 0.000001
-        
-        # Stamp duty
-        stamp_duty = min(buy_value * 0.00003, 300)
-        
-        # GST on brokerage and other charges (18%)
-        gst_applicable_amount = total_brokerage + exchange_charges + sebi_charges
-        gst = gst_applicable_amount * 0.18
-        
-        # Total charges
-        total_charges = total_brokerage + stt + exchange_charges + sebi_charges + stamp_duty + gst
-        
-        # Net P&L = Gross P&L - Total Charges
-        net_pnl = gross_pnl - total_charges
-        
-        return net_pnl
+        # For EQUITY_DELIVERY, both Dhan and Groww are supported
+        return self.trade_type in supported_trade_types and self.broker in supported_brokers
+    
 
     def calculate_unrealized_pnl(self, current_price):
         if self.status == "OPEN":

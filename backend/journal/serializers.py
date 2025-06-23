@@ -37,6 +37,8 @@ class TradeJournalSerializer(serializers.ModelSerializer):
     unrealized_pnl = serializers.SerializerMethodField()
     risk_reward_ratio = serializers.SerializerMethodField()
     is_profitable = serializers.SerializerMethodField()
+    is_precise_calculation = serializers.SerializerMethodField()
+    missing_fields_for_pnl = serializers.SerializerMethodField()
     user = UserSerializer(read_only=True)
     
     class Meta:
@@ -56,16 +58,20 @@ class TradeJournalSerializer(serializers.ModelSerializer):
     def get_is_profitable(self, obj):
         return obj.is_profitable
     
+    def get_is_precise_calculation(self, obj):
+        return obj.is_precise_calculation_available()
+    
+    def get_missing_fields_for_pnl(self, obj):
+        return obj.get_missing_fields_for_pnl()
+    
     def validate_sell_price(self, value):
-        status = self.initial_data.get('status')
-        if status and status != 'OPEN' and (value is None or value == 0):
-            raise serializers.ValidationError("Sell price is required when status is not OPEN")
+        # Individual field validation - comprehensive validation is done in validate() method
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Sell price must be greater than 0")
         return value
     
     def validate_exit_date(self, value):
-        status = self.initial_data.get('status')
-        if status and status != 'OPEN' and value is None:
-            raise serializers.ValidationError("Exit date is required when status is not OPEN")
+        # Individual field validation - comprehensive validation is done in validate() method
         return value
     
     def validate_buy_price(self, value):
@@ -74,6 +80,9 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         return value
     
     def validate_stop_loss(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Stop loss must be greater than 0")
+        
         buy_price = self.initial_data.get('buy_price')
         direction = self.initial_data.get('direction', 'LONG')
         if value is not None and buy_price is not None:
@@ -84,6 +93,9 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         return value
     
     def validate_target_price(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Target price must be greater than 0")
+        
         buy_price = self.initial_data.get('buy_price')
         direction = self.initial_data.get('direction', 'LONG')
         if value is not None and buy_price is not None:
@@ -94,7 +106,7 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         return value
     
     def validate_broker(self, value):
-        valid_brokers = ['Dhan', 'Groww', 'Rise', 'Others']
+        valid_brokers = ['Dhan', 'Groww']
         if value not in valid_brokers:
             raise serializers.ValidationError(f"Broker must be one of: {', '.join(valid_brokers)}")
         return value
@@ -104,6 +116,37 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         if value not in valid_exchanges:
             raise serializers.ValidationError(f"Exchange must be one of: {', '.join(valid_exchanges)}")
         return value
+    
+    def validate(self, data):
+        """
+        Validate required fields based on trade status
+        """
+        status = data.get('status')
+        
+        if status == 'CLOSED_TARGET':
+            if not data.get('target_price'):
+                raise serializers.ValidationError({
+                    'target_price': 'Target price is required for trades closed at target'
+                })
+        elif status == 'CLOSED_STOPLOSS':
+            if not data.get('stop_loss'):
+                raise serializers.ValidationError({
+                    'stop_loss': 'Stop loss price is required for trades closed at stop loss'
+                })
+        elif status == 'CLOSED_MANUAL':
+            if not data.get('sell_price'):
+                raise serializers.ValidationError({
+                    'sell_price': 'Exit price is required for manually closed trades'
+                })
+        
+        # Validate exit date for all closed trades
+        if status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            if not data.get('exit_date'):
+                raise serializers.ValidationError({
+                    'exit_date': 'Exit date is required for closed trades'
+                })
+        
+        return data
     
     def create(self, validated_data):
         request = self.context.get('request')
@@ -116,6 +159,8 @@ class TradeJournalListSerializer(serializers.ModelSerializer):
     pnl = serializers.SerializerMethodField()
     risk_reward_ratio = serializers.SerializerMethodField()
     is_profitable = serializers.SerializerMethodField()
+    is_precise_calculation = serializers.SerializerMethodField()
+    missing_fields_for_pnl = serializers.SerializerMethodField()
     
     class Meta:
         model = TradeJournal
@@ -130,6 +175,12 @@ class TradeJournalListSerializer(serializers.ModelSerializer):
     
     def get_is_profitable(self, obj):
         return obj.is_profitable
+    
+    def get_is_precise_calculation(self, obj):
+        return obj.is_precise_calculation_available()
+    
+    def get_missing_fields_for_pnl(self, obj):
+        return obj.get_missing_fields_for_pnl()
 
 class TradeJournalCreateSerializer(serializers.ModelSerializer):
     tags = serializers.PrimaryKeyRelatedField(queryset=TradeTags.objects.all(), many=True, required=False)
@@ -139,7 +190,7 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         exclude = ['user', 'created_at', 'updated_at']
     
     def validate_broker(self, value):
-        valid_brokers = ['Dhan', 'Groww', 'Rise', 'Others']
+        valid_brokers = ['Dhan', 'Groww']
         if value not in valid_brokers:
             raise serializers.ValidationError(f"Broker must be one of: {', '.join(valid_brokers)}")
         return value
@@ -151,27 +202,24 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate_buy_price(self, value):
-        print(f"DEBUG: TradeJournalCreateSerializer validating buy_price: {value}")
         if value is None or value <= 0:
-            print(f"DEBUG: Buy price validation failed: {value}")
             raise serializers.ValidationError("Buy price must be greater than 0")
         return value
     
     def validate_sell_price(self, value):
-        status = self.initial_data.get('status')
-        print(f"DEBUG: TradeJournalCreateSerializer validating sell_price: {value}, status: {status}")
-        if status and status != 'OPEN' and (value is None or value == 0):
-            print(f"DEBUG: Sell price validation failed: {value}")
-            raise serializers.ValidationError("Sell price is required when status is not OPEN")
+        # Individual field validation - comprehensive validation is done in validate() method
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Sell price must be greater than 0")
         return value
     
     def validate_exit_date(self, value):
-        status = self.initial_data.get('status')
-        if status and status != 'OPEN' and value is None:
-            raise serializers.ValidationError("Exit date is required when status is not OPEN")
+        # Individual field validation - comprehensive validation is done in validate() method
         return value
     
     def validate_stop_loss(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Stop loss must be greater than 0")
+        
         buy_price = self.initial_data.get('buy_price')
         direction = self.initial_data.get('direction', 'LONG')
         if value is not None and buy_price is not None:
@@ -182,6 +230,9 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate_target_price(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError("Target price must be greater than 0")
+        
         buy_price = self.initial_data.get('buy_price')
         direction = self.initial_data.get('direction', 'LONG')
         if value is not None and buy_price is not None:
@@ -199,11 +250,38 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(f"Tag '{tag.name}' does not belong to you")
         return tags
     
-    def create(self, validated_data):
-        # Debug: Print validated data
-        print("DEBUG: TradeJournalCreateSerializer validated_data:")
-        print(f"Validated data: {validated_data}")
+    def validate(self, data):
+        """
+        Validate required fields based on trade status
+        """
+        status = data.get('status')
         
+        if status == 'CLOSED_TARGET':
+            if not data.get('target_price'):
+                raise serializers.ValidationError({
+                    'target_price': 'Target price is required for trades closed at target'
+                })
+        elif status == 'CLOSED_STOPLOSS':
+            if not data.get('stop_loss'):
+                raise serializers.ValidationError({
+                    'stop_loss': 'Stop loss price is required for trades closed at stop loss'
+                })
+        elif status == 'CLOSED_MANUAL':
+            if not data.get('sell_price'):
+                raise serializers.ValidationError({
+                    'sell_price': 'Exit price is required for manually closed trades'
+                })
+        
+        # Validate exit date for all closed trades
+        if status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            if not data.get('exit_date'):
+                raise serializers.ValidationError({
+                    'exit_date': 'Exit date is required for closed trades'
+                })
+        
+        return data
+    
+    def create(self, validated_data):
         tags = validated_data.pop('tags', [])
         request = self.context.get('request')
         if request and request.user.is_authenticated:

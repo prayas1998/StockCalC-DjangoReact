@@ -64,9 +64,6 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
-        # Debug: Print the data being received
-        print("DEBUG: Received data for trade creation:")
-        print(f"Data: {request.data}")
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
@@ -132,60 +129,12 @@ class JournalAnalyticsAPIView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def calculate_pnl_for_trade(self, trade):
-        """Calculate Net P&L for a single trade considering direction and charges"""
+        """Calculate Net P&L for a single trade using the same backend API"""
         if not trade.sell_price:
             return 0
-            
-        # Calculate gross P&L based on direction
-        if trade.direction == 'SHORT':
-            gross_pnl = float(trade.quantity) * (float(trade.buy_price) - float(trade.sell_price))
-        else:
-            gross_pnl = float(trade.quantity) * (float(trade.sell_price) - float(trade.buy_price))
         
-        # Calculate approximate charges for net P&L
-        # Using standard Indian market charges as approximation
-        buy_value = float(trade.quantity) * float(trade.buy_price)
-        sell_value = float(trade.quantity) * float(trade.sell_price)
-        
-        # Approximate brokerage (0.03% for delivery, 0.05% for intraday, max Rs 20 per order)
-        if trade.trade_type == 'EQUITY_DELIVERY':
-            brokerage_rate = 0.0003
-            max_brokerage_per_order = 20
-        else:
-            brokerage_rate = 0.0005
-            max_brokerage_per_order = 20
-            
-        buy_brokerage = min(buy_value * brokerage_rate, max_brokerage_per_order)
-        sell_brokerage = min(sell_value * brokerage_rate, max_brokerage_per_order)
-        total_brokerage = buy_brokerage + sell_brokerage
-        
-        # STT (Securities Transaction Tax)
-        if trade.trade_type == 'EQUITY_DELIVERY':
-            stt = sell_value * 0.001  # 0.1% on sell side for delivery
-        else:
-            stt = sell_value * 0.00025  # 0.025% on sell side for intraday
-        
-        # Exchange charges (approximately 0.00345% of turnover)
-        turnover = buy_value + sell_value
-        exchange_charges = turnover * 0.0000345
-        
-        # SEBI charges (Rs 10 per crore of turnover)
-        sebi_charges = turnover * 0.000001
-        
-        # Stamp duty (0.003% on buy side, max Rs 300)
-        stamp_duty = min(buy_value * 0.00003, 300)
-        
-        # GST on brokerage and other charges (18%)
-        gst_applicable_amount = total_brokerage + exchange_charges + sebi_charges
-        gst = gst_applicable_amount * 0.18
-        
-        # Total charges
-        total_charges = total_brokerage + stt + exchange_charges + sebi_charges + stamp_duty + gst
-        
-        # Net P&L = Gross P&L - Total Charges
-        net_pnl = gross_pnl - total_charges
-        
-        return net_pnl
+        # Use the same calculation logic as individual trades for consistency
+        return trade.calculate_pnl() or 0
 
     def get(self, request, format=None):
         user = request.user
@@ -325,11 +274,5 @@ class JournalAnalyticsAPIView(APIView):
             'drawdown_series': drawdown_series,
             'trade_type_distribution': trade_type_distribution,
             'status_distribution': status_distribution,
-            # Debug info (remove in production)
-            '_debug': {
-                'closed_trades_with_sell_price': len([t for t in closed_trades_qs if t.sell_price]),
-                'sample_trade_pnls': trade_pnls[:5] if trade_pnls else [],
-                'total_pnl_before_rounding': total_pnl
-            }
         }
         return Response(response_data)

@@ -225,8 +225,9 @@ export function TradeForm({
       sell_price = formattedValues.exit_price || undefined;
     } else {
       // For short positions: entry_price is the sell price, exit_price is the buy price
-      buy_price = formattedValues.exit_price || formattedValues.entry_price!; // Use entry_price as fallback for open short positions
+      // Note: buy_price is required by model, so we need to provide a value even for open short positions
       sell_price = formattedValues.entry_price!;
+      buy_price = formattedValues.exit_price || formattedValues.entry_price!; // Use entry_price as placeholder for open short positions
     }
 
     onSubmit({
