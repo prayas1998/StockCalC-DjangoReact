@@ -65,13 +65,29 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         return obj.get_missing_fields_for_pnl()
     
     def validate_sell_price(self, value):
-        # Individual field validation - comprehensive validation is done in validate() method
-        if value is not None and value <= 0:
+        # Only validate sell_price if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is CLOSED_MANUAL, sell_price is required and must be valid
+        if status == 'CLOSED_MANUAL':
+            if value is None or value <= 0:
+                raise serializers.ValidationError("Exit price is required and must be greater than 0 for manually closed trades")
+        
+        # For other statuses, only validate if value is provided and > 0
+        elif value is not None and value <= 0:
             raise serializers.ValidationError("Sell price must be greater than 0")
+        
         return value
     
     def validate_exit_date(self, value):
-        # Individual field validation - comprehensive validation is done in validate() method
+        # Only validate exit_date if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is any closed status, exit_date is required
+        if status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            if value is None:
+                raise serializers.ValidationError("Exit date is required for closed trades")
+        
         return value
     
     def validate_buy_price(self, value):
@@ -80,29 +96,49 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         return value
     
     def validate_stop_loss(self, value):
-        if value is not None and value <= 0:
+        # Only validate stop_loss if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is CLOSED_STOPLOSS, stop_loss is required and must be valid
+        if status == 'CLOSED_STOPLOSS':
+            if value is None or value <= 0:
+                raise serializers.ValidationError("Stop loss is required and must be greater than 0 for trades closed at stop loss")
+            
+            buy_price = self.initial_data.get('buy_price')
+            direction = self.initial_data.get('direction', 'LONG')
+            if buy_price is not None:
+                if direction == 'LONG' and float(value) >= float(buy_price):
+                    raise serializers.ValidationError("Stop loss must be less than buy price for long positions")
+                if direction == 'SHORT' and float(value) <= float(buy_price):
+                    raise serializers.ValidationError("Stop loss must be greater than buy price for short positions")
+        
+        # For other statuses, only validate if value is provided and > 0
+        elif value is not None and value <= 0:
             raise serializers.ValidationError("Stop loss must be greater than 0")
         
-        buy_price = self.initial_data.get('buy_price')
-        direction = self.initial_data.get('direction', 'LONG')
-        if value is not None and buy_price is not None:
-            if direction == 'LONG' and float(value) >= float(buy_price):
-                raise serializers.ValidationError("Stop loss must be less than buy price for long positions")
-            if direction == 'SHORT' and float(value) <= float(buy_price):
-                raise serializers.ValidationError("Stop loss must be greater than buy price for short positions")
         return value
     
     def validate_target_price(self, value):
-        if value is not None and value <= 0:
+        # Only validate target_price if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is CLOSED_TARGET, target_price is required and must be valid
+        if status == 'CLOSED_TARGET':
+            if value is None or value <= 0:
+                raise serializers.ValidationError("Target price is required and must be greater than 0 for trades closed at target")
+            
+            buy_price = self.initial_data.get('buy_price')
+            direction = self.initial_data.get('direction', 'LONG')
+            if buy_price is not None:
+                if direction == 'LONG' and float(value) <= float(buy_price):
+                    raise serializers.ValidationError("Target price must be greater than buy price for long positions")
+                if direction == 'SHORT' and float(value) >= float(buy_price):
+                    raise serializers.ValidationError("Target price must be less than buy price for short positions")
+        
+        # For other statuses, only validate if value is provided and > 0
+        elif value is not None and value <= 0:
             raise serializers.ValidationError("Target price must be greater than 0")
         
-        buy_price = self.initial_data.get('buy_price')
-        direction = self.initial_data.get('direction', 'LONG')
-        if value is not None and buy_price is not None:
-            if direction == 'LONG' and float(value) <= float(buy_price):
-                raise serializers.ValidationError("Target price must be greater than buy price for long positions")
-            if direction == 'SHORT' and float(value) >= float(buy_price):
-                raise serializers.ValidationError("Target price must be less than buy price for short positions")
         return value
     
     def validate_broker(self, value):
@@ -121,31 +157,8 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         """
         Validate required fields based on trade status
         """
-        status = data.get('status')
-        
-        if status == 'CLOSED_TARGET':
-            if not data.get('target_price'):
-                raise serializers.ValidationError({
-                    'target_price': 'Target price is required for trades closed at target'
-                })
-        elif status == 'CLOSED_STOPLOSS':
-            if not data.get('stop_loss'):
-                raise serializers.ValidationError({
-                    'stop_loss': 'Stop loss price is required for trades closed at stop loss'
-                })
-        elif status == 'CLOSED_MANUAL':
-            if not data.get('sell_price'):
-                raise serializers.ValidationError({
-                    'sell_price': 'Exit price is required for manually closed trades'
-                })
-        
-        # Validate exit date for all closed trades
-        if status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
-            if not data.get('exit_date'):
-                raise serializers.ValidationError({
-                    'exit_date': 'Exit date is required for closed trades'
-                })
-        
+        # All field-specific validation is now handled in individual validate_* methods
+        # This method can be used for cross-field validation if needed in the future
         return data
     
     def create(self, validated_data):
@@ -207,39 +220,75 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         return value
     
     def validate_sell_price(self, value):
-        # Individual field validation - comprehensive validation is done in validate() method
-        if value is not None and value <= 0:
+        # Only validate sell_price if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is CLOSED_MANUAL, sell_price is required and must be valid
+        if status == 'CLOSED_MANUAL':
+            if value is None or value <= 0:
+                raise serializers.ValidationError("Exit price is required and must be greater than 0 for manually closed trades")
+        
+        # For other statuses, only validate if value is provided and > 0
+        elif value is not None and value <= 0:
             raise serializers.ValidationError("Sell price must be greater than 0")
+        
         return value
     
     def validate_exit_date(self, value):
-        # Individual field validation - comprehensive validation is done in validate() method
+        # Only validate exit_date if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is any closed status, exit_date is required
+        if status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
+            if value is None:
+                raise serializers.ValidationError("Exit date is required for closed trades")
+        
         return value
     
     def validate_stop_loss(self, value):
-        if value is not None and value <= 0:
+        # Only validate stop_loss if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is CLOSED_STOPLOSS, stop_loss is required and must be valid
+        if status == 'CLOSED_STOPLOSS':
+            if value is None or value <= 0:
+                raise serializers.ValidationError("Stop loss is required and must be greater than 0 for trades closed at stop loss")
+            
+            buy_price = self.initial_data.get('buy_price')
+            direction = self.initial_data.get('direction', 'LONG')
+            if buy_price is not None:
+                if direction == 'LONG' and float(value) >= float(buy_price):
+                    raise serializers.ValidationError("Stop loss must be less than buy price for long positions")
+                if direction == 'SHORT' and float(value) <= float(buy_price):
+                    raise serializers.ValidationError("Stop loss must be greater than buy price for short positions")
+        
+        # For other statuses, only validate if value is provided and > 0
+        elif value is not None and value <= 0:
             raise serializers.ValidationError("Stop loss must be greater than 0")
         
-        buy_price = self.initial_data.get('buy_price')
-        direction = self.initial_data.get('direction', 'LONG')
-        if value is not None and buy_price is not None:
-            if direction == 'LONG' and float(value) >= float(buy_price):
-                raise serializers.ValidationError("Stop loss must be less than buy price for long positions")
-            if direction == 'SHORT' and float(value) <= float(buy_price):
-                raise serializers.ValidationError("Stop loss must be greater than buy price for short positions")
         return value
     
     def validate_target_price(self, value):
-        if value is not None and value <= 0:
+        # Only validate target_price if it's required for the current status
+        status = self.initial_data.get('status')
+        
+        # If status is CLOSED_TARGET, target_price is required and must be valid
+        if status == 'CLOSED_TARGET':
+            if value is None or value <= 0:
+                raise serializers.ValidationError("Target price is required and must be greater than 0 for trades closed at target")
+            
+            buy_price = self.initial_data.get('buy_price')
+            direction = self.initial_data.get('direction', 'LONG')
+            if buy_price is not None:
+                if direction == 'LONG' and float(value) <= float(buy_price):
+                    raise serializers.ValidationError("Target price must be greater than buy price for long positions")
+                if direction == 'SHORT' and float(value) >= float(buy_price):
+                    raise serializers.ValidationError("Target price must be less than buy price for short positions")
+        
+        # For other statuses, only validate if value is provided and > 0
+        elif value is not None and value <= 0:
             raise serializers.ValidationError("Target price must be greater than 0")
         
-        buy_price = self.initial_data.get('buy_price')
-        direction = self.initial_data.get('direction', 'LONG')
-        if value is not None and buy_price is not None:
-            if direction == 'LONG' and float(value) <= float(buy_price):
-                raise serializers.ValidationError("Target price must be greater than buy price for long positions")
-            if direction == 'SHORT' and float(value) >= float(buy_price):
-                raise serializers.ValidationError("Target price must be less than buy price for short positions")
         return value
     
     def validate_tags(self, tags):
@@ -254,31 +303,8 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         """
         Validate required fields based on trade status
         """
-        status = data.get('status')
-        
-        if status == 'CLOSED_TARGET':
-            if not data.get('target_price'):
-                raise serializers.ValidationError({
-                    'target_price': 'Target price is required for trades closed at target'
-                })
-        elif status == 'CLOSED_STOPLOSS':
-            if not data.get('stop_loss'):
-                raise serializers.ValidationError({
-                    'stop_loss': 'Stop loss price is required for trades closed at stop loss'
-                })
-        elif status == 'CLOSED_MANUAL':
-            if not data.get('sell_price'):
-                raise serializers.ValidationError({
-                    'sell_price': 'Exit price is required for manually closed trades'
-                })
-        
-        # Validate exit date for all closed trades
-        if status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
-            if not data.get('exit_date'):
-                raise serializers.ValidationError({
-                    'exit_date': 'Exit date is required for closed trades'
-                })
-        
+        # All field-specific validation is now handled in individual validate_* methods
+        # This method can be used for cross-field validation if needed in the future
         return data
     
     def create(self, validated_data):
