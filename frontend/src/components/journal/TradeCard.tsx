@@ -83,7 +83,7 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
               ))}
             </div>
             <div className="text-sm text-muted-foreground mt-1">
-              {formatTradeType(trade.trade_type)} â€¢ {trade.quantity} shares
+              {formatTradeType(trade.trade_type)} • {trade.quantity} shares • {trade.broker} • {trade.exchange}
             </div>
           </div>
 
@@ -98,7 +98,7 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
                   : "--"}
             </div>
             <div className="text-xs text-muted-foreground">
-              {trade.status === TradeStatus.OPEN ? "Unrealized P&L" : "P&L"}
+              {trade.status === TradeStatus.OPEN ? "Unrealized P&L" : "Net P&L"}
             </div>
           </div>
         </div>
@@ -138,7 +138,7 @@ export function TradeCard({ trade, onEdit, onDelete }: TradeCardProps) {
               <span>Progress to Target</span>
               <span>
                 {trade.buy_price && trade.target_price
-                  ? `${formatCurrency(trade.buy_price)} â†’ ${formatCurrency(trade.target_price)}`
+                  ? `${formatCurrency(trade.buy_price)} to ${formatCurrency(trade.target_price)}`
                   : ""}
               </span>
             </div>

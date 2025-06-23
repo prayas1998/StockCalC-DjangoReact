@@ -30,14 +30,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Badge } from "@/components/ui/badge";
 import { TradeJournalCreate, TradeStatus, TradeType, TradeTags, TradeDirection } from "@/types/journal";
+import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector";
+import { BrokerType, TradeType as CalculatorTradeType, PositionType } from "@/context/CalculatorContext";
 
 // Define the form schema using zod
 const tradeFormSchema = z.object({
   company_name: z.string().min(1, { message: "Company name is required" }),
-  trade_type: z.nativeEnum(TradeType),
-  direction: z.nativeEnum(TradeDirection),
   quantity: z.coerce.number().positive({ message: "Quantity must be positive" }),
-  entry_price: z.coerce.number().nonnegative().optional(),
+  entry_price: z.coerce.number().min(0.01, { message: "Entry price must be greater than 0" }),
   exit_price: z.coerce.number().nonnegative().optional(),
   sl: z.coerce.number().nonnegative().optional(),
   target_price: z.coerce.number().nonnegative().optional(),
@@ -46,13 +46,9 @@ const tradeFormSchema = z.object({
   status: z.nativeEnum(TradeStatus),
   personal_notes: z.string().optional(),
   tags: z.array(z.number()).optional(),
-}).refine(
-  (data) => (data.entry_price && data.entry_price > 0) || (data.exit_price && data.exit_price > 0),
-  {
-    message: "Either Entry Price or Exit Price (or both) must be greater than 0",
-    path: ["entry_price"],
-  }
-);
+  broker: z.string().min(1, { message: "Broker is required" }),
+  exchange: z.string().min(1, { message: "Exchange is required" }),
+});
 
 type TradeFormValues = z.infer<typeof tradeFormSchema>;
 
@@ -71,6 +67,17 @@ export function TradeForm({
   onCancel,
   isSubmitting,
 }: TradeFormProps) {
+  // State for broker, trade type, and position type (outside of form)
+  const [selectedBroker, setSelectedBroker] = useState<BrokerType>(
+    (initialData?.broker as BrokerType) || "Dhan"
+  );
+  const [selectedTradeType, setSelectedTradeType] = useState<CalculatorTradeType>(
+    initialData?.trade_type === TradeType.EQUITY_INTRADAY ? 'equity-intraday' : 'equity-delivery'
+  );
+  const [selectedPositionType, setSelectedPositionType] = useState<PositionType>(
+    initialData?.direction === TradeDirection.SHORT ? 'short' : 'long'
+  );
+
   // Helper function to extract tag IDs from initialData
   const getInitialTagIds = () => {
     if (!initialData?.tags) return [];
@@ -90,15 +97,13 @@ export function TradeForm({
     resolver: zodResolver(tradeFormSchema),
     defaultValues: {
       company_name: initialData?.company_name || "",
-      trade_type: initialData?.trade_type || TradeType.EQUITY_DELIVERY,
-      direction: initialData?.direction || TradeDirection.LONG,
       quantity: initialData?.quantity || 0,
       entry_price:
-        (initialData?.direction === TradeDirection.SHORT
+        (selectedPositionType === 'short'
           ? initialData?.sell_price
-          : initialData?.buy_price) || 0,
+          : initialData?.buy_price) || 1,
       exit_price:
-        (initialData?.direction === TradeDirection.SHORT
+        (selectedPositionType === 'short'
           ? initialData?.buy_price
           : initialData?.sell_price) || undefined,
       sl: initialData?.stop_loss,
@@ -108,16 +113,48 @@ export function TradeForm({
       status: initialData?.status || TradeStatus.OPEN,
       personal_notes: initialData?.personal_notes || "",
       tags: getInitialTagIds(),
+      broker: selectedBroker,
+      exchange: initialData?.exchange || "NSE",
     },
   });
 
-  const direction = form.watch("direction");
   const status = form.watch("status");
   const stopLoss = form.watch("sl");
+  const exchange = form.watch("exchange");
   const targetPrice = form.watch("target_price");
   const entryPrice = form.watch("entry_price");
   const selectedTags = form.watch("tags") || [];
   const exitDate = form.watch("exit_date");
+
+  // Helper functions to convert between journal and calculator types
+  const calculatorToJournalTradeType = (calcType: CalculatorTradeType): TradeType => {
+    switch (calcType) {
+      case 'equity-delivery':
+        return TradeType.EQUITY_DELIVERY;
+      case 'equity-intraday':
+        return TradeType.EQUITY_INTRADAY;
+      default:
+        return TradeType.EQUITY_DELIVERY;
+    }
+  };
+
+  const positionTypeToDirection = (positionType: PositionType): TradeDirection => {
+    return positionType === 'short' ? TradeDirection.SHORT : TradeDirection.LONG;
+  };
+
+  // Handlers for broker, trade type, and position changes
+  const handleBrokerChange = (newBroker: BrokerType) => {
+    setSelectedBroker(newBroker);
+    form.setValue("broker", newBroker);
+  };
+
+  const handleTradeTypeChange = (newTradeType: CalculatorTradeType) => {
+    setSelectedTradeType(newTradeType);
+  };
+
+  const handlePositionTypeChange = (newPositionType: PositionType) => {
+    setSelectedPositionType(newPositionType);
+  };
 
   useEffect(() => {
     if (
@@ -170,6 +207,10 @@ export function TradeForm({
 
   // Handle form submission
   function handleSubmit(values: TradeFormValues) {
+    // Get trade type and direction from external state
+    const tradeType = calculatorToJournalTradeType(selectedTradeType);
+    const direction = positionTypeToDirection(selectedPositionType);
+
     // Convert dates to ISO strings for API
     const formattedValues = {
       ...values,
@@ -179,18 +220,19 @@ export function TradeForm({
     
     // Map entry/exit price to buy/sell price based on direction
     let buy_price, sell_price;
-    if (formattedValues.direction === TradeDirection.LONG) {
-      buy_price = formattedValues.entry_price;
-      sell_price = formattedValues.exit_price;
+    if (direction === TradeDirection.LONG) {
+      buy_price = formattedValues.entry_price!; // Entry price is required by validation
+      sell_price = formattedValues.exit_price || undefined;
     } else {
-      buy_price = formattedValues.exit_price;
-      sell_price = formattedValues.entry_price;
+      // For short positions: entry_price is the sell price, exit_price is the buy price
+      buy_price = formattedValues.exit_price || formattedValues.entry_price!; // Use entry_price as fallback for open short positions
+      sell_price = formattedValues.entry_price!;
     }
 
     onSubmit({
       company_name: formattedValues.company_name!,
-      trade_type: formattedValues.trade_type!,
-      direction: formattedValues.direction!,
+      trade_type: tradeType,
+      direction: direction,
       quantity: formattedValues.quantity!,
       buy_price: buy_price!,
       sell_price: sell_price,
@@ -200,7 +242,9 @@ export function TradeForm({
       stop_loss: formattedValues.sl,
       target_price: formattedValues.target_price,
       personal_notes: formattedValues.personal_notes,
-      tags: formattedValues.tags || []
+      tags: formattedValues.tags || [],
+      broker: selectedBroker,
+      exchange: formattedValues.exchange
     });
   }
 
@@ -213,88 +257,59 @@ export function TradeForm({
             <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
             <h3 className="text-lg font-semibold text-foreground">Basic Information</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Company Name */}
-          <FormField
-            control={form.control}
-            name="company_name"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Company Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="Enter company name" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          
+          {/* Broker and Trade Type Selector */}
+          <div>
+            <FormLabel className="text-base mb-3 block">Broker & Trade Configuration</FormLabel>
+            <BrokerTradeTypeSelector
+              selectedBroker={selectedBroker}
+              selectedTradeType={selectedTradeType}
+              onBrokerChange={handleBrokerChange}
+              onTradeTypeChange={handleTradeTypeChange}
+              positionType={selectedPositionType}
+              onPositionTypeChange={handlePositionTypeChange}
+              compact={true}
+            />
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Exchange Selector */}
+            <FormField
+              control={form.control}
+              name="exchange"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Exchange</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="NSE">NSE</SelectItem>
+                      <SelectItem value="BSE">BSE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
-          {/* Trade Type */}
-          <FormField
-            control={form.control}
-            name="trade_type"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Trade Type</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
+            {/* Company Name */}
+            <FormField
+              control={form.control}
+              name="company_name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Company Name</FormLabel>
                   <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select trade type" />
-                    </SelectTrigger>
+                    <Input placeholder="Enter company name" {...field} />
                   </FormControl>
-                  <SelectContent>
-                    {Object.values(TradeType).map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {type.replace("_", " ")}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Quantity */}
-          <FormField
-            control={form.control}
-            name="quantity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Quantity</FormLabel>
-                <FormControl>
-                  <Input type="number" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Trade Direction */}
-          <FormField
-            control={form.control}
-            name="direction"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Trade Direction</FormLabel>
-                <Select onValueChange={field.onChange} value={field.value}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value={TradeDirection.LONG}>Long (Buy first, Sell later)</SelectItem>
-                    <SelectItem value={TradeDirection.SHORT}>Short (Sell first, Buy later)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
           </div>
         </div>
 
@@ -305,6 +320,22 @@ export function TradeForm({
             <h3 className="text-lg font-semibold text-foreground">Price Details</h3>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          
+          {/* Quantity */}
+          <FormField
+            control={form.control}
+            name="quantity"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Quantity</FormLabel>
+                <FormControl>
+                  <Input type="number" placeholder="Enter quantity" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          
           {/* Entry Price */}
           <FormField
             control={form.control}
@@ -314,7 +345,7 @@ export function TradeForm({
                 <FormLabel>
                   Entry Price
                   <span className="ml-2 text-xs text-muted-foreground">
-                    {direction === TradeDirection.LONG ? "(Buy Price)" : "(Sell Price)"}
+                    {selectedPositionType === 'long' ? "(Buy Price)" : "(Sell Price)"}
                   </span>
                 </FormLabel>
                 <FormControl>
@@ -334,7 +365,7 @@ export function TradeForm({
                 <FormLabel>
                   Exit Price (Optional)
                   <span className="ml-2 text-xs text-muted-foreground">
-                    {direction === TradeDirection.LONG ? "(Sell Price)" : "(Buy Price)"}
+                    {selectedPositionType === 'long' ? "(Sell Price)" : "(Buy Price)"}
                   </span>
                 </FormLabel>
                 <FormControl>

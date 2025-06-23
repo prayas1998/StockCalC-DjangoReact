@@ -80,6 +80,8 @@ export interface TradeJournal {
   risk_reward_ratio?: number;
   is_profitable?: boolean;
   direction: TradeDirection;
+  broker: string;
+  exchange: string;
 }
 
 /**
@@ -99,6 +101,8 @@ export interface TradeJournalCreate {
   personal_notes?: string;
   tags?: number[];
   direction: TradeDirection;
+  broker: string;
+  exchange: string;
 }
 
 /**
@@ -118,6 +122,8 @@ export interface TradeJournalUpdate {
   personal_notes?: string;
   tags?: number[];
   direction?: TradeDirection;
+  broker?: string;
+  exchange?: string;
 }
 
 /**

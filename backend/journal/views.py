@@ -63,6 +63,12 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
 
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        # Debug: Print the data being received
+        print("DEBUG: Received data for trade creation:")
+        print(f"Data: {request.data}")
+        return super().create(request, *args, **kwargs)
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 

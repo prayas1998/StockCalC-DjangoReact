@@ -27,6 +27,18 @@ class TradeJournal(models.Model):
         ("CANCELLED", "Cancelled"),
     ]
 
+    BROKER_CHOICES = [
+        ("Dhan", "Dhan"),
+        ("Groww", "Groww"),
+        ("Rise", "Rise"),
+        ("Others", "Others"),
+    ]
+
+    EXCHANGE_CHOICES = [
+        ("NSE", "NSE"),
+        ("BSE", "BSE"),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     company_name = models.CharField(max_length=255)
     trade_type = models.CharField(max_length=20, choices=TRADE_TYPE_CHOICES)
@@ -47,9 +59,71 @@ class TradeJournal(models.Model):
         ("SHORT", "Short"),
     ]
     direction = models.CharField(max_length=10, choices=direction_choices, default="LONG")
+    broker = models.CharField(max_length=20, choices=BROKER_CHOICES, default="Dhan")
+    exchange = models.CharField(max_length=10, choices=EXCHANGE_CHOICES, default="NSE")
 
     def calculate_pnl(self):
-        """Calculate Net P&L including approximate charges"""
+        """Calculate Net P&L using broker-specific charges"""
+        if not (self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] and self.sell_price is not None):
+            return None
+        
+        try:
+            # Import here to avoid circular imports
+            from ..calculator.calculations.equity_delivery import EquityDeliveryCalculator
+            from ..calculator.calculations.equity_intraday import EquityIntradayCalculator
+            
+            # Map trade type to calculator format
+            trade_type_map = {
+                'EQUITY_DELIVERY': 'equity-delivery',
+                'EQUITY_INTRADAY': 'equity-intraday'
+            }
+            
+            calculator_trade_type = trade_type_map.get(self.trade_type)
+            if not calculator_trade_type:
+                # Fallback to old calculation for unsupported trade types
+                return self._calculate_pnl_fallback()
+            
+            # Prepare transaction data for calculator
+            transaction_data = [{
+                'quantity': str(self.quantity),
+                'buyPrice': str(self.buy_price),
+                'sellPrice': str(self.sell_price)
+            }]
+            
+            # Select appropriate calculator
+            if calculator_trade_type == 'equity-delivery':
+                calculator = EquityDeliveryCalculator(
+                    platform=self.broker.lower(),
+                    exchange=self.exchange,
+                    trade_type=calculator_trade_type
+                )
+            elif calculator_trade_type == 'equity-intraday':
+                calculator = EquityIntradayCalculator(
+                    platform=self.broker.lower(),
+                    exchange=self.exchange,
+                    trade_type=calculator_trade_type
+                )
+            else:
+                return self._calculate_pnl_fallback()
+            
+            # Calculate charges using the sophisticated calculator
+            position_type = 'short' if self.direction == 'SHORT' else 'long'
+            result = calculator.calculate_transaction_charges(transaction_data, position_type)
+            
+            # Check for errors (e.g., unsupported broker for intraday)
+            if isinstance(result, dict) and 'error' in result:
+                return self._calculate_pnl_fallback()
+            
+            # Extract net P&L from result
+            net_pnl = float(result['summary']['netPnL'])
+            return net_pnl
+            
+        except Exception as e:
+            # Fallback to old calculation if anything goes wrong
+            return self._calculate_pnl_fallback()
+    
+    def _calculate_pnl_fallback(self):
+        """Fallback P&L calculation with approximate charges"""
         if not (self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] and self.sell_price is not None):
             return None
             

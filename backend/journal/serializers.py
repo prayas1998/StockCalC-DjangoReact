@@ -58,7 +58,7 @@ class TradeJournalSerializer(serializers.ModelSerializer):
     
     def validate_sell_price(self, value):
         status = self.initial_data.get('status')
-        if status and status != 'OPEN' and value is None:
+        if status and status != 'OPEN' and (value is None or value == 0):
             raise serializers.ValidationError("Sell price is required when status is not OPEN")
         return value
     
@@ -66,6 +66,11 @@ class TradeJournalSerializer(serializers.ModelSerializer):
         status = self.initial_data.get('status')
         if status and status != 'OPEN' and value is None:
             raise serializers.ValidationError("Exit date is required when status is not OPEN")
+        return value
+    
+    def validate_buy_price(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError("Buy price must be greater than 0")
         return value
     
     def validate_stop_loss(self, value):
@@ -86,6 +91,18 @@ class TradeJournalSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Target price must be greater than buy price for long positions")
             if direction == 'SHORT' and float(value) >= float(buy_price):
                 raise serializers.ValidationError("Target price must be less than buy price for short positions")
+        return value
+    
+    def validate_broker(self, value):
+        valid_brokers = ['Dhan', 'Groww', 'Rise', 'Others']
+        if value not in valid_brokers:
+            raise serializers.ValidationError(f"Broker must be one of: {', '.join(valid_brokers)}")
+        return value
+    
+    def validate_exchange(self, value):
+        valid_exchanges = ['NSE', 'BSE']
+        if value not in valid_exchanges:
+            raise serializers.ValidationError(f"Exchange must be one of: {', '.join(valid_exchanges)}")
         return value
     
     def create(self, validated_data):
@@ -121,6 +138,59 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         model = TradeJournal
         exclude = ['user', 'created_at', 'updated_at']
     
+    def validate_broker(self, value):
+        valid_brokers = ['Dhan', 'Groww', 'Rise', 'Others']
+        if value not in valid_brokers:
+            raise serializers.ValidationError(f"Broker must be one of: {', '.join(valid_brokers)}")
+        return value
+    
+    def validate_exchange(self, value):
+        valid_exchanges = ['NSE', 'BSE']
+        if value not in valid_exchanges:
+            raise serializers.ValidationError(f"Exchange must be one of: {', '.join(valid_exchanges)}")
+        return value
+    
+    def validate_buy_price(self, value):
+        print(f"DEBUG: TradeJournalCreateSerializer validating buy_price: {value}")
+        if value is None or value <= 0:
+            print(f"DEBUG: Buy price validation failed: {value}")
+            raise serializers.ValidationError("Buy price must be greater than 0")
+        return value
+    
+    def validate_sell_price(self, value):
+        status = self.initial_data.get('status')
+        print(f"DEBUG: TradeJournalCreateSerializer validating sell_price: {value}, status: {status}")
+        if status and status != 'OPEN' and (value is None or value == 0):
+            print(f"DEBUG: Sell price validation failed: {value}")
+            raise serializers.ValidationError("Sell price is required when status is not OPEN")
+        return value
+    
+    def validate_exit_date(self, value):
+        status = self.initial_data.get('status')
+        if status and status != 'OPEN' and value is None:
+            raise serializers.ValidationError("Exit date is required when status is not OPEN")
+        return value
+    
+    def validate_stop_loss(self, value):
+        buy_price = self.initial_data.get('buy_price')
+        direction = self.initial_data.get('direction', 'LONG')
+        if value is not None and buy_price is not None:
+            if direction == 'LONG' and float(value) >= float(buy_price):
+                raise serializers.ValidationError("Stop loss must be less than buy price for long positions")
+            if direction == 'SHORT' and float(value) <= float(buy_price):
+                raise serializers.ValidationError("Stop loss must be greater than buy price for short positions")
+        return value
+    
+    def validate_target_price(self, value):
+        buy_price = self.initial_data.get('buy_price')
+        direction = self.initial_data.get('direction', 'LONG')
+        if value is not None and buy_price is not None:
+            if direction == 'LONG' and float(value) <= float(buy_price):
+                raise serializers.ValidationError("Target price must be greater than buy price for long positions")
+            if direction == 'SHORT' and float(value) >= float(buy_price):
+                raise serializers.ValidationError("Target price must be less than buy price for short positions")
+        return value
+    
     def validate_tags(self, tags):
         request = self.context.get('request')
         if request and request.user.is_authenticated:
@@ -130,6 +200,10 @@ class TradeJournalCreateSerializer(serializers.ModelSerializer):
         return tags
     
     def create(self, validated_data):
+        # Debug: Print validated data
+        print("DEBUG: TradeJournalCreateSerializer validated_data:")
+        print(f"Validated data: {validated_data}")
+        
         tags = validated_data.pop('tags', [])
         request = self.context.get('request')
         if request and request.user.is_authenticated:
