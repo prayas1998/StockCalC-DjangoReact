@@ -8,6 +8,7 @@ import { Calculator, CheckCircle, TrendingUp, TrendingDown, Zap } from "lucide-r
 import { ClearButton } from "@/components/shared/ClearButton"
 import { CalculatorCard } from "@/components/shared/CalculatorCard"
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector"
+import { RiskModeSelector } from "@/components/shared/RiskModeSelector"
 import { formatCurrency } from "@/pages/Tools/ChargesUtils"
 import { calculateBreakevenPrice } from "@/pages/Tools/BreakEven"
 import type { PositionSizingCalculatorHook } from "@/hooks/usePositionSizingCalculator"
@@ -15,9 +16,11 @@ import type { PositionSizingCalculatorHook } from "@/hooks/usePositionSizingCalc
 interface PositionSizingCalculatorPresenterProps extends PositionSizingCalculatorHook {
   selectedBroker: "Dhan" | "Groww"
   selectedTradeType: "equity-delivery" | "equity-intraday"
+  positionType: "long" | "short"
   LEVERAGE: number
   onBrokerChange: (broker: "Dhan" | "Groww") => void
   onTradeTypeChange: (tradeType: "equity-delivery" | "equity-intraday") => void
+  onPositionTypeChange: (positionType: "long" | "short") => void
 }
 
 export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculatorPresenterProps> = ({
@@ -27,9 +30,11 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
   calculate,
   selectedBroker,
   selectedTradeType,
+  positionType,
   LEVERAGE,
   onBrokerChange,
   onTradeTypeChange,
+  onPositionTypeChange,
 }) => {
   // Calculate result using the hook's calculate function
   useEffect(() => {
@@ -84,20 +89,24 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
       title="Position Sizing Calculator"
       description="Calculate optimal position size based on your risk tolerance and stop loss."
     >
-      {/* Compact Broker/Trade Type Selector */}
+      {/* Compact Broker/Trade Type Selector and Risk Mode Selector */}
       <div className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-800 dark:to-gray-800 py-4 px-3 rounded-lg border border-gray-200 dark:border-gray-700">
-        <BrokerTradeTypeSelector
-          selectedBroker={selectedBroker}
-          selectedTradeType={selectedTradeType}
-          onBrokerChange={onBrokerChange}
-          onTradeTypeChange={onTradeTypeChange}
-          showRiskMode={true}
-          riskMode={state.riskMode}
-          onRiskModeChange={(val) => updateField("riskMode", val)}
-          positionType="long"
-          onPositionTypeChange={() => {}}
-          compact={true}
-        />
+        <div className="flex flex-wrap gap-4">
+          <BrokerTradeTypeSelector
+            selectedBroker={selectedBroker}
+            selectedTradeType={selectedTradeType}
+            onBrokerChange={onBrokerChange}
+            onTradeTypeChange={onTradeTypeChange}
+            positionType={positionType}
+            onPositionTypeChange={onPositionTypeChange}
+            compact={true}
+          />
+          <RiskModeSelector
+            riskMode={state.riskMode}
+            onRiskModeChange={(val) => updateField("riskMode", val)}
+            compact={true}
+          />
+        </div>
       </div>
 
       {/* Combined Input Fields - Flexible Layout */}
@@ -230,21 +239,22 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
 
               <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                 <div className="flex items-center gap-1">
-                  <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
-                  <span className="text-gray-600 dark:text-gray-300">Long BreakEven:</span>
+                  {positionType === 'long' ? (
+                    <TrendingUp className="h-3 w-3 text-green-600 dark:text-green-400" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 text-red-600 dark:text-red-400" />
+                  )}
+                  <span className="text-gray-600 dark:text-gray-300">BreakEven Price:</span>
                 </div>
-                <span className="font-bold text-green-600 dark:text-green-400">
-                  {breakevenPrices ? formatCurrency(breakevenPrices.longBreakeven) : "-"}
+                <span className={`font-bold ${positionType === 'long' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {breakevenPrices ? formatCurrency(positionType === 'long' ? breakevenPrices.longBreakeven : breakevenPrices.shortBreakeven) : "-"}
                 </span>
               </div>
 
               <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                <div className="flex items-center gap-1">
-                  <TrendingDown className="h-3 w-3 text-red-600 dark:text-red-400" />
-                  <span className="text-gray-600 dark:text-gray-300">Short BreakEven:</span>
-                </div>
-                <span className="font-bold text-red-600 dark:text-red-400">
-                  {breakevenPrices ? formatCurrency(breakevenPrices.shortBreakeven) : "-"}
+                <span className="text-gray-600 dark:text-gray-300">Position Type:</span>
+                <span className={`font-bold ${positionType === 'long' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {positionType === 'long' ? 'Long' : 'Short'}
                 </span>
               </div>
             </div>

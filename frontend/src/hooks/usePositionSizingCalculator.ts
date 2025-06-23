@@ -75,7 +75,8 @@ export const usePositionSizingCalculator = (broker: 'Dhan' | 'Groww', exchange: 
       entryPrice,
       tradeType: state.tradeType,
       broker,
-      exchange
+      exchange,
+      positionType: 'long' // Default to long, will be overridden by the component's positionType
     });
 
     setResult(calculationResult);

@@ -10,6 +10,7 @@ export interface PositionSizingParams {
   tradeType: 'equity-delivery' | 'equity-intraday';
   broker: 'Dhan' | 'Groww';
   exchange: string;
+  positionType?: 'long' | 'short';
 }
 
 export interface PositionSizingResult {
@@ -33,7 +34,7 @@ export class PositionSizingCalculatorService {
    * Ensures that actual risk never exceeds the user's risk budget
    */
   static calculatePositionSize(params: PositionSizingParams): PositionSizingResult | null {
-    const { riskMode, capital, riskAmount, riskPercent, stopLoss, entryPrice, tradeType, broker, exchange } = params;
+    const { riskMode, capital, riskAmount, riskPercent, stopLoss, entryPrice, tradeType, broker, exchange, positionType = 'long' } = params;
 
     // Validate required inputs
     if (stopLoss <= 0 || entryPrice <= 0) {
@@ -47,7 +48,7 @@ export class PositionSizingCalculatorService {
     }
 
     // Calculate optimal quantity that ensures actual risk <= risk budget
-    const optimalQuantity = this.calculateOptimalQuantity(risk, stopLoss, entryPrice, tradeType, broker, exchange);
+    const optimalQuantity = this.calculateOptimalQuantity(risk, stopLoss, entryPrice, tradeType, broker, exchange, positionType);
     
     // Calculate position metrics
     const positionValue = optimalQuantity * entryPrice;
@@ -55,7 +56,7 @@ export class PositionSizingCalculatorService {
     const buyingPower = this.calculateBuyingPower(capital, tradeType);
 
     // Calculate final charges for display
-    const finalCharges = this.calculateFinalCharges(optimalQuantity, entryPrice, stopLoss, exchange, broker, tradeType);
+    const finalCharges = this.calculateFinalCharges(optimalQuantity, entryPrice, stopLoss, exchange, broker, tradeType, positionType);
     
     // Calculate actual risk with charges - ensure it doesn't exceed risk budget
     let actualRiskWithCharges = (optimalQuantity * stopLoss) + finalCharges.totalCharges;
@@ -111,7 +112,8 @@ export class PositionSizingCalculatorService {
     entryPrice: number,
     tradeType: 'equity-delivery' | 'equity-intraday',
     broker: 'Dhan' | 'Groww',
-    exchange: string
+    exchange: string,
+    positionType: 'long' | 'short' = 'long'
   ): number {
     // Initial estimate without charges - start conservative
     let quantity = Math.floor(risk / stopLoss);
@@ -130,7 +132,11 @@ export class PositionSizingCalculatorService {
       quantity = Math.floor((low + high) / 2);
       
       const buyValue = quantity * entryPrice;
-      const sellValue = quantity * (entryPrice - stopLoss);
+      // For long positions: sell at stop loss (lower than entry)
+      // For short positions: buy to cover at stop loss (higher than entry)
+      const sellValue = positionType === 'long' 
+        ? quantity * (entryPrice - stopLoss) 
+        : quantity * (entryPrice + stopLoss);
       const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, broker, tradeType);
       
       const totalRisk = (quantity * stopLoss) + charges.totalCharges;
@@ -153,7 +159,11 @@ export class PositionSizingCalculatorService {
     // Verify the final quantity to ensure risk is within budget
     quantity = bestQuantity;
     const buyValue = quantity * entryPrice;
-    const sellValue = quantity * (entryPrice - stopLoss);
+    // For long positions: sell at stop loss (lower than entry)
+    // For short positions: buy to cover at stop loss (higher than entry)
+    const sellValue = positionType === 'long' 
+      ? quantity * (entryPrice - stopLoss) 
+      : quantity * (entryPrice + stopLoss);
     const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, broker, tradeType);
     const finalRisk = (quantity * stopLoss) + charges.totalCharges;
     
@@ -198,10 +208,15 @@ export class PositionSizingCalculatorService {
     stopLoss: number,
     exchange: string,
     broker: 'Dhan' | 'Groww',
-    tradeType: 'equity-delivery' | 'equity-intraday'
+    tradeType: 'equity-delivery' | 'equity-intraday',
+    positionType: 'long' | 'short' = 'long'
   ) {
     const finalBuyValue = quantity * entryPrice;
-    const finalSellValue = quantity * (entryPrice - stopLoss);
+    // For long positions: sell at stop loss (lower than entry)
+    // For short positions: buy to cover at stop loss (higher than entry)
+    const finalSellValue = positionType === 'long' 
+      ? quantity * (entryPrice - stopLoss) 
+      : quantity * (entryPrice + stopLoss);
     return calculateCharges(finalBuyValue, Math.abs(finalSellValue), exchange, broker, tradeType);
   }
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { usePositionSizingCalculator } from '@/hooks/usePositionSizingCalculator';
 import { PositionSizingCalculatorPresenter } from './PositionSizingCalculatorPresenter';
 
@@ -20,15 +20,18 @@ export const PositionSizingCalculatorContainer: React.FC<PositionSizingCalculato
   onTradeTypeChange
 }) => {
   const calculator = usePositionSizingCalculator(selectedBroker, exchange);
+  const [positionType, setPositionType] = useState<'long' | 'short'>('long');
 
   return (
     <PositionSizingCalculatorPresenter
       {...calculator}
       selectedBroker={selectedBroker}
       selectedTradeType={selectedTradeType}
+      positionType={positionType}
       LEVERAGE={LEVERAGE}
       onBrokerChange={onBrokerChange}
       onTradeTypeChange={onTradeTypeChange}
+      onPositionTypeChange={setPositionType}
     />
   );
 };

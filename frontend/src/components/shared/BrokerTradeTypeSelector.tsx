@@ -8,9 +8,6 @@ interface BrokerTradeTypeSelectorProps {
   selectedTradeType: TradeType;
   onBrokerChange: (broker: BrokerType) => void;
   onTradeTypeChange: (tradeType: TradeType) => void;
-  showRiskMode?: boolean;
-  riskMode?: 'amount' | 'percent';
-  onRiskModeChange?: (riskMode: 'amount' | 'percent') => void;
   positionType?: PositionType;
   onPositionTypeChange?: (positionType: PositionType) => void;
   compact?: boolean;
@@ -21,9 +18,6 @@ export const BrokerTradeTypeSelector: React.FC<BrokerTradeTypeSelectorProps> = (
   selectedTradeType,
   onBrokerChange,
   onTradeTypeChange,
-  showRiskMode = false,
-  riskMode,
-  onRiskModeChange,
   positionType = 'long',
   onPositionTypeChange,
   compact = false
@@ -76,24 +70,24 @@ export const BrokerTradeTypeSelector: React.FC<BrokerTradeTypeSelectorProps> = (
             </SelectContent>
           </Select>
         </div>
-        {showRiskMode && riskMode && onRiskModeChange && (
+        {selectedTradeType === 'equity-intraday' && onPositionTypeChange && (
           <div className="flex items-center gap-2">
-            <Label className="text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wide">Risk Mode:</Label>
-            <Select value={riskMode} onValueChange={onRiskModeChange}>
-              <SelectTrigger className="w-[140px] h-8 text-xs">
+            <Label className="text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wide">Position:</Label>
+            <Select value={positionType} onValueChange={onPositionTypeChange}>
+              <SelectTrigger className="w-[110px] h-8 text-xs">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="amount">
+                <SelectItem value="long">
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-red-500 rounded-full"></div>
-                    <span>Fixed Amount</span>
+                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></div>
+                    <span>Long</span>
                   </div>
                 </SelectItem>
-                <SelectItem value="percent">
+                <SelectItem value="short">
                   <div className="flex items-center gap-2">
-                    <div className="w-1.5 h-1.5 bg-yellow-500 rounded-full"></div>
-                    <span>Percentage</span>
+                    <div className="w-1.5 h-1.5 bg-rose-500 rounded-full"></div>
+                    <span>Short</span>
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -179,75 +173,42 @@ export const BrokerTradeTypeSelector: React.FC<BrokerTradeTypeSelectorProps> = (
         </Select>
       </div>
       
-      {/* Position Type (only shown for Dhan + Intraday) */}
-      {selectedTradeType === 'equity-intraday' && selectedBroker === 'Dhan' && (
+      {/* Position Type (shown for Intraday) */}
+      {selectedTradeType === 'equity-intraday' && onPositionTypeChange && (
         <div className="flex items-center gap-2">
           <Label className="text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">Position:</Label>
           <Select 
-            value={showRiskMode ? (riskMode || 'amount') : (positionType || 'long')} 
-            onValueChange={showRiskMode ? (onRiskModeChange || (() => {})) : (onPositionTypeChange || (() => {}))}
+            value={positionType || 'long'} 
+            onValueChange={onPositionTypeChange || (() => {})}
           >
             <SelectTrigger className="w-[110px] h-8 text-sm">
               <SelectValue>
-                {showRiskMode ? (
-                  riskMode === 'percent' ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                      <span>Percentage</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>Fixed Amount</span>
-                    </div>
-                  )
+                {positionType === 'short' ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+                    <span>Short</span>
+                  </div>
                 ) : (
-                  positionType === 'short' ? (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                      <span>Short</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>Long</span>
-                    </div>
-                  )
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                    <span>Long</span>
+                  </div>
                 )}
               </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              {showRiskMode ? (
-                <>
-                  <SelectItem value="amount">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>Fixed Amount</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="percent">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                      <span>Percentage</span>
-                    </div>
-                  </SelectItem>
-                </>
-              ) : (
-                <>
-                  <SelectItem value="long">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-                      <span>Long</span>
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="short">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
-                      <span>Short</span>
-                    </div>
-                  </SelectItem>
-                </>
-              )}
+              <SelectItem value="long">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                  <span>Long</span>
+                </div>
+              </SelectItem>
+              <SelectItem value="short">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-rose-500 rounded-full"></div>
+                  <span>Short</span>
+                </div>
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
