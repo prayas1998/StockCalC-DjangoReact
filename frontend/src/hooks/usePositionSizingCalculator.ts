@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { PositionSizingCalculatorService } from '@/services/calculators/PositionSizingCalculatorService';
+import { PositionSizingCalculatorService, CalculationError } from '@/services/calculators/PositionSizingCalculatorService';
 import { CalculatorValidation } from '@/utils/validation/calculatorValidation';
 
 export interface PositionSizingState {
@@ -28,8 +28,9 @@ export interface PositionSizingResult {
 export interface PositionSizingCalculatorHook {
   state: PositionSizingState;
   result: PositionSizingResult | null;
+  error: CalculationError | null;
   updateField: (field: keyof PositionSizingState, value: string | 'amount' | 'percent' | 'equity-delivery' | 'equity-intraday') => void;
-  calculate: () => void;
+  calculate: (positionType?: 'long' | 'short') => void;
 }
 
 const initialState: PositionSizingState = {
@@ -45,6 +46,7 @@ const initialState: PositionSizingState = {
 export const usePositionSizingCalculator = (broker: 'Dhan' | 'Groww', exchange: string): PositionSizingCalculatorHook => {
   const [state, setState] = useState<PositionSizingState>(initialState);
   const [result, setResult] = useState<PositionSizingResult | null>(null);
+  const [error, setError] = useState<CalculationError | null>(null);
 
   const updateField = useCallback((field: keyof PositionSizingState, value: string | 'amount' | 'percent' | 'equity-delivery' | 'equity-intraday') => {
     setState(prev => ({
@@ -53,7 +55,10 @@ export const usePositionSizingCalculator = (broker: 'Dhan' | 'Groww', exchange: 
     }));
   }, []);
 
-  const calculate = useCallback(() => {
+  const calculate = useCallback((positionType: 'long' | 'short' = 'long') => {
+    // Clear previous errors
+    setError(null);
+    
     // Check if we have minimum inputs for calculation
     if (!CalculatorValidation.hasMinimumPositionSizingInputs(state)) {
       setResult(null);
@@ -76,10 +81,17 @@ export const usePositionSizingCalculator = (broker: 'Dhan' | 'Groww', exchange: 
       tradeType: state.tradeType,
       broker,
       exchange,
-      positionType: 'long' // Default to long, will be overridden by the component's positionType
+      positionType
     });
 
-    setResult(calculationResult);
+    // Check if result is an error
+    if ('type' in calculationResult) {
+      setError(calculationResult);
+      setResult(calculationResult.result);
+    } else {
+      setResult(calculationResult);
+      setError(null);
+    }
   }, [state, broker, exchange]);
 
   // Real-time calculation effect
@@ -90,6 +102,7 @@ export const usePositionSizingCalculator = (broker: 'Dhan' | 'Groww', exchange: 
   return {
     state,
     result,
+    error,
     updateField,
     calculate
   };

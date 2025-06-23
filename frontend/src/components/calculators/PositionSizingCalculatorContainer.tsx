@@ -24,7 +24,11 @@ export const PositionSizingCalculatorContainer: React.FC<PositionSizingCalculato
 
   return (
     <PositionSizingCalculatorPresenter
-      {...calculator}
+      state={calculator.state}
+      result={calculator.result}
+      error={calculator.error}
+      updateField={calculator.updateField}
+      calculate={calculator.calculate}
       selectedBroker={selectedBroker}
       selectedTradeType={selectedTradeType}
       positionType={positionType}

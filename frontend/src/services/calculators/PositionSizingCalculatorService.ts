@@ -1,4 +1,5 @@
 import { calculateCharges } from '@/pages/Tools/ChargesUtils';
+import { CalculatorValidation } from '@/utils/validation/calculatorValidation';
 
 export interface PositionSizingParams {
   riskMode: 'amount' | 'percent';
@@ -26,6 +27,18 @@ export interface PositionSizingResult {
   riskBudget: number;
 }
 
+export interface CalculationError {
+  type: 'INVALID_INPUTS' | 'INSUFFICIENT_RISK' | 'UNREALISTIC_RISK' | 'CALCULATION_IMPOSSIBLE';
+  message: string;
+  suggestions?: string[];
+  minimumRequirements?: {
+    capital?: number;
+    risk?: number;
+    stopLossPoints?: { min: number; max: number };
+  };
+  result: PositionSizingResult;
+}
+
 export class PositionSizingCalculatorService {
   private static readonly LEVERAGE = 5;
 
@@ -33,18 +46,59 @@ export class PositionSizingCalculatorService {
    * Calculate optimal position size based on risk parameters
    * Ensures that actual risk never exceeds the user's risk budget
    */
-  static calculatePositionSize(params: PositionSizingParams): PositionSizingResult | null {
+  static calculatePositionSize(params: PositionSizingParams): PositionSizingResult | CalculationError {
     const { riskMode, capital, riskAmount, riskPercent, stopLoss, entryPrice, tradeType, broker, exchange, positionType = 'long' } = params;
 
-    // Validate required inputs
+    // Basic validation
     if (stopLoss <= 0 || entryPrice <= 0) {
-      return this.createEmptyResult();
+      return {
+        type: 'INVALID_INPUTS',
+        message: 'Entry price and stop loss points must be positive numbers',
+        result: this.createEmptyResult()
+      };
+    }
+    
+    // Position-type specific validation for stop loss points
+    if (positionType === 'long' && stopLoss >= entryPrice) {
+      return {
+        type: 'INVALID_INPUTS',
+        message: `Stop loss points (${stopLoss}) cannot exceed entry price (${entryPrice}) for long positions`,
+        suggestions: [`Maximum allowed stop loss points: ${(entryPrice - 0.01).toFixed(2)}`],
+        result: this.createEmptyResult()
+      };
     }
 
     // Calculate risk amount based on mode
     const risk = this.calculateRiskAmount(riskMode, capital, riskAmount, riskPercent);
     if (risk <= 0) {
-      return this.createEmptyResult();
+      return {
+        type: 'INVALID_INPUTS',
+        message: 'Risk amount must be greater than zero',
+        result: this.createEmptyResult()
+      };
+    }
+
+    // Validate minimum viable position
+    const viabilityCheck = this.validateMinimumViablePosition(
+      risk,
+      stopLoss,
+      entryPrice,
+      broker,
+      exchange,
+      tradeType,
+      positionType
+    );
+    
+    if (!viabilityCheck.isValid) {
+      return {
+        type: 'INSUFFICIENT_RISK',
+        message: `Your risk amount (${risk.toFixed(2)}) is too low for even 1 share`,
+        suggestions: [`Increase risk amount to at least ${viabilityCheck.minimumRisk.toFixed(2)}`],
+        minimumRequirements: {
+          risk: viabilityCheck.minimumRisk
+        },
+        result: this.createEmptyResult()
+      };
     }
 
     // Calculate optimal quantity that ensures actual risk <= risk budget
@@ -218,6 +272,40 @@ export class PositionSizingCalculatorService {
       ? quantity * (entryPrice - stopLoss) 
       : quantity * (entryPrice + stopLoss);
     return calculateCharges(finalBuyValue, Math.abs(finalSellValue), exchange, broker, tradeType);
+  }
+
+  /**
+   * Validate if the risk amount is sufficient for minimum viable position (1 share)
+   */
+  private static validateMinimumViablePosition(
+    risk: number, 
+    stopLossPoints: number,
+    entryPrice: number, 
+    broker: 'Dhan' | 'Groww',
+    exchange: string,
+    tradeType: 'equity-delivery' | 'equity-intraday',
+    positionType: 'long' | 'short'
+  ): { isValid: boolean, minimumRisk: number } {
+    // Calculate for 1 share
+    const quantity = 1;
+    const buyValue = quantity * entryPrice;
+    
+    // Calculate exit value based on position type
+    const exitPrice = positionType === 'long' 
+      ? entryPrice - stopLossPoints 
+      : entryPrice + stopLossPoints;
+    const sellValue = quantity * exitPrice;
+    
+    // Calculate charges
+    const charges = calculateCharges(buyValue, Math.abs(sellValue), exchange, broker, tradeType);
+    
+    // Minimum risk needed = stop loss points + charges per share
+    const minimumRisk = stopLossPoints + charges.totalCharges;
+    
+    return {
+      isValid: risk >= minimumRisk,
+      minimumRisk
+    };
   }
 
   /**

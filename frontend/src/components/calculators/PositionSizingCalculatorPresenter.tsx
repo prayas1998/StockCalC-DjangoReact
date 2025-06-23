@@ -4,7 +4,7 @@ import type React from "react"
 import { useMemo, useEffect } from "react"
 import { Label } from "@/components/ui/label"
 import { NumericInput } from "@/components/ui/numeric-input"
-import { Calculator, CheckCircle, TrendingUp, TrendingDown, Zap } from "lucide-react"
+import { Calculator, CheckCircle, TrendingUp, TrendingDown, Zap, AlertCircle } from "lucide-react"
 import { ClearButton } from "@/components/shared/ClearButton"
 import { CalculatorCard } from "@/components/shared/CalculatorCard"
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector"
@@ -12,8 +12,14 @@ import { RiskModeSelector } from "@/components/shared/RiskModeSelector"
 import { formatCurrency } from "@/pages/Tools/ChargesUtils"
 import { calculateBreakevenPrice } from "@/pages/Tools/BreakEven"
 import type { PositionSizingCalculatorHook } from "@/hooks/usePositionSizingCalculator"
+import type { CalculationError } from "@/services/calculators/PositionSizingCalculatorService"
 
-interface PositionSizingCalculatorPresenterProps extends PositionSizingCalculatorHook {
+interface PositionSizingCalculatorPresenterProps {
+  state: PositionSizingCalculatorHook['state'];
+  result: PositionSizingCalculatorHook['result'];
+  error: CalculationError | null;
+  updateField: PositionSizingCalculatorHook['updateField'];
+  calculate: PositionSizingCalculatorHook['calculate'];
   selectedBroker: "Dhan" | "Groww"
   selectedTradeType: "equity-delivery" | "equity-intraday"
   positionType: "long" | "short"
@@ -26,6 +32,7 @@ interface PositionSizingCalculatorPresenterProps extends PositionSizingCalculato
 export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculatorPresenterProps> = ({
   state,
   result,
+  error,
   updateField,
   calculate,
   selectedBroker,
@@ -38,8 +45,8 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
 }) => {
   // Calculate result using the hook's calculate function
   useEffect(() => {
-    calculate()
-  }, [state, selectedBroker, selectedTradeType, calculate])
+    calculate(positionType)
+  }, [state, selectedBroker, selectedTradeType, positionType, calculate])
 
   // Update the internal trade type when external settings change
   useEffect(() => {
@@ -183,11 +190,11 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
 
           <div>
             <Label htmlFor="stopLoss" className="text-orange-700 font-medium text-xs">
-              Stop Loss
+              Stop Loss Points
             </Label>
             <NumericInput
               id="stopLoss"
-              placeholder="Stop loss"
+              placeholder="Stop loss points"
               value={state.stopLoss}
               onChange={(value) => updateField("stopLoss", value)}
               className="mt-1 h-8 text-sm border-orange-300 focus:border-orange-500 focus:ring-orange-200"
@@ -195,11 +202,43 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
               min={0.01}
               maxDecimalPlaces={2}
             />
+            {/* Show actual stop price based on points entered */}
+            {state.entryPrice && state.stopLoss && (
+              <div className="text-xs text-gray-500 mt-1">
+                Stop price: {formatCurrency(
+                  positionType === 'long' 
+                    ? parseFloat(state.entryPrice) - parseFloat(state.stopLoss)
+                    : parseFloat(state.entryPrice) + parseFloat(state.stopLoss)
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {positionSizingResult && (
+      {/* Error Display */}
+      {error && (
+        <div className="mt-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+          <div className="flex items-center text-red-700 mb-1">
+            <AlertCircle className="h-4 w-4 mr-2" />
+            <span className="font-medium">{error.message}</span>
+          </div>
+          {error.suggestions && error.suggestions.length > 0 && (
+            <ul className="text-sm text-red-600 pl-6 mt-1">
+              {error.suggestions.map((suggestion, i) => (
+                <li key={i} className="list-disc">{suggestion}</li>
+              ))}
+            </ul>
+          )}
+          {error.minimumRequirements?.risk && (
+            <div className="text-sm text-red-600 mt-1">
+              Minimum risk required: {formatCurrency(error.minimumRequirements.risk)}
+            </div>
+          )}
+        </div>
+      )}
+
+      {positionSizingResult && !error && (
         <div className="mt-4">
           {/* Compact Results Section */}
           <div className="p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
