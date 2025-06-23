@@ -107,8 +107,17 @@ class TransactionGroup(models.Model):
         self.total_sell_value = sum(t.sell_value for t in transactions)
         self.total_charges = sum(t.total_charges for t in transactions)
         
-        if self.total_quantity > 0:
-            self.average_buy_price = self.total_buy_value / self.total_quantity
+        # Calculate average buy price only for transactions with buy_price > 0
+        buy_transactions = [t for t in transactions if t.buy_price > 0]
+        if buy_transactions:
+            total_buy_quantity = sum(t.quantity for t in buy_transactions)
+            total_buy_cost = sum(t.buy_value for t in buy_transactions)
+            if total_buy_quantity > 0:
+                self.average_buy_price = total_buy_cost / total_buy_quantity
+            else:
+                self.average_buy_price = Decimal('0.00')
+        else:
+            self.average_buy_price = Decimal('0.00')
         
         self.gross_pnl = self.total_sell_value - self.total_buy_value
         self.net_pnl = self.gross_pnl - self.total_charges

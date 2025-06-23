@@ -47,8 +47,10 @@ class EquityIntradayCalculator(BaseTradeCalculator):
                 buy_value = entry_value
                 sell_value = exit_value
 
-            cumulative_quantity += quantity
-            cumulative_buy_value += buy_value
+            # Only include transactions with buy price > 0 in cumulative calculations for average
+            if buy_price > 0:
+                cumulative_quantity += quantity
+                cumulative_buy_value += buy_value
 
             transaction_brokerage = self.broker.calculate_brokerage(buy_value, sell_value)
             total_brokerage += transaction_brokerage
@@ -97,7 +99,7 @@ class EquityIntradayCalculator(BaseTradeCalculator):
         net_pnl = gross_pnl - total_charges
         
         # Calculate breakeven price
-        breakeven_price = self.calculate_breakeven_price(cumulative_quantity, total_buy_value, total_sell_value, total_charges, position_type)
+        breakeven_price = self.calculate_breakeven_price(cumulative_quantity, cumulative_buy_value, total_sell_value, total_charges, position_type)
 
         response_data = {
             "summary": {
@@ -105,8 +107,8 @@ class EquityIntradayCalculator(BaseTradeCalculator):
                 "totalBuyValue": str(total_buy_value.quantize(Decimal("0.01"))),
                 "totalSellValue": str(total_sell_value.quantize(Decimal("0.01"))),
                 "averageBuyPrice": str(
-                    (total_buy_value / cumulative_quantity).quantize(Decimal("0.01"))
-                    if cumulative_quantity > 0 and total_buy_value > 0
+                    (cumulative_buy_value / cumulative_quantity).quantize(Decimal("0.01"))
+                    if cumulative_quantity > 0 and cumulative_buy_value > 0
                     else "0.00"
                 ),
                 "turnover": str(total_turnover.quantize(Decimal("0.01"))),

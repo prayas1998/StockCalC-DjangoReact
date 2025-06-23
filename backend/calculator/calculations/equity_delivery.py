@@ -20,8 +20,10 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
             buy_value = quantity * buy_price
             sell_value = quantity * sell_price
 
-            cumulative_quantity += quantity
-            cumulative_buy_value += buy_value
+            # Only include transactions with buy price > 0 in cumulative calculations for average
+            if buy_price > 0:
+                cumulative_quantity += quantity
+                cumulative_buy_value += buy_value
 
             transaction_brokerage = self.broker.calculate_brokerage(buy_value, sell_value)
             transaction_dp_charge = self.broker.get_dp_charge() if sell_price > 0 else Decimal('0')
@@ -60,7 +62,7 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
         net_pnl = gross_pnl - total_charges
         
         # Calculate breakeven price (only for long positions in delivery)
-        breakeven_price = self.calculate_breakeven_price(cumulative_quantity, total_buy_value, total_charges)
+        breakeven_price = self.calculate_breakeven_price(cumulative_quantity, cumulative_buy_value, total_charges)
 
         response_data = {
             "summary": {
@@ -68,8 +70,8 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
                 "totalBuyValue": str(total_buy_value.quantize(Decimal("0.01"))),
                 "totalSellValue": str(total_sell_value.quantize(Decimal("0.01"))),
                 "averageBuyPrice": str(
-                    (total_buy_value / cumulative_quantity).quantize(Decimal("0.01"))
-                    if cumulative_quantity > 0 and total_buy_value > 0
+                    (cumulative_buy_value / cumulative_quantity).quantize(Decimal("0.01"))
+                    if cumulative_quantity > 0 and cumulative_buy_value > 0
                     else "0.00"
                 ),
                 "turnover": str(total_turnover.quantize(Decimal("0.01"))),

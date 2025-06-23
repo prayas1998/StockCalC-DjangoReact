@@ -15,13 +15,18 @@ const TransactionForm: React.FC<TransactionFormProps> = ({
   const transactionsWithAverages = useMemo(() => {
     return transactions.map((transaction, index) => {
       // Calculate running total shares and total cost up to this transaction
+      // Only include transactions with buy price > 0 in the average calculation
       let totalShares = 0;
       let totalCost = 0;
       for (let i = 0; i <= index; i++) {
         const qty = Number(transactions[i].quantity) || 0;
         const price = Number(transactions[i].buyPrice) || 0;
-        totalShares += qty;
-        totalCost += qty * price;
+        
+        // Only include this transaction in average calculation if buy price > 0
+        if (price > 0) {
+          totalShares += qty;
+          totalCost += qty * price;
+        }
       }
       const averageBuyPrice = totalShares > 0 ? totalCost / totalShares : 0;
       
