@@ -5,14 +5,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { useTradeTags } from '@/hooks/useTradeTags';
 import { TradeTags } from '@/types/journal';
+import { isTagsArray } from './utils';
+import { PREDEFINED_TAG_COLORS } from './constants';
 import type { CalculationError } from '@/types/api';
-
-function isTagsArray(tags: TradeTags[] | CalculationError | undefined): tags is TradeTags[] {
-  return Array.isArray(tags);
-}
 
 export function TagManager() {
   const { tags, isLoading, createTag, updateTag, validateTag, refreshTags } = useTradeTags();
@@ -23,17 +20,7 @@ export function TagManager() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
-  // Predefined colors for quick selection
-  const predefinedColors = [
-    '#ef4444', // Red
-    '#f97316', // Orange
-    '#f59e0b', // Amber
-    '#10b981', // Emerald
-    '#3b82f6', // Blue
-    '#8b5cf6', // Violet
-    '#ec4899', // Pink
-    '#6b7280', // Gray
-  ];
+  // Use predefined colors from constants
 
   const handleSubmit = async () => {
     // Validate tag data
@@ -171,7 +158,7 @@ export function TagManager() {
                   />
                 </div>
                 <div className="flex flex-wrap gap-2 mt-2">
-                  {predefinedColors.map((color) => (
+                  {PREDEFINED_TAG_COLORS.map((color) => (
                     <button
                       key={color}
                       type="button"

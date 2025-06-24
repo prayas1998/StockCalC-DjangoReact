@@ -1,18 +1,16 @@
 import { useMemo } from 'react';
-import { ArrowDown, ArrowUp, TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, Target, Shield, Zap, Calculator, PieChart as PieChartIcon, LineChart } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { ArrowDown, ArrowUp, TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, Target, Shield, Calculator, PieChart as PieChartIcon, LineChart } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, LineChart as RechartsLineChart, Line } from 'recharts';
 import { useJournalAnalytics } from '@/hooks/useJournalAnalytics';
 import { formatCurrency } from '@/lib/utils';
+import { isJournalAnalytics, getProfitFactorBadge } from './utils';
+import { CHART_COLORS } from './constants';
 import type { JournalAnalytics } from '@/types/journal';
 import type { CalculationError } from '@/types/api';
-
-function isJournalAnalytics(data: JournalAnalytics | CalculationError | undefined): data is JournalAnalytics {
-  return !!data && !('error' in data) && typeof data === 'object';
-}
 
 export function JournalAnalytics() {
   const { analytics, derivedMetrics, isLoading, isError, refreshAnalytics } = useJournalAnalytics();
@@ -88,8 +86,11 @@ export function JournalAnalytics() {
     }));
   }, [analytics]);
 
-  // Colors for charts
-  const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16'];
+  // Get profit factor badge configuration
+  const profitFactorBadge = useMemo(() => {
+    if (!isJournalAnalytics(analytics)) return null;
+    return getProfitFactorBadge(analytics.profit_factor || 0);
+  }, [analytics]);
 
   if (isError || (analytics && 'error' in analytics)) {
     return (
@@ -218,20 +219,14 @@ export function JournalAnalytics() {
           </CardHeader>
           <CardContent className="pb-2">
             <div className="flex items-center">
-              {(analytics.profit_factor || 0) > 1.5 ? (
-                <Badge className="bg-green-500/10 text-green-500 hover:bg-green-500/20">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  Excellent
-                </Badge>
-              ) : (analytics.profit_factor || 0) > 1 ? (
-                <Badge className="bg-blue-500/10 text-blue-500 hover:bg-blue-500/20">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  Good
-                </Badge>
-              ) : (
-                <Badge className="bg-red-500/10 text-red-500 hover:bg-red-500/20">
-                  <TrendingDown className="h-3 w-3 mr-1" />
-                  Poor
+              {profitFactorBadge && (
+                <Badge className={profitFactorBadge.variant}>
+                  {profitFactorBadge.icon === 'TrendingUp' ? (
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 mr-1" />
+                  )}
+                  {profitFactorBadge.label}
                 </Badge>
               )}
             </div>
@@ -438,7 +433,7 @@ export function JournalAnalytics() {
                           dataKey="value"
                         >
                           {tradeTypeData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                           ))}
                         </Pie>
                         <Tooltip />
@@ -474,7 +469,7 @@ export function JournalAnalytics() {
                           dataKey="value"
                         >
                           {statusData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                           ))}
                         </Pie>
                         <Tooltip />
