@@ -33,23 +33,6 @@ export function getStatusColor(status: TradeStatus): string {
   return STATUS_COLORS[status] || STATUS_COLORS.CANCELLED;
 }
 
-/**
- * Calculate target progress percentage for a trade
- */
-export function calculateTargetProgress(trade: TradeJournal): number {
-  if (!trade.target_price || !trade.buy_price) return 0;
-  
-  // For open trades, use current price or buy price
-  const currentPrice = trade.sell_price || trade.buy_price;
-  
-  // Calculate how far we've moved toward the target
-  const priceMovement = currentPrice - trade.buy_price;
-  const targetMovement = trade.target_price - trade.buy_price;
-  
-  // Calculate percentage (capped at 100%)
-  const percentage = (priceMovement / targetMovement) * 100;
-  return Math.min(Math.max(0, percentage), 100);
-}
 
 /**
  * Format trade status for display
@@ -159,10 +142,16 @@ export function isTradeProfit(trade: TradeJournal): boolean {
 }
 
 /**
- * Get trade direction display text
+ * Get trade type and direction display text
  */
-export function getTradeDirectionText(direction: string): string {
-  return direction === 'LONG' ? 'Long' : 'Short';
+export function getTradeTypeDisplayText(tradeType: string, direction: string): string {
+  if (tradeType === 'EQUITY_DELIVERY') {
+    return 'Delivery';
+  } else if (tradeType === 'EQUITY_INTRADAY') {
+    return direction === 'LONG' ? 'Intraday-Long' : 'Intraday-Short';
+  }
+  // Fallback for unknown trade types
+  return `${tradeType.replace('_', ' ')}-${direction}`;
 }
 
 /**

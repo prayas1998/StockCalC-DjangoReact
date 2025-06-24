@@ -9,17 +9,15 @@ import { Edit, Trash2, ChevronDown, ChevronUp, AlertTriangle, Tag as TagIcon, St
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { TradeJournal, TradeStatus } from "@/types/journal";
 import { formatCurrency } from "@/lib/utils";
 import { 
   getStatusColor, 
-  calculateTargetProgress, 
   formatTradeStatus,
   isTradeProfit,
-  getTradeDirectionText,
+  getTradeTypeDisplayText,
   calculateTradeDuration
 } from "./utils";
 
@@ -34,11 +32,10 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Calculate derived values
-  const targetProgress = calculateTargetProgress(trade);
   const statusColor = getStatusColor(trade.status);
   const isProfit = isTradeProfit(trade);
   const tradeDuration = calculateTradeDuration(trade.entry_date, trade.exit_date);
-  const directionText = getTradeDirectionText(trade.direction);
+  const tradeTypeText = getTradeTypeDisplayText(trade.trade_type, trade.direction);
 
   // Handle delete confirmation
   const handleDeleteConfirm = () => {
@@ -67,13 +64,17 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
                 {formatTradeStatus(trade.status)}
               </Badge>
               <Badge variant="outline" className="text-xs">
-                {directionText}
+                {tradeTypeText}
               </Badge>
             </div>
             
             <div className="flex items-center gap-2">
               {/* P&L Display */}
-              {trade.pnl !== undefined && (
+              {trade.status === TradeStatus.OPEN ? (
+                <div className="font-semibold text-muted-foreground">
+                  --
+                </div>
+              ) : trade.pnl !== undefined && (
                 <div className={`font-semibold ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
                   {formatCurrency(trade.pnl)}
                 </div>
@@ -128,16 +129,6 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
             </div>
           </div>
 
-          {/* Target Progress */}
-          {trade.target_price && trade.status === TradeStatus.OPEN && (
-            <div className="mt-3">
-              <div className="flex justify-between text-sm mb-1">
-                <span className="text-muted-foreground">Target Progress</span>
-                <span className="font-medium">{targetProgress.toFixed(1)}%</span>
-              </div>
-              <Progress value={targetProgress} className="h-2" />
-            </div>
-          )}
 
           {/* Tags */}
           {trade.tags && trade.tags.length > 0 && (
@@ -213,13 +204,6 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
                   </div>
                 )}
 
-                {/* Risk-Reward Ratio */}
-                {trade.risk_reward_ratio && (
-                  <div>
-                    <span className="text-muted-foreground text-sm">Risk:Reward Ratio:</span>
-                    <div className="font-medium">1:{trade.risk_reward_ratio.toFixed(2)}</div>
-                  </div>
-                )}
 
                 {/* Personal Notes */}
                 {trade.personal_notes && (
@@ -228,7 +212,7 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
                       <StickyNote className="h-4 w-4 text-muted-foreground" />
                       <span className="text-muted-foreground text-sm">Notes:</span>
                     </div>
-                    <div className="bg-muted/50 p-3 rounded-md text-sm">
+                    <div className="bg-muted/50 p-3 rounded-md text-sm whitespace-pre-wrap">
                       {trade.personal_notes}
                     </div>
                   </div>
