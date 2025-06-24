@@ -37,11 +37,29 @@ import { BrokerType, TradeType as CalculatorTradeType, PositionType } from "@/co
 // Define the form schema using zod
 const tradeFormSchema = z.object({
   company_name: z.string().min(1, { message: "Company name is required" }),
-  quantity: z.coerce.number().positive({ message: "Quantity must be positive" }),
-  entry_price: z.coerce.number().min(0.01, { message: "Entry price must be greater than 0" }),
-  exit_price: z.coerce.number().nonnegative().optional(),
-  sl: z.coerce.number().nonnegative().optional(),
-  target_price: z.coerce.number().nonnegative().optional(),
+  quantity: z.string().min(1, { message: "Quantity is required" }).refine((val) => {
+    const num = parseInt(val);
+    return !isNaN(num) && num > 0;
+  }, { message: "Quantity must be a positive number" }),
+  entry_price: z.string().min(1, { message: "Entry price is required" }).refine((val) => {
+    const num = parseFloat(val);
+    return !isNaN(num) && num > 0;
+  }, { message: "Entry price must be greater than 0" }),
+  exit_price: z.string().optional().refine((val) => {
+    if (!val || val === "") return true;
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, { message: "Exit price must be a valid positive number" }),
+  sl: z.string().optional().refine((val) => {
+    if (!val || val === "") return true;
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, { message: "Stop loss must be a valid positive number" }),
+  target_price: z.string().optional().refine((val) => {
+    if (!val || val === "") return true;
+    const num = parseFloat(val);
+    return !isNaN(num) && num >= 0;
+  }, { message: "Target price must be a valid positive number" }),
   entry_date: z.date(),
   exit_date: z.date().optional(),
   status: z.nativeEnum(TradeStatus),
@@ -98,17 +116,17 @@ export function TradeForm({
     resolver: zodResolver(tradeFormSchema),
     defaultValues: {
       company_name: initialData?.company_name || "",
-      quantity: initialData?.quantity || 0,
+      quantity: initialData?.quantity?.toString() || "",
       entry_price:
         (selectedPositionType === 'short'
-          ? initialData?.sell_price
-          : initialData?.buy_price) || 1,
+          ? initialData?.sell_price?.toString()
+          : initialData?.buy_price?.toString()) || "",
       exit_price:
         (selectedPositionType === 'short'
-          ? initialData?.buy_price
-          : initialData?.sell_price) || undefined,
-      sl: initialData?.stop_loss,
-      target_price: initialData?.target_price,
+          ? initialData?.buy_price?.toString()
+          : initialData?.sell_price?.toString()) || "",
+      sl: initialData?.stop_loss?.toString() || "",
+      target_price: initialData?.target_price?.toString() || "",
       entry_date: initialData?.entry_date ? new Date(initialData.entry_date) : new Date(),
       exit_date: initialData?.exit_date ? new Date(initialData.exit_date) : undefined,
       status: initialData?.status || TradeStatus.OPEN,
@@ -168,7 +186,7 @@ export function TradeForm({
         form.setValue("exit_price", stopLoss);
       }
     } else if (status === TradeStatus.CANCELLED) {
-      form.setValue("exit_price", undefined);
+      form.setValue("exit_price", "");
     }
   }, [status, stopLoss, targetPrice, entryPrice, form]);
 
@@ -212,6 +230,13 @@ export function TradeForm({
     const tradeType = calculatorToJournalTradeType(selectedTradeType);
     const direction = positionTypeToDirection(selectedPositionType);
 
+    // Convert string values to numbers
+    const quantity = parseInt(values.quantity);
+    const entryPrice = parseFloat(values.entry_price);
+    const exitPrice = values.exit_price && values.exit_price !== "" ? parseFloat(values.exit_price) : undefined;
+    const stopLoss = values.sl && values.sl !== "" ? parseFloat(values.sl) : undefined;
+    const targetPrice = values.target_price && values.target_price !== "" ? parseFloat(values.target_price) : undefined;
+
     // Convert dates to ISO strings for API
     const formattedValues = {
       ...values,
@@ -222,27 +247,27 @@ export function TradeForm({
     // Map entry/exit price to buy/sell price based on direction
     let buy_price, sell_price;
     if (direction === TradeDirection.LONG) {
-      buy_price = formattedValues.entry_price!; // Entry price is required by validation
-      sell_price = formattedValues.exit_price || undefined;
+      buy_price = entryPrice; // Entry price is required by validation
+      sell_price = exitPrice || undefined;
     } else {
       // For short positions: entry_price is the sell price, exit_price is the buy price
       // Note: buy_price is required by model, so we need to provide a value even for open short positions
-      sell_price = formattedValues.entry_price!;
-      buy_price = formattedValues.exit_price || formattedValues.entry_price!; // Use entry_price as placeholder for open short positions
+      sell_price = entryPrice;
+      buy_price = exitPrice || entryPrice; // Use entry_price as placeholder for open short positions
     }
 
     onSubmit({
       company_name: formattedValues.company_name!,
       trade_type: tradeType,
       direction: direction,
-      quantity: formattedValues.quantity!,
+      quantity: quantity,
       buy_price: buy_price!,
       sell_price: sell_price,
       entry_date: formattedValues.entry_date,
       status: formattedValues.status!,
       exit_date: formattedValues.exit_date,
-      stop_loss: formattedValues.sl,
-      target_price: formattedValues.target_price,
+      stop_loss: stopLoss,
+      target_price: targetPrice,
       personal_notes: formattedValues.personal_notes,
       tags: formattedValues.tags || [],
       broker: selectedBroker,
@@ -331,7 +356,13 @@ export function TradeForm({
               <FormItem>
                 <FormLabel>Quantity</FormLabel>
                 <FormControl>
-                  <Input type="number" placeholder="Enter quantity" {...field} />
+                  <NumericInput
+                    placeholder="Enter quantity"
+                    value={field.value || ""}
+                    onChange={(value) => field.onChange(value)}
+                    allowDecimal={false}
+                    min={1}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -351,7 +382,14 @@ export function TradeForm({
                   </span>
                 </FormLabel>
                 <FormControl>
-                  <Input type="number" step="0.01" {...field} />
+                  <NumericInput
+                    placeholder="Enter entry price"
+                    value={field.value || ""}
+                    onChange={(value) => field.onChange(value)}
+                    allowDecimal={true}
+                    min={0.01}
+                    maxDecimalPlaces={2}
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -371,15 +409,13 @@ export function TradeForm({
                   </span>
                 </FormLabel>
                 <FormControl>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    {...field}
+                  <NumericInput
+                    placeholder="Enter exit price"
                     value={field.value || ""}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                      field.onChange(value);
-                    }}
+                    onChange={(value) => field.onChange(value)}
+                    allowDecimal={true}
+                    min={0.01}
+                    maxDecimalPlaces={2}
                   />
                 </FormControl>
                 <FormMessage />
@@ -395,15 +431,13 @@ export function TradeForm({
               <FormItem>
                 <FormLabel>Stop Loss (Optional)</FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    {...field} 
+                  <NumericInput
+                    placeholder="Enter stop loss"
                     value={field.value || ""}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                      field.onChange(value);
-                    }}
+                    onChange={(value) => field.onChange(value)}
+                    allowDecimal={true}
+                    min={0.01}
+                    maxDecimalPlaces={2}
                   />
                 </FormControl>
                 <FormMessage />
@@ -419,15 +453,13 @@ export function TradeForm({
               <FormItem>
                 <FormLabel>Target Price (Optional)</FormLabel>
                 <FormControl>
-                  <Input 
-                    type="number" 
-                    step="0.01" 
-                    {...field} 
+                  <NumericInput
+                    placeholder="Enter target price"
                     value={field.value || ""}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? undefined : parseFloat(e.target.value);
-                      field.onChange(value);
-                    }}
+                    onChange={(value) => field.onChange(value)}
+                    allowDecimal={true}
+                    min={0.01}
+                    maxDecimalPlaces={2}
                   />
                 </FormControl>
                 <FormMessage />
