@@ -123,13 +123,11 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
         }
       }
       
-      // Check min/max constraints
+      // Only enforce max constraint for obviously invalid large values
+      // Don't auto-correct min constraint violations - let validation handle it
       if (isValid && processedValue !== '' && processedValue !== '-' && processedValue !== '.') {
         const numValue = parseFloat(processedValue);
         if (!isNaN(numValue)) {
-          if (min !== undefined && numValue < min) {
-            processedValue = min.toString();
-          }
           if (max !== undefined && numValue > max) {
             processedValue = max.toString();
           }
@@ -209,8 +207,8 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
       // Check if the value is a valid number
       const numValue = parseFloat(newValue);
       if (isNaN(numValue)) {
-        if (newValue === '-' || newValue === '.') {
-          // Allow single minus or decimal as they might be typing
+        if (newValue === '-' || newValue === '.' || newValue === '0.' || newValue.endsWith('.')) {
+          // Allow intermediate states while typing (single minus, decimal, or incomplete decimal numbers)
           onChange(newValue);
         } else {
           // Invalid number
@@ -219,15 +217,32 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
         return;
       }
       
-      // Apply min/max constraints if provided
-      if (min !== undefined && numValue < min) {
-        newValue = min.toString();
-      }
+      // Only apply max constraint during typing (not min constraint to allow intermediate values)
       if (max !== undefined && numValue > max) {
         newValue = max.toString();
       }
       
       onChange(newValue);
+    };
+
+    // Handle blur event to clean up incomplete values only
+    const handleBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+      const currentValue = e.target.value;
+      
+      // Only clear truly incomplete/invalid values, not values that don't meet min/max constraints
+      if (currentValue === '-' || currentValue === '.' || currentValue === '0.') {
+        // Clear incomplete values that are not valid numbers
+        onChange('');
+        return;
+      }
+      
+      // Don't auto-correct values - let validation errors show instead
+      // This respects user input and follows user-centric design principles
+      
+      // Call original onBlur if provided
+      if (props.onBlur) {
+        props.onBlur(e);
+      }
     };
 
     return (
@@ -241,6 +256,7 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           onCopy={handleCopy}
+          onBlur={handleBlur}
           className={cn(className)}
           {...props}
         />
