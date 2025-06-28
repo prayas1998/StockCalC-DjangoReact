@@ -70,11 +70,19 @@ export const useJournalFilters = () => {
       window.clearTimeout(searchTimeoutRef.current);
     }
     
-    // Set a new timeout for debouncing
-    searchTimeoutRef.current = window.setTimeout(() => {
+    // For search suggestions, we don't want to debounce the URL update
+    // since suggestions are shown immediately. Only debounce if query is empty
+    // or if it's a complete search action
+    if (query.length === 0) {
       const newFilters = { ...filters };
       syncFiltersToUrl(newFilters, query);
-    }, 500); // 500ms debounce delay
+    } else {
+      // Set a shorter timeout for URL sync when typing
+      searchTimeoutRef.current = window.setTimeout(() => {
+        const newFilters = { ...filters };
+        syncFiltersToUrl(newFilters, query);
+      }, 300); // Reduced debounce delay for better UX with suggestions
+    }
   }, [filters, syncFiltersToUrl]);
 
   // Update a specific filter

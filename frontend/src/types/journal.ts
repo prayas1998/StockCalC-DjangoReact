@@ -191,6 +191,7 @@ export interface JournalFilters {
   end_date?: string;
   tags?: number[];
   is_profitable?: boolean;
+  query?: string;
   page?: number;
   page_size?: number;
 }

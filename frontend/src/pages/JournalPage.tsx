@@ -159,6 +159,8 @@ export default function JournalPage() {
               onSearch={handleSearch}
               onClearSearch={clearSearch}
               onOpenFilter={openFilterDialog}
+              trades={trades}
+              tags={Array.isArray(tags) ? tags : []}
             />
 
             {/* Trade list */}

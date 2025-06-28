@@ -13,6 +13,7 @@ export { TradeFormDialog } from './TradeFormDialog';
 // Sub Components
 export { TradesList } from './components/TradesList';
 export { SearchAndFilters } from './components/SearchAndFilters';
+export { SearchSuggestions } from './components/SearchSuggestions';
 export { FilterDialog } from './components/FilterDialog';
 export { JournalErrorBoundary } from './components/JournalErrorBoundary';
 
