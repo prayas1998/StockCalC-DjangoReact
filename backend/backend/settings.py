@@ -107,13 +107,10 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
+conn_age = 60 if DEBUG else 1800
 
-# Database
-# https://docs.djangoproject.com/en/5.1/ref/settings/#databases
-
-# DATABASE_URL environment variable will override the configuration above
 DATABASES = {
-        "default": dj_database_url.parse(os.getenv("DATABASE_URL"), conn_max_age=1800)
+        "default": dj_database_url.parse(os.getenv("DATABASE_URL"), conn_max_age=conn_age)
     }
 
 

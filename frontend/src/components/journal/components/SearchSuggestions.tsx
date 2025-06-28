@@ -73,19 +73,24 @@ export const SearchSuggestions = memo<SearchSuggestionsProps>(({
       role="listbox"
       aria-label="Search suggestions"
     >
-      {suggestions.map((suggestion, index) => (
-        <div
-          key={suggestion.id}
-          className={cn(
-            "flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors duration-150",
-            "hover:bg-muted/50",
-            selectedIndex === index && "bg-primary/10 border-l-2 border-primary"
-          )}
-          onClick={() => onSuggestionClick(index)}
-          role="option"
-          aria-selected={selectedIndex === index}
-          data-suggestion-index={index}
-        >
+      {suggestions.map((suggestion, index) => {
+        const isSelected = selectedIndex === index;
+        const isFirstAndNoSelection = selectedIndex === -1 && index === 0;
+        
+        return (
+          <div
+            key={suggestion.id}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2 cursor-pointer transition-colors duration-150",
+              "hover:bg-muted/50",
+              isSelected && "bg-primary/10 border-l-2 border-primary",
+              isFirstAndNoSelection && "bg-muted/30 border-l-2 border-muted-foreground/30"
+            )}
+            onClick={() => onSuggestionClick(index)}
+            role="option"
+            aria-selected={isSelected}
+            data-suggestion-index={index}
+          >
           {/* Icon */}
           <div className="flex-shrink-0">
             {getIconForType(suggestion.type)}
@@ -103,7 +108,8 @@ export const SearchSuggestions = memo<SearchSuggestionsProps>(({
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
       
       {/* Footer with keyboard hint */}
       <div className="px-3 py-2 border-t border-border bg-muted/30">
@@ -112,7 +118,7 @@ export const SearchSuggestions = memo<SearchSuggestionsProps>(({
             <span>Use</span>
             <ArrowUp className="h-3 w-3" />
             <ArrowDown className="h-3 w-3" />
-            <span>to navigate, Enter to select</span>
+            <span>to navigate, Enter to select {selectedIndex === -1 ? 'first' : 'highlighted'}</span>
           </div>
           <span>ESC to close</span>
         </div>

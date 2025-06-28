@@ -39,6 +39,7 @@ export const SearchAndFilters = memo<SearchAndFiltersProps>(
     tags = [],
   }) => {
     const inputRef = useRef<HTMLInputElement>(null);
+    const justSelectedSuggestion = useRef(false);
     
     // Initialize search suggestions hook
     const {
@@ -53,7 +54,7 @@ export const SearchAndFilters = memo<SearchAndFiltersProps>(
       trades,
       tags,
       searchQuery,
-      minCharacters: 3,
+      minCharacters: 2,
       maxSuggestions: 8
     });
 
@@ -63,8 +64,16 @@ export const SearchAndFilters = memo<SearchAndFiltersProps>(
       if (showSuggestions && ['ArrowDown', 'ArrowUp', 'Enter', 'Escape'].includes(e.key)) {
         const selectedSuggestion = handleSuggestionKeyDown(e.nativeEvent as KeyboardEvent);
         if (selectedSuggestion) {
+          // Set flag to prevent immediate re-showing
+          justSelectedSuggestion.current = true;
+          // Ensure suggestions are hidden
+          hideSuggestions();
           onSearchQueryChange(selectedSuggestion.text);
           onSearch();
+          // Reset the flag after a longer delay
+          setTimeout(() => {
+            justSelectedSuggestion.current = false;
+          }, 1000);
         }
         return;
       }
@@ -80,15 +89,25 @@ export const SearchAndFilters = memo<SearchAndFiltersProps>(
     const handleSuggestionClick = (index: number) => {
       const suggestion = selectSuggestion(index);
       if (suggestion) {
+        justSelectedSuggestion.current = true;
+        // Ensure suggestions are hidden
+        hideSuggestions();
         onSearchQueryChange(suggestion.text);
         onSearch();
-        inputRef.current?.focus();
+        // Focus the input after a longer delay to prevent immediate suggestion re-showing
+        setTimeout(() => {
+          inputRef.current?.focus();
+          justSelectedSuggestion.current = false;
+        }, 1000);
       }
     };
 
     // Handle input focus to show suggestions
     const handleInputFocus = () => {
-      showSuggestionsIfAvailable();
+      // Don't show suggestions if we just selected one
+      if (!justSelectedSuggestion.current) {
+        showSuggestionsIfAvailable();
+      }
     };
 
     // Handle input blur to hide suggestions (with delay for clicks)

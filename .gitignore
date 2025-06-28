@@ -4,7 +4,6 @@ venv-stock-django-react/
 .idea/
 PROJECT STRUCTURE.docx
 formulas.md
-RulesForAI.md
 backend/staticfiles/
 frontend/.env.production
 frontend/.env.development

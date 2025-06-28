@@ -25,12 +25,13 @@ export const useSearchSuggestions = ({
   trades,
   tags,
   searchQuery,
-  minCharacters = 3,
+  minCharacters = 2,
   maxSuggestions = 8
 }: UseSearchSuggestionsProps) => {
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [justSelected, setJustSelected] = useState(false);
 
   // Generate suggestions based on trade data
   const generateSuggestions = useMemo(() => {
@@ -128,9 +129,24 @@ export const useSearchSuggestions = ({
   useEffect(() => {
     const newSuggestions = generateSuggestions;
     setSuggestions(newSuggestions);
+    // Reset selection to -1 (no selection) when suggestions change
     setSelectedIndex(-1);
-    setShowSuggestions(newSuggestions.length > 0 && searchQuery.length >= minCharacters);
+    
+    // Don't show suggestions if we just selected one or if the query is too short
+    if (justSelected || searchQuery.length < minCharacters) {
+      setShowSuggestions(false);
+    } else {
+      // Only show suggestions if there are any and the query meets minimum length
+      setShowSuggestions(newSuggestions.length > 0);
+    }
   }, [generateSuggestions, searchQuery, minCharacters]);
+
+  // Ensure suggestions stay hidden when justSelected is true
+  useEffect(() => {
+    if (justSelected) {
+      setShowSuggestions(false);
+    }
+  }, [justSelected]);
 
   // Keyboard navigation handlers
   const handleKeyDown = useCallback((event: KeyboardEvent) => {
@@ -152,8 +168,19 @@ export const useSearchSuggestions = ({
         break;
       
       case 'Enter':
+        event.preventDefault();
+        // Hide suggestions immediately when Enter is pressed and set flag
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+        setJustSelected(true);
+        // Reset the flag after a longer delay to prevent immediate re-showing
+        setTimeout(() => setJustSelected(false), 1000);
+        // If no item is selected but suggestions are available, select the first one
+        if (selectedIndex === -1 && suggestions.length > 0) {
+          return suggestions[0];
+        }
+        // If an item is selected, return it
         if (selectedIndex >= 0 && selectedIndex < suggestions.length) {
-          event.preventDefault();
           return suggestions[selectedIndex];
         }
         break;
@@ -173,6 +200,9 @@ export const useSearchSuggestions = ({
     if (index >= 0 && index < suggestions.length) {
       setShowSuggestions(false);
       setSelectedIndex(-1);
+      setJustSelected(true);
+      // Reset the flag after a longer delay to prevent immediate re-showing
+      setTimeout(() => setJustSelected(false), 1000);
       return suggestions[index];
     }
     return null;
@@ -182,14 +212,18 @@ export const useSearchSuggestions = ({
   const hideSuggestions = useCallback(() => {
     setShowSuggestions(false);
     setSelectedIndex(-1);
+    setJustSelected(true);
+    // Reset the flag after a longer delay to allow normal behavior later
+    setTimeout(() => setJustSelected(false), 1000);
   }, []);
 
   // Show suggestions
   const showSuggestionsIfAvailable = useCallback(() => {
-    if (suggestions.length > 0 && searchQuery.length >= minCharacters) {
+    // Only show suggestions if all conditions are met and we haven't just selected one
+    if (suggestions.length > 0 && searchQuery.length >= minCharacters && !justSelected) {
       setShowSuggestions(true);
     }
-  }, [suggestions.length, searchQuery.length, minCharacters]);
+  }, [suggestions.length, searchQuery.length, minCharacters, justSelected]);
 
   return {
     suggestions,
