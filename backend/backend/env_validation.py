@@ -461,8 +461,18 @@ class EnvironmentValidator:
             ('SUPABASE_SERVICE_ROLE_KEY', 'Supabase service role key'),
         ]
         
+        # Map environment variable names to their corresponding config keys
+        key_mapping = {
+            'DJANGO_SECRET_KEY': 'secret_key',
+            'SUPABASE_JWT_SECRET': 'jwt_secret', 
+            'DATABASE_URL': 'database_url',
+            'SUPABASE_URL': 'supabase_url',
+            'SUPABASE_SERVICE_ROLE_KEY': 'supabase_service_role_key'
+        }
+        
         for var_name, description in required_prod_vars:
-            if not config.get(var_name.lower().replace('_', '_')):
+            config_key = key_mapping.get(var_name, var_name.lower())
+            if not config.get(config_key):
                 self.errors.append(f"Production requires {var_name} ({description})")
     
     def _validate_development_settings(self, config: Dict[str, Any]) -> None:
