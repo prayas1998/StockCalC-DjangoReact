@@ -1,0 +1,27 @@
+services:
+  # PostgreSQL Database for local development
+  db:
+    image: postgres:15
+    container_name: stockcalc_postgres
+    env_file:
+      - .env.docker.local
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+
+  # pgAdmin for database management (optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: stockcalc_pgadmin
+    env_file:
+      - .env.docker.local
+    ports:
+      - "8085:80"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

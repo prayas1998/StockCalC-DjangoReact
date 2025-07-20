@@ -1,197 +1,147 @@
-import React from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { NumericInput } from "@/components/ui/numeric-input";
-import { Trash2 } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
-import type { TransactionItemProps } from "@/types/calculator";
-import { useCalculatorContext } from "@/context/CalculatorContext";
-import { getFieldLabels } from "@/utils/transactionUtils";
+"use client"
 
-const TransactionItem = React.memo(({
-  transaction,
-  index,
-  canRemove,
-  averageBuyPrice,
-}: TransactionItemProps) => {
-  const { 
-    tradeType, 
-    positionType, 
-    updateTransaction, 
-    removeTransaction 
-  } = useCalculatorContext();
-  
+import React from "react"
+import { Button } from "@/components/ui/button"
+import { Card } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { NumericInput } from "@/components/ui/numeric-input"
+import { Trash2 } from "lucide-react"
+import { formatCurrency } from "@/lib/utils"
+import type { TransactionItemProps } from "@/types/calculator"
+import { useCalculatorContext } from "@/context/CalculatorContext"
+import { getFieldLabels } from "@/utils/transactionUtils"
+
+const TransactionItem = React.memo(({ transaction, index, canRemove, averageBuyPrice }: TransactionItemProps) => {
+  const { tradeType, positionType, updateTransaction, removeTransaction } = useCalculatorContext()
+
   // Determine if this is intraday trading
-  const isIntraday = tradeType === 'equity-intraday';
-  
+  const isIntraday = tradeType === "equity-intraday"
+
   // Get field labels based on trade type and position
-  const { 
-    buyPriceLabel, 
-    sellPriceLabel, 
-    buyPricePlaceholder, 
-    sellPricePlaceholder 
-  } = getFieldLabels(isIntraday, positionType);
+  const { buyPriceLabel, sellPriceLabel, buyPricePlaceholder, sellPricePlaceholder } = getFieldLabels(
+    isIntraday,
+    positionType,
+  )
 
   // Handle focus on numeric fields
   const handleFocus = (id: string, field: keyof typeof transaction) => {
     if (transaction[field] === "0") {
-      updateTransaction(id, field, "");
+      updateTransaction(id, field, "")
     }
-  };
+  }
 
   // Handle blur on numeric fields
   const handleBlur = (id: string, field: keyof typeof transaction, value: string) => {
     if (value === "") {
-      updateTransaction(id, field, "0");
+      updateTransaction(id, field, "0")
     }
-  };
+  }
 
   return (
-    <Card key={transaction.id} className="p-4">
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h4 className="font-medium">Transaction {index + 1}</h4>
+    <Card className="group relative border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+      <div className="p-3">
+        {/* Header - Compact */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">#{index + 1}</span>
+          </div>
           {canRemove && (
             <Button
               variant="ghost"
-              size="icon"
+              size="sm"
               onClick={() => removeTransaction(transaction.id)}
+              className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive/10 hover:text-destructive"
               aria-label="Remove transaction"
             >
-              <Trash2 className="h-4 w-4 text-destructive" />
+              <Trash2 className="h-3 w-3" />
             </Button>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          {index === 0 && (
-            <div className="md:col-span-5">
-              <Label htmlFor="companyName">Company Name</Label>
-              <Input
-                id="companyName"
-                placeholder="Enter company name"
-                value={transaction.companyName || ""}
-                onChange={(e) =>
-                  updateTransaction(
-                    transaction.id,
-                    "companyName",
-                    e.target.value
-                  )
-                }
-                className="mt-1"
-              />
-            </div>
-          )}
-
-          <div>
-            <Label 
-              htmlFor={`quantity-${transaction.id}`} 
-              className="flex justify-between mb-2"
-            >
-              <span>Quantity</span>
-              {transaction.error && transaction.error.includes("Quantity") && (
-                <span 
-                  className="text-xs text-destructive"
-                  role="alert"
-                  id={`quantity-error-${transaction.id}`}
-                >
-                  {transaction.error}
-                </span>
-              )}
+        {/* Input Fields - Compact Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+          {/* Quantity */}
+          <div className="space-y-1">
+            <Label htmlFor={`quantity-${transaction.id}`} className="text-xs text-slate-500 dark:text-slate-400">
+              Quantity
+              {transaction.error?.includes("Quantity") && <span className="text-destructive ml-1">*</span>}
             </Label>
             <NumericInput
               id={`quantity-${transaction.id}`}
               min={0}
               allowDecimal={false}
-              placeholder="Quantity"
+              placeholder="0"
               value={transaction.quantity}
               onChange={(value) => updateTransaction(transaction.id, "quantity", value)}
               onFocus={() => handleFocus(transaction.id, "quantity")}
               onBlur={() => handleBlur(transaction.id, "quantity", transaction.quantity)}
-              aria-invalid={!!transaction.error && transaction.error.includes("Quantity")}
-              aria-describedby={transaction.error?.includes("Quantity") ? `quantity-error-${transaction.id}` : undefined}
-              className={transaction.error?.includes("Quantity") ? "border-destructive" : ""}
+              className={`h-8 text-sm ${
+                transaction.error?.includes("Quantity") ? "border-destructive/50 focus:border-destructive" : ""
+              }`}
             />
           </div>
-          
-          <div>
-            <Label 
-              htmlFor={`buyPrice-${transaction.id}`} 
-              className="flex justify-between mb-1"
-            >
-              <span>{buyPriceLabel}</span>
-              {transaction.error && transaction.error.includes("buy price") && (
-                <span 
-                  className="text-xs text-destructive"
-                  role="alert"
-                  id={`buyPrice-error-${transaction.id}`}
-                >
-                  {transaction.error}
-                </span>
-              )}
+
+          {/* Buy Price */}
+          <div className="space-y-1">
+            <Label htmlFor={`buyPrice-${transaction.id}`} className="text-xs text-slate-500 dark:text-slate-400">
+              {buyPriceLabel}
+              {transaction.error?.includes("buy price") && <span className="text-destructive ml-1">*</span>}
             </Label>
             <NumericInput
               id={`buyPrice-${transaction.id}`}
               min={0}
               allowDecimal={true}
               maxDecimalPlaces={2}
-              placeholder={buyPricePlaceholder}
+              placeholder="0.00"
               value={transaction.buyPrice}
               onChange={(value) => updateTransaction(transaction.id, "buyPrice", value)}
               onFocus={() => handleFocus(transaction.id, "buyPrice")}
               onBlur={() => handleBlur(transaction.id, "buyPrice", transaction.buyPrice)}
-              aria-invalid={!!transaction.error && transaction.error.includes("buy price")}
-              aria-describedby={transaction.error?.includes("buy price") ? `buyPrice-error-${transaction.id}` : undefined}
-              className={transaction.error?.includes("buy price") ? "border-destructive" : ""}
+              className={`h-8 text-sm ${
+                transaction.error?.includes("buy price") ? "border-destructive/50 focus:border-destructive" : ""
+              }`}
             />
           </div>
-          
-          <div>
-            <Label 
-              htmlFor={`sellPrice-${transaction.id}`} 
-              className="flex justify-between mb-1"
-            >
-              <span>{sellPriceLabel}</span>
-              {transaction.error && transaction.error.includes("sell price") && (
-                <span 
-                  className="text-xs text-destructive"
-                  role="alert"
-                  id={`sellPrice-error-${transaction.id}`}
-                >
-                  {transaction.error}
-                </span>
-              )}
+
+          {/* Sell Price */}
+          <div className="space-y-1">
+            <Label htmlFor={`sellPrice-${transaction.id}`} className="text-xs text-slate-500 dark:text-slate-400">
+              {sellPriceLabel}
+              {transaction.error?.includes("sell price") && <span className="text-destructive ml-1">*</span>}
             </Label>
             <NumericInput
               id={`sellPrice-${transaction.id}`}
               min={0}
               allowDecimal={true}
               maxDecimalPlaces={2}
-              placeholder={sellPricePlaceholder}
+              placeholder="0.00"
               value={transaction.sellPrice}
               onChange={(value) => updateTransaction(transaction.id, "sellPrice", value)}
               onFocus={() => handleFocus(transaction.id, "sellPrice")}
               onBlur={() => handleBlur(transaction.id, "sellPrice", transaction.sellPrice)}
-              aria-invalid={!!transaction.error && transaction.error.includes("sell price")}
-              aria-describedby={transaction.error?.includes("sell price") ? `sellPrice-error-${transaction.id}` : undefined}
-              className={transaction.error?.includes("sell price") ? "border-destructive" : ""}
+              className={`h-8 text-sm ${
+                transaction.error?.includes("sell price") ? "border-destructive/50 focus:border-destructive" : ""
+              }`}
             />
           </div>
-          
-          <div className="flex flex-col justify-end text-sm text-muted-foreground space-y-1">
-            <div>
-              {isIntraday ? 'Avg. Entry Price: ' : 'Avg. Buy Price: '}
-              {formatCurrency(averageBuyPrice)}
+
+          {/* Average Price - Simplified */}
+          <div className="space-y-1">
+            <Label className="text-xs text-slate-500 dark:text-slate-400">
+              {isIntraday ? "Avg. Entry" : "Avg. Buy"}
+            </Label>
+            <div className="h-8 px-2 rounded-md bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center">
+              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                {formatCurrency(averageBuyPrice)}
+              </span>
             </div>
           </div>
         </div>
       </div>
     </Card>
-  );
-});
+  )
+})
 
-TransactionItem.displayName = "TransactionItem";
+TransactionItem.displayName = "TransactionItem"
 
-export default TransactionItem;
+export default TransactionItem

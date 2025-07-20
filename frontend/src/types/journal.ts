@@ -73,6 +73,7 @@ export interface TradeJournal {
   updated_at: string;
   tags: TradeTags[];
   pnl?: number;
+  pnl_percentage?: number;
   unrealized_pnl?: number;
   risk_reward_ratio?: number;
   is_profitable?: boolean;

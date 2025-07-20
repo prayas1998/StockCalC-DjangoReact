@@ -44,8 +44,10 @@ export class JournalErrorBoundary extends Component<Props, State> {
       errorInfo,
     });
 
-    // Log error for debugging
-    console.error('Journal Error Boundary caught an error:', error, errorInfo);
+    // Log error for debugging in development
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Journal Error Boundary caught an error:', error, errorInfo);
+    }
 
     // Call custom error handler if provided
     if (this.props.onError) {
@@ -153,7 +155,9 @@ export class JournalErrorBoundary extends Component<Props, State> {
  */
 export function useErrorHandler() {
   return (error: Error, errorInfo?: React.ErrorInfo) => {
-    console.error('Error caught by error handler:', error, errorInfo);
+    if (process.env.NODE_ENV === 'development') {
+      console.error('Error caught by error handler:', error, errorInfo);
+    }
     
     // Report to error tracking service
     if (typeof window !== 'undefined' && (window as any).Sentry) {

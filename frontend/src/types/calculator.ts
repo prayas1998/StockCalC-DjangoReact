@@ -17,6 +17,7 @@ export interface CalculationState {
 
 export interface TransactionFormProps {
   showTitle?: boolean;
+  onCalculationStateChange?: (state: CalculationState) => void;
 }
 
 export interface TransactionItemProps {
@@ -39,15 +40,4 @@ export interface CalculationResultsProps {
   calculationState: CalculationState;
   formatCurrency: (value: string | number | undefined) => string;
   exchange: string;
-}
-
-export interface SaveTransactionButtonProps {
-  user: any;
-  transactions: Transaction[];
-  platform: string;
-  exchange: string;
-  tradeType: string;
-  setAuthDialogOpen: (open: boolean) => void;
-  handleSaveTransactions: (user: any, setAuthDialogOpen: (open: boolean) => void) => void;
-  isSaving: boolean;
 } 

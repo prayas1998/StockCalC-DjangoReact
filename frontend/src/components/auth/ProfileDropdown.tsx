@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/context/AuthContext";
-import { User, LogOut, Receipt, BookOpen } from "lucide-react";
+import { User, LogOut, Receipt, BookOpen, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useState } from "react";
 
@@ -68,10 +68,10 @@ const ProfileDropdown = () => {
           <DropdownMenuSeparator />
           <DropdownMenuItem 
             className="cursor-pointer flex items-center gap-2"
-            onClick={() => navigate("/transactions")}
+            onClick={() => navigate("/profile")}
           >
-            <Receipt className="h-4 w-4" />
-            Transactions
+            <Settings className="h-4 w-4" />
+            Profile Settings
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem 

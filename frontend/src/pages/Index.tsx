@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Clock } from "lucide-react";
@@ -17,9 +17,11 @@ import Footer from "@/components/layout/Footer";
 // Calculator Components
 import TransactionForm from "@/components/calculator/TransactionForm";
 import CalculationResults from "@/components/calculator/CalculationResults";
-import SaveTransactionButton from "@/components/calculator/SaveTransactionButton";
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector";
-import { CalculatorProvider, useCalculatorContext } from "@/context/CalculatorContext";
+import {
+  CalculatorProvider,
+  useCalculatorContext,
+} from "@/context/CalculatorContext";
 
 // Custom hook for theme management
 const useThemeManager = () => {
@@ -34,7 +36,7 @@ const useThemeManager = () => {
 
   useEffect(() => {
     localStorage.setItem("darkMode", JSON.stringify(darkMode));
-    
+
     if (darkMode) {
       document.documentElement.classList.add("dark");
     } else {
@@ -69,40 +71,26 @@ const IndexContent = () => {
     return true;
   });
 
-  const { 
-    platform, 
-    setPlatform, 
-    exchange, 
-    setExchange, 
-    tradeType, 
-    setTradeType, 
-    positionType, 
+  const {
+    platform,
+    setPlatform,
+    exchange,
+    setExchange,
+    tradeType,
+    setTradeType,
+    positionType,
     setPositionType,
-    setTransactions 
   } = useCalculatorContext();
 
-  // Use custom hook for calculations
-  const { 
-    calculationState, 
-    handleSaveTransactions,
-    isSaving 
-  } = useCalculation();
+  // Calculation state will be received from TransactionForm
+  const [calculationState, setCalculationState] = useState({
+    error: null,
+    result: null,
+  });
 
-  // If redirected for editing, pre-fill the form with the transaction data
-  useEffect(() => {
-    if (location.state && location.state.editTransaction) {
-      const edit = location.state.editTransaction;
-      // Map API transaction group to form transactions
-      const mapped = edit.transactions.map((item: any) => ({
-        id: String(item.id),
-        companyName: edit.title,
-        quantity: item.quantity,
-        buyPrice: item.buy_price,
-        sellPrice: item.sell_price,
-      }));
-      setTransactions(mapped);
-    }
-  }, [location.state, setTransactions]);
+  const handleCalculationStateChange = useCallback((newState) => {
+    setCalculationState(newState);
+  }, []);
 
   useEffect(() => {
     if (showFirstVisitAlert) {
@@ -110,19 +98,21 @@ const IndexContent = () => {
     }
   }, [showFirstVisitAlert]);
 
-  const handlePlatformChange = (newPlatform: 'Dhan' | 'Groww') => {
+  const handlePlatformChange = (newPlatform: "Dhan" | "Groww") => {
     setPlatform(newPlatform);
     navigate(`/${newPlatform.toLowerCase()}`);
   };
-  
-  const handleTradeTypeChange = (newTradeType: 'equity-delivery' | 'equity-intraday') => {
+
+  const handleTradeTypeChange = (
+    newTradeType: "equity-delivery" | "equity-intraday"
+  ) => {
     setTradeType(newTradeType);
   };
 
   return (
     <div className="min-h-screen">
       <Header />
-      
+
       {showFirstVisitAlert && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-background p-6 rounded-lg max-w-md w-full space-y-4">
@@ -131,7 +121,10 @@ const IndexContent = () => {
               <h3 className="text-lg font-semibold">Welcome to TradeSmart</h3>
             </div>
             <p className="text-muted-foreground">
-              As our backend is hosted on a free tier service, the first calculation may take 1-2 minutes to initialize. This is a one-time wait when you first open the app. Subsequent calculations will be much faster.
+              As our backend is hosted on a free tier service, the first
+              calculation may take 1-2 minutes to initialize. This is a one-time
+              wait when you first open the app. Subsequent calculations will be
+              much faster.
             </p>
             <div className="flex justify-end">
               <Button onClick={() => setShowFirstVisitAlert(false)}>
@@ -141,15 +134,15 @@ const IndexContent = () => {
           </div>
         </div>
       )}
-      
-      <AuthDialog 
-        isOpen={authDialogOpen} 
-        onClose={() => setAuthDialogOpen(false)} 
+
+      <AuthDialog
+        isOpen={authDialogOpen}
+        onClose={() => setAuthDialogOpen(false)}
       />
-      
+
       <Hero />
 
-      <section className="section-padding bg-secondary/50 dark:bg-secondary/10">
+      <section id="calculator-section" className="section-padding bg-secondary/50 dark:bg-secondary/10">
         <div className="max-w-7xl mx-auto">
           <Card className="p-6 glass dark:bg-gray-800/70 dark:border-gray-700">
             <div className="space-y-6">
@@ -157,7 +150,7 @@ const IndexContent = () => {
               <div className="mb-6 flex flex-wrap items-center justify-between">
                 <div className="flex-1">
                   <BrokerTradeTypeSelector
-                    selectedBroker={platform as 'Dhan' | 'Groww'}
+                    selectedBroker={platform as "Dhan" | "Groww"}
                     selectedTradeType={tradeType}
                     onBrokerChange={handlePlatformChange}
                     onTradeTypeChange={handleTradeTypeChange}
@@ -166,10 +159,12 @@ const IndexContent = () => {
                     compact={false}
                   />
                 </div>
-                
+
                 {/* Exchange Toggle */}
                 <div className="flex items-center gap-2 mt-3 md:mt-0">
-                  <div className="text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">Exchange:</div>
+                  <div className="text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">
+                    Exchange:
+                  </div>
                   <div className="flex items-center space-x-1 bg-slate-100 dark:bg-slate-800 rounded-md p-1">
                     <button
                       onClick={() => setExchange("NSE")}
@@ -201,28 +196,15 @@ const IndexContent = () => {
 
               {/* Transaction Form Component */}
               <div className="space-y-6">
-                <TransactionForm />
-
-                <div className="flex gap-4 justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate('/transactions')}
-                  >
-                    View Saved Transactions
-                  </Button>
-                  <SaveTransactionButton 
-                    user={user}
-                    setAuthDialogOpen={setAuthDialogOpen}
-                    handleSaveTransactions={handleSaveTransactions}
-                    isSaving={isSaving}
-                  />
-                </div>
+                <TransactionForm
+                  onCalculationStateChange={handleCalculationStateChange}
+                />
               </div>
             </div>
           </Card>
 
           {/* Calculation Results Component */}
-          <CalculationResults 
+          <CalculationResults
             calculationState={calculationState}
             formatCurrency={formatCurrency}
             exchange={exchange}

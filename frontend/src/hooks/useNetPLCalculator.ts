@@ -75,10 +75,11 @@ export const useNetPLCalculator = (sharedState: SharedCalculatorState): NetPLCal
     setResult(calculationResult);
   }, [state, sharedState]);
 
-  // Real-time calculation effect
+  // Clear results when broker/trade type changes or when form inputs change
+  // This ensures results are cleared when user switches broker but form values are preserved
   useEffect(() => {
-    calculate();
-  }, [calculate]);
+    setResult(null);
+  }, [state.buyPrice, state.quantity, state.sellPrice, sharedState.selectedBroker, sharedState.selectedTradeType, sharedState.positionType, sharedState.exchange]);
 
   return {
     state,

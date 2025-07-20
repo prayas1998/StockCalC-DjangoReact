@@ -1,10 +1,8 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { calculateCharges, saveTransactions } from "@/services/api";
+import { useState, useCallback, useEffect, useRef } from "react";
+import { calculateCharges } from "@/services/api";
 import type { CalculationState, Transaction } from "@/types/calculator";
-import { toast } from "@/components/ui/use-toast";
-import { checkApiConnection, formatApiError } from "@/lib/api-helpers";
-import { formatTransactionsForApi, validateTransaction } from "@/utils/transactionUtils";
 import { useCalculatorContext } from "@/context/CalculatorContext";
+import { formatTransactionsForApi } from "@/utils/transactionUtils";
 
 export const useCalculation = () => {
   const { 
@@ -20,150 +18,237 @@ export const useCalculation = () => {
     result: null,
   });
 
-  const [isSaving, setIsSaving] = useState(false);
+  // Track previous settings to detect changes
+  const [previousSettings, setPreviousSettings] = useState({
+    broker: platform,
+    tradeType: tradeType,
+    positionType: positionType,
+    exchange: exchange
+  });
+  const [changedSettings, setChangedSettings] = useState<string[]>([]);
 
-  // Memoized validation function
-  const validateTransactions = useCallback((transactions: Transaction[]): boolean => {
-    return transactions.every(validateTransaction);
+  // Use refs to track the latest values and prevent stale closures
+  const latestValuesRef = useRef({
+    platform,
+    exchange,
+    tradeType,
+    transactions,
+    positionType
+  });
+
+  // Update refs whenever values change
+  useEffect(() => {
+    latestValuesRef.current = {
+      platform,
+      exchange,
+      tradeType,
+      transactions,
+      positionType
+    };
+  }, [platform, exchange, tradeType, transactions, positionType]);
+
+  // Debounce timer ref
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Enhanced validation function with detailed error messages
+  const validateTransactions = useCallback((transactions: Transaction[]): { isValid: boolean; errors: string[] } => {
+    const errors: string[] = [];
+    
+    transactions.forEach((t, index) => {
+      const qty = Number(t.quantity);
+      const buyPrice = Number(t.buyPrice);
+      const sellPrice = Number(t.sellPrice);
+      
+      if (qty <= 0) {
+        errors.push(`Transaction ${index + 1}: Please enter a valid quantity greater than 0`);
+      }
+      
+      if (buyPrice <= 0 && sellPrice <= 0) {
+        errors.push(`Transaction ${index + 1}: Please enter either a buy price or sell price greater than 0`);
+      }
+    });
+    
+    return {
+      isValid: errors.length === 0,
+      errors
+    };
   }, []);
 
-  const handleCalculateCharges = useCallback(async () => {
-    setCalculationState({
-      error: null,
-      result: null,
-    });
+  const handleCalculateCharges = useCallback(async (forceImmediate = false) => {
+    // Clear any existing debounce timer
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
 
-    try {
-      const hasErrors = !validateTransactions(transactions);
-
-      if (hasErrors) {
-        throw new Error("Please fix validation errors before calculating.");
-      }
-
-      // Format transactions for API using our utility function
-      const formattedTransactions = formatTransactionsForApi(
-        transactions, 
-        tradeType, 
-        positionType
-      );
-
-      const result = await calculateCharges(
-        platform.toLowerCase(),
-        exchange,
-        tradeType,
-        formattedTransactions,
-        positionType
-      );
-
-      if ("error" in result) {
-        throw new Error(`${result.error}: ${result.detail || ""}`);
-      }
+    const performCalculation = async () => {
+      // Use the latest values from ref to avoid stale closures
+      const { 
+        platform: currentPlatform, 
+        exchange: currentExchange, 
+        tradeType: currentTradeType, 
+        transactions: currentTransactions, 
+        positionType: currentPositionType 
+      } = latestValuesRef.current;
 
       setCalculationState({
         error: null,
-        result,
-      });
-    } catch (error) {
-      setCalculationState({
-        error:
-          error instanceof Error ? error.message : "Unknown error occurred",
         result: null,
       });
-    }
-  }, [platform, exchange, tradeType, transactions, positionType, validateTransactions]);
 
-  // Trigger calculation when inputs change
-  useEffect(() => {
-    const validTransactions = validateTransactions(transactions);
+      try {
+        const validation = validateTransactions(currentTransactions);
 
-    if (validTransactions && transactions.length > 0) {
-      handleCalculateCharges();
+        if (!validation.isValid) {
+          const errorMessage = validation.errors.length === 1 
+            ? validation.errors[0]
+            : `Please fix the following issues:\n\n${validation.errors.map(err => `${err}`).join('\n')}`;
+          throw new Error(errorMessage);
+        }
+
+        // Format transactions for API using utility function with current values
+        const formattedTransactions = formatTransactionsForApi(
+          currentTransactions, 
+          currentTradeType, 
+          currentPositionType
+        );
+
+        const result = await calculateCharges(
+          currentPlatform.toLowerCase(),
+          currentExchange,
+          currentTradeType,
+          formattedTransactions,
+          currentPositionType
+        );
+
+        if ("error" in result) {
+          throw new Error(`${result.error}: ${result.detail || ""}`);
+        }
+
+        setCalculationState({
+          error: null,
+          result,
+        });
+      } catch (error) {
+        setCalculationState({
+          error:
+            error instanceof Error ? error.message : "Unknown error occurred",
+          result: null,
+        });
+      }
+    };
+
+    if (forceImmediate) {
+      await performCalculation();
     } else {
+      // Debounce the calculation to prevent rapid API calls
+      debounceTimerRef.current = setTimeout(performCalculation, 300);
+    }
+  }, [validateTransactions]);
+
+  // Clear changed settings flag when user calculates
+  const clearChangedSettingsFlag = useCallback(() => {
+    setChangedSettings([]);
+  }, []);
+
+  // Manual calculation function for button click
+  const handleManualCalculation = useCallback(async () => {
+    clearChangedSettingsFlag();
+    await handleCalculateCharges(true);
+  }, [handleCalculateCharges, clearChangedSettingsFlag]);
+
+  // Detect settings changes and clear results
+  useEffect(() => {
+    const currentSettings = {
+      broker: platform,
+      tradeType: tradeType,
+      positionType: positionType,
+      exchange: exchange
+    };
+
+    const changes: string[] = [];
+    
+    if (previousSettings.broker !== currentSettings.broker) {
+      changes.push('Broker');
+    }
+    if (previousSettings.tradeType !== currentSettings.tradeType) {
+      changes.push('Trade type');
+    }
+    if (previousSettings.positionType !== currentSettings.positionType) {
+      changes.push('Position');
+    }
+    if (previousSettings.exchange !== currentSettings.exchange) {
+      changes.push('Exchange');
+    }
+
+    if (changes.length > 0) {
+      // Settings have changed, clear results and set flag
+      setCalculationState({
+        error: null,
+        result: null,
+      });
+      setChangedSettings(changes);
+      setPreviousSettings(currentSettings);
+      
+      // Clear any pending calculations
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
+    }
+  }, [platform, tradeType, positionType, exchange, previousSettings]);
+
+  // Clear results when inputs change (but don't auto-calculate)
+  useEffect(() => {
+    const validation = validateTransactions(transactions);
+
+    if (!validation.isValid || transactions.length === 0) {
+      // Clear any pending calculations
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+        debounceTimerRef.current = null;
+      }
       // Reset to default values when inputs are invalid
       setCalculationState({
         error: null,
         result: null,
       });
     }
-  }, [exchange, tradeType, transactions, positionType, handleCalculateCharges, validateTransactions]);
+  }, [exchange, tradeType, transactions, positionType, validateTransactions]);
 
-  const handleSaveTransactions = useCallback(async (user: any, setAuthDialogOpen: (open: boolean) => void) => {
-    if (!user) {
-      setAuthDialogOpen(true);
-      return;
-    }
-
-    // Check if company name is provided
-    if (!transactions[0]?.companyName?.trim()) {
-      toast({
-        title: "Error",
-        description: "Please enter a company name to save transactions",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Validate transactions before saving
-    const hasErrors = !validateTransactions(transactions);
-
-    if (hasErrors) {
-      toast({
-        title: "Error",
-        description: "Please fix validation errors before saving",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // First check API connectivity
-    const isConnected = await checkApiConnection();
-    if (!isConnected) {
-      // The checkApiConnection function already shows a toast with the error
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      // Format transactions for API using our utility function
-      const formattedTransactions = formatTransactionsForApi(
-        transactions, 
-        tradeType, 
-        positionType
-      );
-
-      const result = await saveTransactions(
-        transactions[0].companyName || "Untitled Transaction",
-        platform.toLowerCase(),
-        exchange,
-        tradeType,
-        formattedTransactions,
-        positionType
-      );
-
-      if ("error" in result) {
-        throw new Error(formatApiError(result));
+  // Cleanup debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
       }
+    };
+  }, []);
 
-      toast({
-        title: "Success",
-        description: "Transaction saved successfully",
-      });
 
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save transaction",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSaving(false);
+  // Generate dynamic message based on changed settings
+  const getSettingsChangeMessage = useCallback(() => {
+    if (changedSettings.length === 0) return '';
+    
+    let message = '';
+    if (changedSettings.length === 1) {
+      message = `${changedSettings[0]} changed`;
+    } else if (changedSettings.length === 2) {
+      message = `${changedSettings[0]} and ${changedSettings[1]} changed`;
+    } else {
+      const lastSetting = changedSettings[changedSettings.length - 1];
+      const otherSettings = changedSettings.slice(0, -1).join(', ');
+      message = `${otherSettings} and ${lastSetting} changed`;
     }
-  }, [platform, exchange, tradeType, transactions, positionType, validateTransactions]);
+    
+    return `${message} - Please click Calculate to refresh results`;
+  }, [changedSettings]);
 
   return {
     calculationState,
     handleCalculateCharges,
-    handleSaveTransactions,
-    isSaving
+    handleManualCalculation,
+    settingsChanged: changedSettings.length > 0,
+    settingsChangeMessage: getSettingsChangeMessage()
   };
 };

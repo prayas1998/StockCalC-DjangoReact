@@ -3,6 +3,9 @@
 import { CalculationError } from '../types/api';
 import { API_ENDPOINTS, getApiUrl } from '../config';
 import { supabase } from '../lib/supabase';
+import { getAuthToken as getStoredToken, setAuthToken, removeAuthToken } from '../lib/tokenStorage';
+import { handleApiError, handleAuthenticationError, handleNetworkError } from '../utils/frontendErrorHandler';
+import axios from 'axios';
 
 export interface CalculationResponse {
   transactions: {
@@ -36,68 +39,15 @@ export interface CalculationResponse {
   };
 }
 
-export interface SaveTransactionResponse {
-  status: string;
-  message: string;
-  group_id: number;
-}
 
-export interface Transaction {
-  id: number;
-  title: string;
-  platform: string;
-  exchange: string;
-  trade_type: string;
-  created_at: string;
-  average_buy_price: string;
-  total_quantity: string;
-  net_pnl: string;
-  transactions: Array<{
-    id: number;
-    quantity: string;
-    buy_price: string;
-    sell_price: string;
-    buy_value: string;
-    sell_value: string;
-    net_pnl: string;
-  }>;
-}
-
-// Helper function to get the current token and refresh if needed
-export const getAuthToken = async (): Promise<string | null> => {
-  const token = localStorage.getItem('auth_token');
-  
-  if (token) {
-    try {
-      const tokenParts = token.split('.');
-      if (tokenParts.length === 3) {
-        const payload = JSON.parse(atob(tokenParts[1]));
-        const expiryTime = payload.exp * 1000;
-        
-        if (expiryTime > Date.now()) {
-          return token;
-        }
-      }
-    } catch (error) {
-      // Token parsing failed, will refresh
-    }
-  }
-  
-  // Token is expired or invalid, refresh the session
-  const { data } = await supabase.auth.getSession();
-  
-  if (data?.session?.access_token) {
-    localStorage.setItem('auth_token', data.session.access_token);
-    return data.session.access_token;
-  }
-  
-  localStorage.removeItem('auth_token');
-  return null;
+// Helper function to get the current token
+export const getAuthToken = (): string | null => {
+  return getStoredToken();
 };
 
 // Add Authorization header to fetch options if token exists
-export const addAuthHeader = async (options: RequestInit = {}): Promise<RequestInit> => {
-  const token = await getAuthToken();
+export const addAuthHeader = (options: RequestInit = {}): RequestInit => {
+  const token = getAuthToken();
   
   if (!token) {
     return options;
@@ -111,6 +61,163 @@ export const addAuthHeader = async (options: RequestInit = {}): Promise<RequestI
     },
   };
 };
+
+// Create axios instance for API calls
+export const api = axios.create({
+  baseURL: getApiUrl('/api'),
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Add request interceptor to include auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = getAuthToken();
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Simple mutex and queue for token refresh
+let isRefreshing = false;
+let failedQueue: Array<{resolve: Function, reject: Function, config: any}> = [];
+
+// Development logging helper
+const logTokenRefresh = (event: string, data?: any) => {
+  if (import.meta.env.DEV) {
+    console.log(`[TokenRefresh] ${event}:`, data);
+  }
+};
+
+// Listen for token refresh events from other tabs
+window.addEventListener('storage', (event) => {
+  if (event.key === 'token_refresh_event' && event.newValue) {
+    logTokenRefresh('Token refreshed in another tab');
+    // Reset refresh state if another tab completed refresh
+    if (isRefreshing) {
+      isRefreshing = false;
+      // Process any queued requests with current token
+      if (failedQueue.length > 0) {
+        const token = getAuthToken();
+        failedQueue.forEach(({ resolve, config }) => {
+          if (token) {
+            config.headers.Authorization = `Bearer ${token}`;
+          }
+          resolve(api.request(config));
+        });
+        failedQueue = [];
+        logTokenRefresh('Processed queue from other tab refresh', { processedCount: failedQueue.length });
+      }
+    }
+  }
+});
+
+// Add response interceptor to handle errors with race condition protection
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // Handle 401 Unauthorized errors with mutex protection
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      if (isRefreshing) {
+        // Queue the request if refresh is already in progress
+        logTokenRefresh('Request queued', { url: originalRequest.url, queueLength: failedQueue.length + 1 });
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve, reject, config: originalRequest });
+        });
+      }
+
+      isRefreshing = true;
+      logTokenRefresh('Refresh started', { url: originalRequest.url, queueLength: failedQueue.length });
+
+      try {
+        // Attempt token refresh
+        const { data } = await supabase.auth.getSession();
+        
+        if (data?.session?.access_token) {
+          setAuthToken(data.session.access_token);
+          const newToken = getAuthToken();
+          
+          // Notify other tabs about token refresh
+          localStorage.setItem('token_refresh_event', Date.now().toString());
+          
+          logTokenRefresh('Refresh successful', { queueLength: failedQueue.length });
+          
+          // Update original request
+          if (newToken) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          }
+
+          // Process queued requests
+          failedQueue.forEach(({ resolve, config }) => {
+            if (newToken) {
+              config.headers.Authorization = `Bearer ${newToken}`;
+            }
+            resolve(api.request(config));
+          });
+          failedQueue = [];
+
+          return api.request(originalRequest);
+        } else {
+          logTokenRefresh('Refresh failed - no token received');
+          
+          // Refresh failed - reject queued requests
+          failedQueue.forEach(({ reject }) => reject(error));
+          failedQueue = [];
+          
+          removeAuthToken();
+          window.location.href = '/';
+          return Promise.reject(error);
+        }
+      } catch (refreshError) {
+        logTokenRefresh('Refresh failed - error', { error: refreshError instanceof Error ? refreshError.message : 'Unknown error' });
+        
+        // Refresh failed - reject queued requests
+        failedQueue.forEach(({ reject }) => reject(refreshError));
+        failedQueue = [];
+        
+        handleAuthenticationError(refreshError, {
+          originalError: error,
+          requestUrl: originalRequest.url,
+          requestMethod: originalRequest.method
+        });
+        
+        removeAuthToken();
+        window.location.href = '/';
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
+        logTokenRefresh('Refresh completed');
+      }
+    }
+
+    // Handle other errors
+    if (error.response?.status >= 400) {
+      handleApiError(error, {
+        requestUrl: originalRequest?.url,
+        requestMethod: originalRequest?.method,
+        statusCode: error.response.status
+      });
+    } else if (error.code === 'NETWORK_ERROR' || !error.response) {
+      handleNetworkError(error, {
+        requestUrl: originalRequest?.url,
+        requestMethod: originalRequest?.method
+      });
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 export const calculateCharges = async (
   platform: string,
@@ -154,180 +261,6 @@ export const calculateCharges = async (
   }
 };
 
-export const saveTransactions = async (
-  title: string,
-  platform: string,
-  exchange: string,
-  tradeType: string,
-  transactions: Array<{
-    quantity: string;
-    buyPrice: string;
-    sellPrice: string;
-  }>,
-  positionType: 'long' | 'short' = 'long'
-): Promise<SaveTransactionResponse | CalculationError> => {
-  try {
-    const options = await addAuthHeader({
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title,
-        platform,
-        exchange,
-        tradeType,
-        transactions,
-        positionType,
-      }),
-    });
-    
-    const response = await fetch(getApiUrl(API_ENDPOINTS.SAVE_CALCULATION), options);
 
-    if (!response.ok) {
-      return {
-        error: `HTTP error! status: ${response.status}`,
-        detail: await response.text(),
-      };
-    }
 
-    return await response.json();
-  } catch (error) {
-    return {
-      error: 'Network error',
-      detail: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-};
 
-export const getUserTransactions = async (): Promise<Transaction[] | CalculationError> => {
-  try {
-    const token = await getAuthToken();
-    const url = getApiUrl(API_ENDPOINTS.TRANSACTION_GROUPS);
-    
-    if (!token) {
-      return {
-        error: 'Authentication required',
-        detail: 'Please log in to view your transactions',
-      };
-    }
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-    });
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      
-      // Handle authentication errors
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('auth_token');
-        
-        return {
-          error: 'Authentication failed',
-          detail: 'Your session has expired. Please log in again.',
-        };
-      }
-      
-      return {
-        error: `HTTP error! status: ${response.status}`,
-        detail: errorText || 'Unknown error',
-      };
-    }
-    
-    return await response.json();
-  } catch (error) {
-    return {
-      error: 'Network error',
-      detail: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-};
-
-export const searchTransactions = async (query: string): Promise<Transaction[] | CalculationError> => {
-  try {
-    const token = await getAuthToken();
-    
-    if (!token) {
-      return {
-        error: 'Authentication required',
-        detail: 'Please log in to search your transactions',
-      };
-    }
-    
-    const url = new URL(getApiUrl(API_ENDPOINTS.TRANSACTION_GROUPS));
-    url.searchParams.append('search', query);
-    
-    const options = await addAuthHeader({
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    const response = await fetch(url.toString(), options);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      
-      // Handle authentication errors
-      if (response.status === 401 || response.status === 403) {
-        localStorage.removeItem('auth_token');
-        return {
-          error: 'Authentication failed',
-          detail: 'Your session has expired. Please log in again.',
-        };
-      }
-      
-      return {
-        error: `HTTP error! status: ${response.status}`,
-        detail: errorText || 'Unknown error',
-      };
-    }
-    
-    return await response.json();
-  } catch (error) {
-    return {
-      error: 'Network error',
-      detail: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-};
-
-// Delete a transaction group by ID
-export const deleteTransaction = async (id: number): Promise<{ status: string; message: string } | CalculationError> => {
-  try {
-    const options = await addAuthHeader({
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    const response = await fetch(getApiUrl(`${API_ENDPOINTS.TRANSACTION_GROUPS}${id}/`), options);
-    if (!response.ok) {
-      return {
-        error: `HTTP error! status: ${response.status}`,
-        detail: await response.text(),
-      };
-    }
-    // If response is 204 No Content, return a default success object
-    if (response.status === 204) {
-      return { status: 'success', message: 'Transaction deleted successfully' };
-    }
-    // Otherwise, try to parse JSON (for 200/202 with body)
-    const text = await response.text();
-    if (!text) {
-      return { status: 'success', message: 'Transaction deleted successfully' };
-    }
-    return JSON.parse(text);
-  } catch (error) {
-    return {
-      error: 'Network error',
-      detail: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
-};

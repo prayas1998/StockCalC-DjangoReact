@@ -10,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        # Removed auth dependency - using Supabase authentication only
     ]
 
     operations = [
@@ -78,13 +78,7 @@ class Migration(migrations.Migration):
                 ("personal_notes", models.TextField(blank=True)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
                 ("updated_at", models.DateTimeField(auto_now=True)),
-                (
-                    "user",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        to=settings.AUTH_USER_MODEL,
-                    ),
-                ),
+                # Removed user foreign key - using Supabase UUID instead
                 ("direction", models.CharField(choices=[("LONG", "Long"), ("SHORT", "Short")], default="LONG", max_length=10)),
             ],
         ),
@@ -103,13 +97,7 @@ class Migration(migrations.Migration):
                 ("name", models.CharField(max_length=50, unique=True)),
                 ("color", models.CharField(default="#3B82F6", max_length=7)),
                 ("created_at", models.DateTimeField(auto_now_add=True)),
-                (
-                    "user",
-                    models.ForeignKey(
-                        on_delete=django.db.models.deletion.CASCADE,
-                        to=settings.AUTH_USER_MODEL,
-                    ),
-                ),
+                # Removed user foreign key - using Supabase UUID instead
             ],
         ),
         migrations.CreateModel(

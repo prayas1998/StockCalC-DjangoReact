@@ -41,14 +41,12 @@ export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }
     return "Groww";
   });
   
-  // Custom setPlatform that resets transactions
+  // Custom setPlatform that preserves transaction values when broker changes
   const setPlatform = useCallback((newPlatform: BrokerType) => {
     setPlatformInternal(newPlatform);
-    // Reset transactions when platform changes
-    setTransactions([
-      { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }
-    ]);
-  }, [setPlatformInternal, setTransactions]);
+    // Don't reset transactions when platform changes - preserve user input
+    // Only clear results, not the form data
+  }, [setPlatformInternal]);
 
   const updateTransaction = useCallback((
     id: string,
@@ -56,9 +54,20 @@ export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }
     value: string
   ) => {
     setTransactions(prev => 
-      prev.map((t) => (t.id === id ? { ...t, [field]: value } : t))
+      prev.map((t) => {
+        if (t.id === id) {
+          // Create a new object to ensure React detects the change
+          const updatedTransaction = { ...t, [field]: value };
+          // Clear any existing errors when user starts typing
+          if (updatedTransaction.error) {
+            delete updatedTransaction.error;
+          }
+          return updatedTransaction;
+        }
+        return t;
+      })
     );
-  }, [setTransactions]);
+  }, []);
 
   const addTransaction = useCallback(() => {
     setTransactions(prev => [

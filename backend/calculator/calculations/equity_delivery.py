@@ -12,6 +12,8 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
         total_dp_charges = Decimal('0')
         transactions_data = []
 
+        has_sell_transaction = False  # Track if any sell transaction exists for DP charges
+
         for transaction in transactions:
             quantity = Decimal(str(transaction["quantity"]))
             buy_price = Decimal(str(transaction["buyPrice"]))
@@ -25,13 +27,16 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
                 cumulative_quantity += quantity
                 cumulative_buy_value += buy_value
 
+            # Calculate brokerage per transaction (this should remain per-transaction)
             transaction_brokerage = self.broker.calculate_brokerage(buy_value, sell_value)
-            transaction_dp_charge = self.broker.get_dp_charge() if sell_price > 0 else Decimal('0')
-            total_dp_charges += transaction_dp_charge
+            total_brokerage += transaction_brokerage
+
+            # Track if this transaction has a sell component for DP charges
+            if sell_price > 0:
+                has_sell_transaction = True
 
             total_buy_value += buy_value
             total_sell_value += sell_value
-            total_brokerage += transaction_brokerage
 
             transactions_data.append(
                 {
@@ -47,14 +52,21 @@ class EquityDeliveryCalculator(BaseTradeCalculator):
                 }
             )
 
+        # DP charges: Only once per stock if any sell transaction exists
+        total_dp_charges = self.broker.get_dp_charge() if has_sell_transaction else Decimal('0')
+
+        # Calculate government charges on TOTAL/NET position (not per transaction)
         total_turnover = total_buy_value + total_sell_value
         stt = self.govt_charges.calculate_stt(total_turnover)
         exchange_charges = self.govt_charges.calculate_exchange_charges(total_turnover)
         stamp_duty = self.govt_charges.calculate_stamp_duty(total_buy_value)
         sebi_fee = self.govt_charges.calculate_sebi_fee(total_turnover)
         ipft = self.govt_charges.calculate_ipft(total_turnover)
+
+        # Calculate GST on total taxable components
         taxable_components = sum([total_brokerage, exchange_charges, sebi_fee, ipft])
         gst = self.govt_charges.calculate_gst(taxable_components)
+        
         total_charges = sum([
             total_brokerage, stt, exchange_charges, stamp_duty, sebi_fee, ipft, gst, total_dp_charges
         ])

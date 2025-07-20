@@ -1,4 +1,5 @@
 from django.shortcuts import render
+from calculator.rate_limiting import apply_throttling
 from rest_framework import viewsets, permissions, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -13,6 +14,10 @@ from .serializers import (
     TradeJournalCreateSerializer,
     TradeTagsSerializer
 )
+import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 class JournalPagination(PageNumberPagination):
     page_size = 20
@@ -34,7 +39,24 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        queryset = TradeJournal.objects.filter(user=user).prefetch_related('tags').order_by('-entry_date')
+        if not user or not hasattr(user, 'id'):
+            logger.error(f"No authenticated user or user has no id: {user}")
+            return TradeJournal.objects.none()
+            
+        user_id = getattr(user, 'id', None)
+        if not user_id:
+            logger.error(f"User id is None: {user}")
+            return TradeJournal.objects.none()
+        
+        # Convert string UUID to UUID object if necessary
+        try:
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid user_id format: {user_id}, error: {e}")
+            return TradeJournal.objects.none()
+            
+        queryset = TradeJournal.objects.filter(user_id=user_id).prefetch_related('tags').order_by('-entry_date')
 
         # Filtering by status
         status = self.request.query_params.getlist('status') or self.request.query_params.get('status')
@@ -64,10 +86,25 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
         return queryset
 
     def create(self, request, *args, **kwargs):
+        # Apply rate limiting
+        allowed, throttle_response = apply_throttling(request, 'data_operations')
+        if not allowed:
+            return throttle_response
         return super().create(request, *args, **kwargs)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        user_id = getattr(self.request.user, 'id', None)
+        if not user_id:
+            raise ValueError("User ID is required")
+        # Convert string UUID to UUID object if necessary
+        try:
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid user_id format: {user_id}, error: {e}")
+            raise ValueError("Invalid user ID format")
+            
+        serializer.save(user_id=user_id)
 
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -111,15 +148,62 @@ class TradeTagsViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        return TradeTags.objects.filter(user=user).order_by('name')
+        if not user or not hasattr(user, 'id'):
+            logger.error(f"No authenticated user or user has no id: {user}")
+            return TradeTags.objects.none()
+            
+        user_id = getattr(user, 'id', None)
+        if not user_id:
+            logger.error(f"User id is None: {user}")
+            return TradeTags.objects.none()
+            
+        # Convert string UUID to UUID object if necessary
+        try:
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid user_id format: {user_id}, error: {e}")
+            return TradeTags.objects.none()
+            
+        return TradeTags.objects.filter(user_id=user_id).order_by('name')
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        user = self.request.user
+        if not user or not hasattr(user, 'id'):
+            logger.error(f"No authenticated user or user has no id: {user}")
+            raise ValueError("User authentication required")
+            
+        user_id = getattr(user, 'id', None)
+        if not user_id:
+            logger.error(f"User id is None: {user}")
+            raise ValueError("User ID is required")
+            
+        # Convert string UUID to UUID object if necessary
+        try:
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid user_id format: {user_id}, error: {e}")
+            raise ValueError("Invalid user ID format")
+            
+        serializer.save(user_id=user_id)
 
     @action(detail=False, methods=['get'])
     def popular(self, request):
         user = request.user
-        popular_tags = TradeTags.objects.filter(user=user)\
+        user_id = getattr(user, 'id', None)
+        if not user_id:
+            return Response({'error': 'User authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+            
+        # Convert string UUID to UUID object if necessary
+        try:
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid user_id format: {user_id}, error: {e}")
+            return Response({'error': 'Invalid user ID format'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        popular_tags = TradeTags.objects.filter(user_id=user_id)\
             .annotate(usage_count=Count('journals'))\
             .order_by('-usage_count')[:10]
         serializer = self.get_serializer(popular_tags, many=True)
@@ -137,8 +221,25 @@ class JournalAnalyticsAPIView(APIView):
         return trade.calculate_pnl() or 0
 
     def get(self, request, format=None):
+        # Apply rate limiting
+        allowed, throttle_response = apply_throttling(request, 'data_operations')
+        if not allowed:
+            return throttle_response
+            
         user = request.user
-        trades = TradeJournal.objects.filter(user=user)
+        user_id = getattr(user, 'id', None)
+        if not user_id:
+            return Response({'error': 'User authentication required'}, status=status.HTTP_401_UNAUTHORIZED)
+            
+        # Convert string UUID to UUID object if necessary
+        try:
+            if isinstance(user_id, str):
+                user_id = uuid.UUID(user_id)
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid user_id format: {user_id}, error: {e}")
+            return Response({'error': 'Invalid user ID format'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        trades = TradeJournal.objects.filter(user_id=user_id)
         closed_trades_qs = trades.filter(status__in=['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'])
         
         total_trades = trades.count()

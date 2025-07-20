@@ -14,15 +14,19 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
-from django.contrib import admin
 from django.http import HttpResponse
 from django.urls import path, include
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_http_methods
+import json
+import logging
 
 def home(request):
     return HttpResponse("API is running fine!")
 
+# CSP report endpoint removed for simplification
+
 urlpatterns = [
-    path('admin/', admin.site.urls),
     path('api/', include('calculator.urls')),
     path('api/', include('journal.urls')),
     path('', home, name='home'),

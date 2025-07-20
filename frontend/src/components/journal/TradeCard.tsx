@@ -18,7 +18,9 @@ import {
   formatTradeStatus,
   isTradeProfit,
   getTradeTypeDisplayText,
-  calculateTradeDuration
+  calculateTradeDuration,
+  calculatePnLPercentage,
+  formatPercentage
 } from "./utils";
 
 interface TradeCardProps {
@@ -36,6 +38,8 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
   const isProfit = isTradeProfit(trade);
   const tradeDuration = calculateTradeDuration(trade.entry_date, trade.exit_date);
   const tradeTypeText = getTradeTypeDisplayText(trade.trade_type, trade.direction);
+  // Use backend calculated percentage if available, otherwise calculate on frontend
+  const pnlPercentage = trade.pnl_percentage ?? calculatePnLPercentage(trade);
 
   // Handle delete confirmation
   const handleDeleteConfirm = () => {
@@ -76,7 +80,12 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
                 </div>
               ) : trade.pnl !== undefined && (
                 <div className={`font-semibold ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(trade.pnl)}
+                  <div>{formatCurrency(trade.pnl)}</div>
+                  {pnlPercentage !== null && (
+                    <div className="text-xs opacity-75">
+                      ({pnlPercentage >= 0 ? '+' : ''}{formatPercentage(pnlPercentage, 2)})
+                    </div>
+                  )}
                 </div>
               )}
               

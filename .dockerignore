@@ -1,0 +1,91 @@
+staticfiles
+*.pyc
+*.pyo
+*.mo
+*.db
+*.css.map
+*.egg-info
+*.sql.gz
+.cache
+.project
+.idea
+.pydevproject
+.idea/workspace.xml
+.DS_Store
+.git/
+.gitignore
+.venv
+env/
+venv/
+ENV/
+env.bak/
+.env
+venv.bak/
+db.sqlite3
+dump.sql
+
+# Environment & Config Files
+.env.*
+.env.local
+.env.docker.*
+*.env
+
+# Docker files (if building from subdirectories)
+Dockerfile*
+docker-compose*.yml
+
+# Node.js (for React frontend)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# Build outputs
+dist/
+build/
+*.tgz
+*.tar.gz
+
+# Logs
+logs/
+*.log
+
+# Testing
+coverage/
+.coverage
+.pytest_cache/
+.tox/
+
+# Documentation
+docs/
+*.md
+README*
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.swp
+*.swo
+*~
+
+# Database backup files
+*.sql
+complete_backup.sql
+terminal.md
+
+# IDE and Editor files
+.vscode/
+*.sublime-*
+.atom/
+
+# OS generated files
+Thumbs.db
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db

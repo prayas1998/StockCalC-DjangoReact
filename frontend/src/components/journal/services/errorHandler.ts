@@ -50,8 +50,10 @@ export function handleApiError(
     errorMessage = fallbackMessage;
   }
 
-  // Log error for debugging
-  console.error(`${context} failed:`, error);
+  // Log error for debugging in development
+  if (process.env.NODE_ENV === 'development') {
+    console.error(`${context} failed:`, error);
+  }
 
   // Show toast notification if requested
   if (showToast) {
@@ -68,7 +70,7 @@ export function handleAuthError(error: CalculationError): boolean {
   if (error.detail === 'Your session has expired. Please log in again.') {
     toast.error('Session expired. Please log in again.');
     // Clear any stored auth tokens
-    localStorage.removeItem('auth_token');
+    // Token removal is handled by the main auth system
     return true;
   }
   return false;
@@ -78,7 +80,9 @@ export function handleAuthError(error: CalculationError): boolean {
  * Handle network errors
  */
 export function handleNetworkError(error: unknown): string {
-  console.error('Network error:', error);
+  if (process.env.NODE_ENV === 'development') {
+    console.error('Network error:', error);
+  }
   
   const message = 'Network error. Please check your connection and try again.';
   toast.error(message);

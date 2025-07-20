@@ -74,10 +74,11 @@ export const useProfitTargetCalculator = (sharedState: SharedCalculatorState): P
     setResult(calculationResult);
   }, [state, sharedState]);
 
-  // Real-time calculation effect
+  // Manual calculation - removed real-time effect
+  // Clear results when inputs change
   useEffect(() => {
-    calculate();
-  }, [calculate]);
+    setResult(null);
+  }, [state.buyPrice, state.quantity, state.profitPercentage, sharedState.selectedBroker, sharedState.selectedTradeType, sharedState.positionType, sharedState.exchange]);
 
   return {
     state,

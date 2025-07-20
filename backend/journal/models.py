@@ -1,10 +1,10 @@
 from django.db import models
-from django.contrib.auth.models import User
+import uuid
 
 class TradeTags(models.Model):
     name = models.CharField(max_length=50, unique=True)
     color = models.CharField(max_length=7, default="#3B82F6")
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user_id = models.UUIDField(help_text="Supabase user UUID", null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -34,11 +34,11 @@ class TradeJournal(models.Model):
         ("BSE", "BSE"),
     ]
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user_id = models.UUIDField(help_text="Supabase user UUID", null=True, blank=True)
     company_name = models.CharField(max_length=255)
     trade_type = models.CharField(max_length=20, choices=TRADE_TYPE_CHOICES)
     quantity = models.PositiveIntegerField()
-    buy_price = models.DecimalField(max_digits=10, decimal_places=2)
+    buy_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     sell_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     stop_loss = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     target_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -59,10 +59,10 @@ class TradeJournal(models.Model):
 
     def get_exit_price(self):
         """
-        Determine the exit price based on trade status:
+        Determine the exit price based on trade status and direction:
         - CLOSED_TARGET: Use target_price
         - CLOSED_STOPLOSS: Use stop_loss
-        - CLOSED_MANUAL: Use sell_price
+        - CLOSED_MANUAL: Use sell_price for LONG trades, buy_price for SHORT trades
         - CANCELLED/OPEN: Return None
         """
         if self.status == 'CLOSED_TARGET':
@@ -70,7 +70,13 @@ class TradeJournal(models.Model):
         elif self.status == 'CLOSED_STOPLOSS':
             return self.stop_loss
         elif self.status == 'CLOSED_MANUAL':
-            return self.sell_price
+            # For CLOSED_MANUAL, the exit price depends on trade direction:
+            # - LONG trades: Exit price is stored in sell_price (sell to close)
+            # - SHORT trades: Exit price is stored in buy_price (buy to close)
+            if self.direction == 'SHORT':
+                return self.buy_price
+            else:
+                return self.sell_price
         else:
             return None
 
@@ -87,8 +93,13 @@ class TradeJournal(models.Model):
             if not self.stop_loss:
                 missing_fields.append('stop_loss')
         elif self.status == 'CLOSED_MANUAL':
-            if not self.sell_price:
-                missing_fields.append('sell_price')
+            # For CLOSED_MANUAL, check the appropriate field based on direction
+            if self.direction == 'SHORT':
+                if not self.buy_price:
+                    missing_fields.append('buy_price')
+            else:
+                if not self.sell_price:
+                    missing_fields.append('sell_price')
         
         # Check exit date for all closed trades
         if self.status in ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL']:
@@ -126,21 +137,25 @@ class TradeJournal(models.Model):
                 logger.warning(f"Unsupported trade type '{self.trade_type}' for P&L calculation")
                 return None
             
-            # Prepare transaction data for calculator
-            # For SHORT positions, we need to swap buy/sell prices for the calculator
+            # Prepare transaction data for calculator following the EXACT same logic as the main calculator
+            # The calculator expects for SHORT positions:
+            # - buyPrice: Entry price (what user enters as "Entry Price (Sell)")
+            # - sellPrice: Exit price (what user enters as "Exit Price (Buy)")
             if self.direction == "SHORT":
-                # For short positions: entry is exit_price, exit is buy_price
+                # For short trades: Entry price is stored in sell_price, Exit price is stored in buy_price
+                entry_price = self.sell_price  # Entry price for short trades
                 transaction_data = [{
                     'quantity': str(self.quantity),
-                    'buyPrice': str(exit_price),     # Exit price (buy to close)
-                    'sellPrice': str(self.buy_price) # Entry price (sell to open)
+                    'buyPrice': str(entry_price),   # Entry price (sell action) - same as main calculator
+                    'sellPrice': str(exit_price)    # Exit price (buy action) - same as main calculator
                 }]
             else:
-                # For long positions: normal buy then sell
+                # Long trades: Entry = buy_price, Exit = exit_price
+                entry_price = self.buy_price  # Entry price for long trades
                 transaction_data = [{
                     'quantity': str(self.quantity),
-                    'buyPrice': str(self.buy_price),
-                    'sellPrice': str(exit_price)
+                    'buyPrice': str(entry_price),   # Entry price (buy to open)
+                    'sellPrice': str(exit_price)    # Exit price (sell to close)
                 }]
             
             # Get the appropriate calculator (same logic as calculate_charges view)
@@ -209,21 +224,25 @@ class TradeJournal(models.Model):
             if not calculator_trade_type:
                 return None
             
-            # Prepare transaction data for calculator
-            # For SHORT positions, we need to swap buy/sell prices for the calculator
+            # Prepare transaction data for calculator following the EXACT same logic as the main calculator
+            # The calculator expects for SHORT positions:
+            # - buyPrice: Entry price (what user enters as "Entry Price (Sell)")
+            # - sellPrice: Exit price (what user enters as "Exit Price (Buy)")
             if self.direction == "SHORT":
-                # For short positions: entry is exit_price, exit is buy_price
+                # For short trades: Entry price is stored in sell_price, Exit price is stored in buy_price
+                entry_price = self.sell_price  # Entry price for short trades
                 transaction_data = [{
                     'quantity': str(self.quantity),
-                    'buyPrice': str(exit_price),     # Exit price (buy to close)
-                    'sellPrice': str(self.buy_price) # Entry price (sell to open)
+                    'buyPrice': str(entry_price),   # Entry price (sell action) - same as main calculator
+                    'sellPrice': str(exit_price)    # Exit price (buy action) - same as main calculator
                 }]
             else:
-                # For long positions: normal buy then sell
+                # Long trades: Entry = buy_price, Exit = exit_price
+                entry_price = self.buy_price  # Entry price for long trades
                 transaction_data = [{
                     'quantity': str(self.quantity),
-                    'buyPrice': str(self.buy_price),
-                    'sellPrice': str(exit_price)
+                    'buyPrice': str(entry_price),   # Entry price (buy to open)
+                    'sellPrice': str(exit_price)    # Exit price (sell to close)
                 }]
             
             # Get the appropriate calculator (same logic as calculate_charges view)
@@ -271,15 +290,32 @@ class TradeJournal(models.Model):
     def calculate_unrealized_pnl(self, current_price):
         if self.status == "OPEN":
             if hasattr(self, 'direction') and self.direction == "SHORT":
-                return float(self.quantity) * (float(self.buy_price) - float(current_price))
-            return float(self.quantity) * (float(current_price) - float(self.buy_price))
+                # For short trades, entry price is stored in sell_price
+                entry_price = float(self.sell_price)
+                return float(self.quantity) * (entry_price - float(current_price))
+            else:
+                # For long trades, entry price is stored in buy_price
+                entry_price = float(self.buy_price)
+                return float(self.quantity) * (float(current_price) - entry_price)
         return None
 
     @property
     def risk_reward_ratio(self):
-        if self.stop_loss and self.target_price and self.buy_price:
-            risk = abs(float(self.buy_price) - float(self.stop_loss))
-            reward = abs(float(self.target_price) - float(self.buy_price))
+        if self.stop_loss and self.target_price:
+            # Get entry price based on trade direction
+            if self.direction == "SHORT":
+                # For short trades, entry price is stored in sell_price
+                if not self.sell_price:
+                    return None
+                entry_price = float(self.sell_price)
+            else:
+                # For long trades, entry price is stored in buy_price
+                if not self.buy_price:
+                    return None
+                entry_price = float(self.buy_price)
+            
+            risk = abs(entry_price - float(self.stop_loss))
+            reward = abs(float(self.target_price) - entry_price)
             if risk > 0:
                 return round(reward / risk, 2)
         return None

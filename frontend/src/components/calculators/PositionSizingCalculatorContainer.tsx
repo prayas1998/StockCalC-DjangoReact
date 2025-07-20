@@ -27,6 +27,7 @@ export const PositionSizingCalculatorContainer: React.FC<PositionSizingCalculato
       state={calculator.state}
       result={calculator.result}
       error={calculator.error}
+      targetAnalysis={calculator.targetAnalysis}
       updateField={calculator.updateField}
       calculate={calculator.calculate}
       selectedBroker={selectedBroker}

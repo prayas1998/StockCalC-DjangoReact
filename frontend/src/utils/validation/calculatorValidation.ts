@@ -119,35 +119,48 @@ export class CalculatorValidation {
       }
     }
 
-    // Validate stop loss points
+    // Validate stop loss price
     if (!inputs.stopLoss.trim()) {
-      errors.push('Stop loss points is required');
+      errors.push('Stop loss price is required');
     } else {
-      const sl = parseFloat(inputs.stopLoss);
-      if (isNaN(sl) || sl <= 0) {
-        errors.push('Stop loss points must be a positive number');
+      const stopLossPrice = parseFloat(inputs.stopLoss);
+      if (isNaN(stopLossPrice) || stopLossPrice <= 0) {
+        errors.push('Stop loss price must be a positive number');
       } else {
-        // Additional validation for stop loss points based on position type
+        // Additional validation for stop loss price based on position type
         const entryPrice = parseFloat(inputs.entryPrice);
         if (!isNaN(entryPrice) && entryPrice > 0) {
           const positionType = inputs.positionType || 'long';
           
-          // For long positions, stop loss points must be less than entry price
-          if (positionType === 'long' && sl >= entryPrice) {
-            errors.push(`Stop loss points (${sl}) cannot exceed entry price (${entryPrice}) for long positions`);
-            suggestions.push(`Maximum allowed stop loss points: ${(entryPrice - 0.01).toFixed(2)}`);
+          // For long positions, stop loss price must be lower than entry price
+          if (positionType === 'long' && stopLossPrice >= entryPrice) {
+            errors.push(`Stop loss price (${stopLossPrice}) must be lower than entry price (${entryPrice}) for long positions`);
+            suggestions.push(`Maximum allowed stop loss price: ${(entryPrice - 0.01).toFixed(2)}`);
           }
           
-          // Reasonable thresholds for stop loss points
+          // For short positions, stop loss price must be higher than entry price
+          if (positionType === 'short' && stopLossPrice <= entryPrice) {
+            errors.push(`Stop loss price (${stopLossPrice}) must be higher than entry price (${entryPrice}) for short positions`);
+            suggestions.push(`Minimum allowed stop loss price: ${(entryPrice + 0.01).toFixed(2)}`);
+          }
+          
+          // Calculate stop loss points for reasonable thresholds
+          const stopLossPoints = Math.abs(entryPrice - stopLossPrice);
           const minReasonablePoints = entryPrice * 0.001; // 0.1% of entry price
           const maxReasonablePoints = entryPrice * 0.1;  // 10% of entry price
           
-          if (sl < minReasonablePoints) {
-            errors.push(`Stop loss points (${sl.toFixed(2)}) may be too tight for effective risk management`);
-            suggestions.push(`Consider using at least ${minReasonablePoints.toFixed(2)} points`);
-          } else if (sl > maxReasonablePoints) {
-            errors.push(`Stop loss points (${sl.toFixed(2)}) may be too wide for effective risk management`);
-            suggestions.push(`Consider using at most ${maxReasonablePoints.toFixed(2)} points`);
+          if (stopLossPoints < minReasonablePoints) {
+            errors.push(`Stop loss is too tight (${stopLossPoints.toFixed(2)} points) for effective risk management`);
+            const suggestedPrice = positionType === 'long' 
+              ? entryPrice - minReasonablePoints 
+              : entryPrice + minReasonablePoints;
+            suggestions.push(`Consider stop loss price around ${suggestedPrice.toFixed(2)}`);
+          } else if (stopLossPoints > maxReasonablePoints) {
+            errors.push(`Stop loss is too wide (${stopLossPoints.toFixed(2)} points) for effective risk management`);
+            const suggestedPrice = positionType === 'long' 
+              ? entryPrice - maxReasonablePoints 
+              : entryPrice + maxReasonablePoints;
+            suggestions.push(`Consider stop loss price around ${suggestedPrice.toFixed(2)}`);
           }
         }
       }
@@ -212,37 +225,49 @@ export class CalculatorValidation {
   }
 
   /**
-   * Validate stop loss points specifically
+   * Validate stop loss price specifically
    */
-  static validateStopLossPoints(
+  static validateStopLossPrice(
     entryPrice: number, 
-    stopLossPoints: number, 
+    stopLossPrice: number, 
     positionType: 'long' | 'short' = 'long'
   ): ValidationResult {
     const errors: string[] = [];
     const suggestions: string[] = [];
     
-    if (stopLossPoints <= 0) {
-      errors.push('Stop loss points must be greater than zero');
+    if (stopLossPrice <= 0) {
+      errors.push('Stop loss price must be greater than zero');
       return { isValid: false, errors };
     }
     
-    // For long positions, stop loss points must be less than entry price
-    if (positionType === 'long' && stopLossPoints >= entryPrice) {
-      errors.push(`Stop loss points (${stopLossPoints}) cannot exceed entry price (${entryPrice}) for long positions`);
-      suggestions.push(`Maximum allowed stop loss points: ${(entryPrice - 0.01).toFixed(2)}`);
+    // Position-type specific validation
+    if (positionType === 'long' && stopLossPrice >= entryPrice) {
+      errors.push(`Stop loss price (${stopLossPrice}) must be lower than entry price (${entryPrice}) for long positions`);
+      suggestions.push(`Maximum allowed stop loss price: ${(entryPrice - 0.01).toFixed(2)}`);
     }
     
-    // Reasonable thresholds
+    if (positionType === 'short' && stopLossPrice <= entryPrice) {
+      errors.push(`Stop loss price (${stopLossPrice}) must be higher than entry price (${entryPrice}) for short positions`);
+      suggestions.push(`Minimum allowed stop loss price: ${(entryPrice + 0.01).toFixed(2)}`);
+    }
+    
+    // Calculate stop loss points for reasonable thresholds
+    const stopLossPoints = Math.abs(entryPrice - stopLossPrice);
     const minReasonablePoints = entryPrice * 0.001; // 0.1% of entry price
     const maxReasonablePoints = entryPrice * 0.1;  // 10% of entry price
     
     if (stopLossPoints < minReasonablePoints) {
-      errors.push(`Stop loss points (${stopLossPoints.toFixed(2)}) may be too tight for effective risk management`);
-      suggestions.push(`Consider using at least ${minReasonablePoints.toFixed(2)} points`);
+      errors.push(`Stop loss is too tight (${stopLossPoints.toFixed(2)} points) for effective risk management`);
+      const suggestedPrice = positionType === 'long' 
+        ? entryPrice - minReasonablePoints 
+        : entryPrice + minReasonablePoints;
+      suggestions.push(`Consider stop loss price around ${suggestedPrice.toFixed(2)}`);
     } else if (stopLossPoints > maxReasonablePoints) {
-      errors.push(`Stop loss points (${stopLossPoints.toFixed(2)}) may be too wide for effective risk management`);
-      suggestions.push(`Consider using at most ${maxReasonablePoints.toFixed(2)} points`);
+      errors.push(`Stop loss is too wide (${stopLossPoints.toFixed(2)} points) for effective risk management`);
+      const suggestedPrice = positionType === 'long' 
+        ? entryPrice - maxReasonablePoints 
+        : entryPrice + maxReasonablePoints;
+      suggestions.push(`Consider stop loss price around ${suggestedPrice.toFixed(2)}`);
     }
     
     return {

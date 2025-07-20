@@ -120,9 +120,18 @@ export const createJournalTrade = async (
     const response = await fetch(getApiUrl(API_ENDPOINTS.JOURNAL), options);
     
     if (!response.ok) {
+      const errorText = await response.text();
+      
+      // For validation errors (400), throw a more detailed error
+      if (response.status === 400) {
+        const error = new Error(errorText);
+        error.name = 'ValidationError';
+        throw error;
+      }
+      
       return {
         error: `HTTP error! status: ${response.status}`,
-        detail: await response.text(),
+        detail: errorText,
       };
     }
     
@@ -155,13 +164,14 @@ export const updateJournalTrade = async (
     
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Update trade error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorText: errorText,
-        url: response.url,
-        requestBody: trade
-      });
+      
+      // For validation errors (400), throw a more detailed error
+      if (response.status === 400) {
+        const error = new Error(errorText);
+        error.name = 'ValidationError';
+        throw error;
+      }
+      
       return {
         error: `HTTP error! status: ${response.status}`,
         detail: errorText,

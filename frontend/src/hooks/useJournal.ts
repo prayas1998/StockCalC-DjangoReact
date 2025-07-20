@@ -39,6 +39,7 @@ export const useJournal = (filters?: JournalFilters) => {
   } = useInfiniteQuery({
     queryKey: ['journalTrades', filters],
     queryFn: async ({ pageParam = 1 }) => {
+      
       const isConnected = await checkConnection();
       if (!isConnected) {
         throw new Error('API connection failed. Please check your connection and try again.');
@@ -49,6 +50,7 @@ export const useJournal = (filters?: JournalFilters) => {
         page: pageParam,
         page_size: 10 // Default page size
       });
+      
 
       if ('error' in response) {
         if (response.detail === 'Your session has expired. Please log in again.') {
@@ -95,15 +97,23 @@ export const useJournal = (filters?: JournalFilters) => {
       if (!isConnected) {
         throw new Error('API connection failed. Please check your connection and try again.');
       }
-      return createJournalTrade(newTrade);
+      const result = await createJournalTrade(newTrade);
+      if ('error' in result) {
+        throw new Error(result.detail || result.error);
+      }
+      return result;
     },
     onSuccess: () => {
       toast.success('Trade added successfully');
       queryClient.invalidateQueries({ queryKey: ['journalTrades'] });
       queryClient.invalidateQueries({ queryKey: ['journalAnalytics'] }); // Invalidate analytics on trade changes
     },
-    onError: (error: Error) => {
-      toast.error(`Failed to add trade: ${error.message}`);
+    onError: (error: any) => {
+      // Don't show toast for validation errors - let form handle field-level errors
+      // Only show toast for non-validation errors
+      if (!error.message || !error.message.includes('{')) {
+        toast.error(`Failed to add trade: ${error.message || 'Unknown error occurred'}`);
+      }
     }
   });
 
@@ -114,15 +124,23 @@ export const useJournal = (filters?: JournalFilters) => {
       if (!isConnected) {
         throw new Error('API connection failed. Please check your connection and try again.');
       }
-      return updateJournalTrade(id.toString(), trade);
+      const result = await updateJournalTrade(id.toString(), trade);
+      if ('error' in result) {
+        throw new Error(result.detail || result.error);
+      }
+      return result;
     },
     onSuccess: () => {
       toast.success('Trade updated successfully');
       queryClient.invalidateQueries({ queryKey: ['journalTrades'] });
       queryClient.invalidateQueries({ queryKey: ['journalAnalytics'] });
     },
-    onError: (error: Error) => {
-      toast.error(`Failed to update trade: ${error.message}`);
+    onError: (error: any) => {
+      // Don't show toast for validation errors - let form handle field-level errors
+      // Only show toast for non-validation errors
+      if (!error.message || !error.message.includes('{')) {
+        toast.error(`Failed to update trade: ${error.message || 'Unknown error occurred'}`);
+      }
     }
   });
 

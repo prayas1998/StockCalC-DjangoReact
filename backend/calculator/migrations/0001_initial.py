@@ -11,7 +11,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        # Removed auth dependency - using Supabase authentication only
     ]
 
     operations = [
@@ -108,15 +108,7 @@ class Migration(migrations.Migration):
                         decimal_places=2, default=Decimal("0.00"), max_digits=12
                     ),
                 ),
-                (
-                    "user",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.CASCADE,
-                        to=settings.AUTH_USER_MODEL,
-                    ),
-                ),
+                # Removed user foreign key - using Supabase UUID instead
             ],
         ),
         migrations.CreateModel(
@@ -238,15 +230,7 @@ class Migration(migrations.Migration):
                         to="calculator.transactiongroup",
                     ),
                 ),
-                (
-                    "user",
-                    models.ForeignKey(
-                        blank=True,
-                        null=True,
-                        on_delete=django.db.models.deletion.CASCADE,
-                        to=settings.AUTH_USER_MODEL,
-                    ),
-                ),
+                # Removed user foreign key - using Supabase UUID instead
             ],
         ),
     ]

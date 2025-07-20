@@ -19,13 +19,13 @@ export const isProduction =
 export const API_ENDPOINTS = {
   HEALTH_CHECK: `${API_PREFIX}/health-check/`,
   CALCULATE: `${API_PREFIX}/calculate/`,
-  SAVE_CALCULATION: `${API_PREFIX}/save-calculation/`,
-  TRANSACTION_GROUPS: `${API_PREFIX}/transaction-groups/`,
-  TRANSACTIONS: `${API_PREFIX}/transactions/`,
   JOURNAL: `${API_PREFIX}/journal/`,
   JOURNAL_TAGS: `${API_PREFIX}/tags/`,
   JOURNAL_ANALYTICS: `${API_PREFIX}/journal/analytics/`,
   JOURNAL_SEARCH: `${API_PREFIX}/journal/search/`,
+  PROFILE: `${API_PREFIX}/profile/`,
+  CHANGE_PASSWORD: `${API_PREFIX}/profile/change-password/`,
+  DELETE_ACCOUNT: `${API_PREFIX}/profile/delete-account/`,
 };
 
 // Format a full API URL

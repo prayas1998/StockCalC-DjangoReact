@@ -11,21 +11,16 @@ export const formatTransactionsForApi = (
   positionType: PositionType
 ) => {
   return transactions.map((t) => {
-    if (tradeType === 'equity-intraday' && positionType === 'short') {
-      // For short positions, swap buyPrice and sellPrice
-      return {
-        quantity: t.quantity,
-        buyPrice: t.sellPrice || "0",  // Exit price (buy back)
-        sellPrice: t.buyPrice || "0",  // Entry price (sell)
-      };
-    } else {
-      // For long positions, keep as is
-      return {
-        quantity: t.quantity,
-        buyPrice: t.buyPrice || "0",
-        sellPrice: t.sellPrice || "0",
-      };
-    }
+    // For all trade types and positions, send data as-is
+    // The backend calculator expects:
+    // - buyPrice: Entry price for long trades, Exit price for short trades
+    // - sellPrice: Exit price for long trades, Entry price for short trades
+    // The frontend form labels guide users to enter the correct values
+    return {
+      quantity: t.quantity,
+      buyPrice: t.buyPrice || "0",
+      sellPrice: t.sellPrice || "0",
+    };
   });
 };
 

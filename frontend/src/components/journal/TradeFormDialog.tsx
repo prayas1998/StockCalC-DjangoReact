@@ -10,6 +10,7 @@ import { TradeForm } from "./TradeForm";
 import { useJournal } from "@/hooks/useJournal";
 import { toast } from "sonner";
 import { TradeJournalCreate, TradeJournalUpdate, TradeTags } from "@/types/journal";
+import { useFormValidationErrors } from "@/hooks/useFormValidationErrors";
 
 interface TradeFormDialogProps {
   open: boolean;
@@ -30,6 +31,7 @@ export function TradeFormDialog({
 }: TradeFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createTrade, updateTrade } = useJournal();
+  const { validationErrors, setErrorsFromResponse, clearAllErrors } = useFormValidationErrors();
 
   // Handle form submission
   const handleSubmit = async (data: TradeJournalCreate) => {
@@ -38,29 +40,27 @@ export function TradeFormDialog({
     try {
       if (mode === "add") {
         // Create new trade
-        const result = await createTrade.mutateAsync(data);
-        if ("error" in result) {
-          throw new Error(result.error);
-        }
-        toast.success("Trade added successfully");
+        await createTrade.mutateAsync(data);
+        // Only close on success - errors will be caught below
+        onOpenChange(false);
       } else if (mode === "edit" && tradeId) {
         // Update existing trade
-        const result = await updateTrade.mutateAsync({
+        await updateTrade.mutateAsync({
           id: tradeId,
           trade: data as TradeJournalUpdate,
         });
-        if ("error" in result) {
-          throw new Error(result.error);
-        }
-        toast.success("Trade updated successfully");
+        // Only close on success - errors will be caught below
+        onOpenChange(false);
       }
-
-      // Close the dialog on success
-      onOpenChange(false);
-    } catch (error) {
-      toast.error(
-        `Failed to ${mode === "add" ? "add" : "update"} trade: ${error instanceof Error ? error.message : "Unknown error"}`
-      );
+    } catch (error: any) {
+      
+      // Handle validation errors by setting field-level errors
+      if (error.message && setErrorsFromResponse(error.message)) {
+        // Validation errors were set, don't show toast
+      } else {
+        // Non-validation error, show toast
+        toast.error(`Failed to ${mode === "add" ? "add" : "update"} trade: ${error.message || 'Unknown error'}`);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -91,6 +91,8 @@ export function TradeFormDialog({
           onCancel={handleCancel}
           isSubmitting={isSubmitting}
           availableTags={availableTags}
+          validationErrors={validationErrors}
+          onFieldChange={clearAllErrors}
         />
       </DialogContent>
     </Dialog>

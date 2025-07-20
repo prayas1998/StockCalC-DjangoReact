@@ -142,6 +142,25 @@ export function isTradeProfit(trade: TradeJournal): boolean {
 }
 
 /**
+ * Calculate profit/loss percentage for a trade
+ */
+export function calculatePnLPercentage(trade: TradeJournal): number | null {
+  if (!trade.pnl || trade.status === 'OPEN') {
+    return null;
+  }
+  
+  // Calculate the investment amount (entry price * quantity)
+  const investmentAmount = trade.buy_price * trade.quantity;
+  
+  if (investmentAmount === 0) {
+    return null;
+  }
+  
+  // Calculate percentage: (P&L / Investment Amount) * 100
+  return (trade.pnl / investmentAmount) * 100;
+}
+
+/**
  * Get trade type and direction display text
  */
 export function getTradeTypeDisplayText(tradeType: string, direction: string): string {

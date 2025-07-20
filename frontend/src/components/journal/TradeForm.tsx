@@ -1,65 +1,86 @@
-import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
-import { CalendarIcon, Check, ChevronsUpDown, Tag as TagIcon, X, Clock } from "lucide-react";
-import * as z from "zod";
+"use client"
 
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
-import {
-  Form,
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { NumericInput } from "@/components/ui/numeric-input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Badge } from "@/components/ui/badge";
-import { TradeJournalCreate, TradeStatus, TradeType, TradeTags, TradeDirection } from "@/types/journal";
-import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector";
-import { BrokerType, TradeType as CalculatorTradeType, PositionType } from "@/context/CalculatorContext";
+import { useState, useEffect } from "react"
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { format } from "date-fns"
+import { CalendarIcon, X, DollarSign, CalendarDays, FileText, Settings2, Building2, Clock } from "lucide-react"
+import * as z from "zod"
+
+import { cn } from "@/lib/utils"
+import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage, FormDescription } from "@/components/ui/form"
+import { Input } from "@/components/ui/input"
+import { NumericInput } from "@/components/ui/numeric-input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { type TradeJournalCreate, TradeStatus, TradeType, type TradeTags, TradeDirection } from "@/types/journal"
+import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector"
+import type { BrokerType, TradeType as CalculatorTradeType, PositionType } from "@/context/CalculatorContext"
+import type { ValidationErrors } from "@/hooks/useFormValidationErrors"
+import { ValidationFieldWrapper } from "./ValidationFieldWrapper"
 
 // Define the form schema using zod
 const tradeFormSchema = z.object({
   company_name: z.string().min(1, { message: "Company name is required" }),
-  quantity: z.string().min(1, { message: "Quantity is required" }).refine((val) => {
-    const num = parseInt(val);
-    return !isNaN(num) && num > 0;
-  }, { message: "Quantity must be a positive number" }),
-  entry_price: z.string().min(1, { message: "Entry price is required" }).refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num > 0;
-  }, { message: "Entry price must be greater than 0" }),
-  exit_price: z.string().optional().refine((val) => {
-    if (!val || val === "") return true;
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0;
-  }, { message: "Exit price must be a valid positive number" }),
-  sl: z.string().optional().refine((val) => {
-    if (!val || val === "") return true;
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0;
-  }, { message: "Stop loss must be a valid positive number" }),
-  target_price: z.string().optional().refine((val) => {
-    if (!val || val === "") return true;
-    const num = parseFloat(val);
-    return !isNaN(num) && num >= 0;
-  }, { message: "Target price must be a valid positive number" }),
+  quantity: z
+    .string()
+    .min(1, { message: "Quantity is required" })
+    .refine(
+      (val) => {
+        const num = Number.parseInt(val)
+        return !isNaN(num) && num > 0
+      },
+      { message: "Quantity must be a positive number" },
+    ),
+  entry_price: z
+    .string()
+    .min(1, { message: "Entry price is required" })
+    .refine(
+      (val) => {
+        const num = Number.parseFloat(val)
+        return !isNaN(num) && num > 0
+      },
+      { message: "Entry price must be greater than 0" },
+    ),
+  exit_price: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val === "") return true
+        const num = Number.parseFloat(val)
+        return !isNaN(num) && num >= 0
+      },
+      { message: "Exit price must be a valid positive number" },
+    ),
+  sl: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val === "") return true
+        const num = Number.parseFloat(val)
+        return !isNaN(num) && num >= 0
+      },
+      { message: "Stop loss must be a valid positive number" },
+    ),
+  target_price: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val === "") return true
+        const num = Number.parseFloat(val)
+        return !isNaN(num) && num >= 0
+      },
+      { message: "Target price must be a valid positive number" },
+    ),
   entry_date: z.date(),
   exit_date: z.date().optional(),
   status: z.nativeEnum(TradeStatus),
@@ -67,16 +88,18 @@ const tradeFormSchema = z.object({
   tags: z.array(z.number()).optional(),
   broker: z.string().min(1, { message: "Broker is required" }),
   exchange: z.string().min(1, { message: "Exchange is required" }),
-});
+})
 
-type TradeFormValues = z.infer<typeof tradeFormSchema>;
+type TradeFormValues = z.infer<typeof tradeFormSchema>
 
 interface TradeFormProps {
-  initialData?: TradeJournalCreate;
-  availableTags: TradeTags[];
-  onSubmit: (data: TradeJournalCreate) => void;
-  onCancel: () => void;
-  isSubmitting: boolean;
+  initialData?: TradeJournalCreate
+  availableTags: TradeTags[]
+  onSubmit: (data: TradeJournalCreate) => void
+  onCancel: () => void
+  isSubmitting: boolean
+  validationErrors?: ValidationErrors
+  onFieldChange?: () => void
 }
 
 export function TradeForm({
@@ -85,31 +108,29 @@ export function TradeForm({
   onSubmit,
   onCancel,
   isSubmitting,
+  validationErrors = {},
+  onFieldChange,
 }: TradeFormProps) {
   // State for broker, trade type, and position type (outside of form)
-  const [selectedBroker, setSelectedBroker] = useState<BrokerType>(
-    (initialData?.broker as BrokerType) || "Dhan"
-  );
+  const [selectedBroker, setSelectedBroker] = useState<BrokerType>((initialData?.broker as BrokerType) || "Dhan")
   const [selectedTradeType, setSelectedTradeType] = useState<CalculatorTradeType>(
-    initialData?.trade_type === TradeType.EQUITY_INTRADAY ? 'equity-intraday' : 'equity-delivery'
-  );
+    initialData?.trade_type === TradeType.EQUITY_INTRADAY ? "equity-intraday" : "equity-delivery",
+  )
   const [selectedPositionType, setSelectedPositionType] = useState<PositionType>(
-    initialData?.direction === TradeDirection.SHORT ? 'short' : 'long'
-  );
+    initialData?.direction === TradeDirection.SHORT ? "short" : "long",
+  )
 
   // Helper function to extract tag IDs from initialData
   const getInitialTagIds = () => {
-    if (!initialData?.tags) return [];
-    
+    if (!initialData?.tags) return []
+
     // Handle both array of objects and array of numbers
     if (Array.isArray(initialData.tags)) {
-      return initialData.tags.map((tag: any) => 
-        typeof tag === 'object' ? tag.id : tag
-      );
+      return initialData.tags.map((tag: any) => (typeof tag === "object" ? tag.id : tag))
     }
-    
-    return [];
-  };
+
+    return []
+  }
 
   // Initialize form with default values or provided initialData
   const form = useForm<TradeFormValues>({
@@ -118,13 +139,11 @@ export function TradeForm({
       company_name: initialData?.company_name || "",
       quantity: initialData?.quantity?.toString() || "",
       entry_price:
-        (selectedPositionType === 'short'
-          ? initialData?.sell_price?.toString()
-          : initialData?.buy_price?.toString()) || "",
+        (selectedPositionType === "short" ? initialData?.sell_price?.toString() : initialData?.buy_price?.toString()) ||
+        "",
       exit_price:
-        (selectedPositionType === 'short'
-          ? initialData?.buy_price?.toString()
-          : initialData?.sell_price?.toString()) || "",
+        (selectedPositionType === "short" ? initialData?.buy_price?.toString() : initialData?.sell_price?.toString()) ||
+        "",
       sl: initialData?.stop_loss?.toString() || "",
       target_price: initialData?.target_price?.toString() || "",
       entry_date: initialData?.entry_date ? new Date(initialData.entry_date) : new Date(),
@@ -135,125 +154,312 @@ export function TradeForm({
       broker: selectedBroker,
       exchange: initialData?.exchange || "NSE",
     },
-  });
+  })
 
-  const status = form.watch("status");
-  const stopLoss = form.watch("sl");
-  const exchange = form.watch("exchange");
-  const targetPrice = form.watch("target_price");
-  const entryPrice = form.watch("entry_price");
-  const selectedTags = form.watch("tags") || [];
-  const exitDate = form.watch("exit_date");
+  const status = form.watch("status")
+  const stopLoss = form.watch("sl")
+  const exchange = form.watch("exchange")
+  const targetPrice = form.watch("target_price")
+  const entryPrice = form.watch("entry_price")
+  const selectedTags = form.watch("tags") || []
+  const exitDate = form.watch("exit_date")
 
   // Helper functions to convert between journal and calculator types
   const calculatorToJournalTradeType = (calcType: CalculatorTradeType): TradeType => {
     switch (calcType) {
-      case 'equity-delivery':
-        return TradeType.EQUITY_DELIVERY;
-      case 'equity-intraday':
-        return TradeType.EQUITY_INTRADAY;
+      case "equity-delivery":
+        return TradeType.EQUITY_DELIVERY
+      case "equity-intraday":
+        return TradeType.EQUITY_INTRADAY
       default:
-        return TradeType.EQUITY_DELIVERY;
+        return TradeType.EQUITY_DELIVERY
     }
-  };
+  }
 
   const positionTypeToDirection = (positionType: PositionType): TradeDirection => {
-    return positionType === 'short' ? TradeDirection.SHORT : TradeDirection.LONG;
-  };
+    return positionType === "short" ? TradeDirection.SHORT : TradeDirection.LONG
+  }
 
   // Handlers for broker, trade type, and position changes
   const handleBrokerChange = (newBroker: BrokerType) => {
-    setSelectedBroker(newBroker);
-    form.setValue("broker", newBroker);
-  };
+    setSelectedBroker(newBroker)
+    form.setValue("broker", newBroker)
+  }
 
   const handleTradeTypeChange = (newTradeType: CalculatorTradeType) => {
-    setSelectedTradeType(newTradeType);
-  };
+    setSelectedTradeType(newTradeType)
+  }
 
   const handlePositionTypeChange = (newPositionType: PositionType) => {
-    setSelectedPositionType(newPositionType);
-  };
+    setSelectedPositionType(newPositionType)
+  }
 
   useEffect(() => {
+    if (status === TradeStatus.CANCELLED) {
+      form.setValue("exit_price", "")
+      return
+    }
+
+    // Only auto-set exit price if validation passes
     if (
       (status === TradeStatus.CLOSED_TARGET || status === TradeStatus.CLOSED_STOPLOSS) &&
-      stopLoss && targetPrice && entryPrice
+      stopLoss &&
+      targetPrice &&
+      entryPrice
     ) {
+      const entryVal = parseFloat(entryPrice)
+      const targetVal = parseFloat(targetPrice)
+      const stopVal = parseFloat(stopLoss)
+
       if (status === TradeStatus.CLOSED_TARGET) {
-        form.setValue("exit_price", targetPrice);
+        // Check if target price is provided
+        if (!targetPrice || targetPrice === "" || targetVal === 0) {
+          form.setError("target_price", {
+            type: "manual",
+            message: "Target price is required when status is 'Closed Target'"
+          })
+          return
+        }
+        
+        // Validate target price vs entry price based on direction
+        if (selectedPositionType === "long" && targetVal <= entryVal) {
+          // Don't auto-set exit price for invalid target
+          form.setError("target_price", {
+            type: "manual",
+            message: "Target price must be greater than entry price for long positions"
+          })
+          return
+        } else if (selectedPositionType === "short" && targetVal >= entryVal) {
+          // Don't auto-set exit price for invalid target
+          form.setError("target_price", {
+            type: "manual",
+            message: "Target price must be less than entry price for short positions"
+          })
+          return
+        } else {
+          // Valid target price, clear errors and set exit price
+          form.clearErrors("target_price")
+          form.setValue("exit_price", targetPrice)
+        }
       } else if (status === TradeStatus.CLOSED_STOPLOSS) {
-        form.setValue("exit_price", stopLoss);
+        // Check if stop loss is provided
+        if (!stopLoss || stopLoss === "" || stopVal === 0) {
+          form.setError("sl", {
+            type: "manual",
+            message: "Stop loss is required when status is 'Closed StopLoss'"
+          })
+          return
+        }
+        
+        // Validate stop loss vs entry price based on direction
+        if (selectedPositionType === "long" && stopVal >= entryVal) {
+          // Don't auto-set exit price for invalid stop loss
+          form.setError("sl", {
+            type: "manual",
+            message: "Stop loss must be less than entry price for long positions"
+          })
+          return
+        } else if (selectedPositionType === "short" && stopVal <= entryVal) {
+          // Don't auto-set exit price for invalid stop loss
+          form.setError("sl", {
+            type: "manual",
+            message: "Stop loss must be greater than entry price for short positions"
+          })
+          return
+        } else {
+          // Valid stop loss, clear errors and set exit price
+          form.clearErrors("sl")
+          form.setValue("exit_price", stopLoss)
+        }
       }
-    } else if (status === TradeStatus.CANCELLED) {
-      form.setValue("exit_price", "");
     }
-  }, [status, stopLoss, targetPrice, entryPrice, form]);
+  }, [status, stopLoss, targetPrice, entryPrice, selectedPositionType, form])
 
   // Auto-fill exit date when status changes to closed
   useEffect(() => {
-    const isClosedStatus = status === TradeStatus.CLOSED_TARGET || 
-                          status === TradeStatus.CLOSED_STOPLOSS || 
-                          status === TradeStatus.CLOSED_MANUAL;
-    
+    const isClosedStatus =
+      status === TradeStatus.CLOSED_TARGET ||
+      status === TradeStatus.CLOSED_STOPLOSS ||
+      status === TradeStatus.CLOSED_MANUAL
+
     // Only auto-fill if the trade is being closed and exit date is not already set
     if (isClosedStatus && !exitDate) {
-      form.setValue("exit_date", new Date());
+      form.setValue("exit_date", new Date())
     }
-  }, [status, exitDate, form]);
+  }, [status, exitDate, form])
 
   // Handle tag selection
   const handleTagSelect = (tagId: string) => {
-    const id = parseInt(tagId);
-    const currentTags = form.getValues("tags") || [];
-    
+    const id = Number.parseInt(tagId)
+    const currentTags = form.getValues("tags") || []
+
     if (!currentTags.includes(id)) {
-      form.setValue("tags", [...currentTags, id]);
+      form.setValue("tags", [...currentTags, id])
     }
-  };
+  }
 
   // Handle tag removal
   const handleTagRemove = (tagId: number) => {
-    const currentTags = form.getValues("tags") || [];
-    form.setValue("tags", currentTags.filter(id => id !== tagId));
-  };
+    const currentTags = form.getValues("tags") || []
+    form.setValue(
+      "tags",
+      currentTags.filter((id) => id !== tagId),
+    )
+  }
 
   // Get available tags for selection (excluding already selected ones)
   const getAvailableTagsForSelection = () => {
-    const currentTags = form.getValues("tags") || [];
-    return availableTags.filter(tag => !currentTags.includes(tag.id));
-  };
+    const currentTags = form.getValues("tags") || []
+    return availableTags.filter((tag) => !currentTags.includes(tag.id))
+  }
+
+  // Centralized scroll to error field function
+  const scrollToErrorField = (fieldName: string) => {
+    setTimeout(() => {
+      const selectors = [
+        `[name="${fieldName}"]`,
+        `[data-field="${fieldName}"]`,
+        `input[name="${fieldName}"]`,
+        `select[name="${fieldName}"]`,
+        `textarea[name="${fieldName}"]`
+      ]
+      
+      let element: HTMLElement | null = null
+      for (const selector of selectors) {
+        element = document.querySelector(selector)
+        if (element) break
+      }
+      
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        element.focus()
+      }
+    }, 100)
+  }
 
   // Handle form submission
   function handleSubmit(values: TradeFormValues) {
+    // Re-validate the current form state before submission
+    const entryVal = parseFloat(values.entry_price)
+    const targetVal = values.target_price ? parseFloat(values.target_price) : null
+    const stopVal = values.sl ? parseFloat(values.sl) : null
+    const currentStatus = values.status
+
+    // Validate target price if status is CLOSED_TARGET
+    if (currentStatus === TradeStatus.CLOSED_TARGET) {
+      // Target price is REQUIRED for CLOSED_TARGET status
+      if (!values.target_price || values.target_price === "" || targetVal === null || targetVal === 0) {
+        form.setError("target_price", {
+          type: "manual",
+          message: "Target price is required when status is 'Closed Target'"
+        })
+        scrollToErrorField("target_price")
+        return
+      }
+      
+      // Validate target price vs entry price
+      if (selectedPositionType === "long" && targetVal <= entryVal) {
+        form.setError("target_price", {
+          type: "manual",
+          message: "Target price must be greater than entry price for long positions"
+        })
+        scrollToErrorField("target_price")
+        return
+      } else if (selectedPositionType === "short" && targetVal >= entryVal) {
+        form.setError("target_price", {
+          type: "manual",
+          message: "Target price must be less than entry price for short positions"
+        })
+        scrollToErrorField("target_price")
+        return
+      }
+    }
+
+    // Validate stop loss if status is CLOSED_STOPLOSS
+    if (currentStatus === TradeStatus.CLOSED_STOPLOSS) {
+      // Stop loss is REQUIRED for CLOSED_STOPLOSS status
+      if (!values.sl || values.sl === "" || stopVal === null || stopVal === 0) {
+        form.setError("sl", {
+          type: "manual",
+          message: "Stop loss is required when status is 'Closed StopLoss'"
+        })
+        scrollToErrorField("sl")
+        return
+      }
+      
+      // Validate stop loss vs entry price
+      if (selectedPositionType === "long" && stopVal >= entryVal) {
+        form.setError("sl", {
+          type: "manual",
+          message: "Stop loss must be less than entry price for long positions"
+        })
+        scrollToErrorField("sl")
+        return
+      } else if (selectedPositionType === "short" && stopVal <= entryVal) {
+        form.setError("sl", {
+          type: "manual",
+          message: "Stop loss must be greater than entry price for short positions"
+        })
+        scrollToErrorField("sl")
+        return
+      }
+    }
+
+    // Check for any remaining form errors
+    const formErrors = form.formState.errors
+    if (Object.keys(formErrors).length > 0) {
+      const firstErrorField = Object.keys(formErrors)[0]
+      setTimeout(() => {
+        const element = document.querySelector(`[name="${firstErrorField}"], [data-field="${firstErrorField}"]`) as HTMLElement
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+          element.focus()
+        }
+      }, 100)
+      return
+    }
+
     // Get trade type and direction from external state
-    const tradeType = calculatorToJournalTradeType(selectedTradeType);
-    const direction = positionTypeToDirection(selectedPositionType);
+    const tradeType = calculatorToJournalTradeType(selectedTradeType)
+    const direction = positionTypeToDirection(selectedPositionType)
 
     // Convert string values to numbers
-    const quantity = parseInt(values.quantity);
-    const entryPrice = parseFloat(values.entry_price);
-    const exitPrice = values.exit_price && values.exit_price !== "" ? parseFloat(values.exit_price) : undefined;
-    const stopLoss = values.sl && values.sl !== "" ? parseFloat(values.sl) : undefined;
-    const targetPrice = values.target_price && values.target_price !== "" ? parseFloat(values.target_price) : undefined;
+    const quantity = Number.parseInt(values.quantity)
+    const entryPrice = Number.parseFloat(values.entry_price)
+    const exitPrice = values.exit_price && values.exit_price !== "" ? Number.parseFloat(values.exit_price) : undefined
+    const stopLoss = values.sl && values.sl !== "" ? Number.parseFloat(values.sl) : undefined
+    const targetPrice =
+      values.target_price && values.target_price !== "" ? Number.parseFloat(values.target_price) : undefined
 
     // Convert dates to ISO strings for API
     const formattedValues = {
       ...values,
       entry_date: format(values.entry_date, "yyyy-MM-dd"),
       exit_date: values.exit_date ? format(values.exit_date, "yyyy-MM-dd") : undefined,
-    };
-    
-    // Map entry/exit price to buy/sell price based on direction
-    let buy_price, sell_price;
+    }
+
+    // Smart mapping based on trade direction and status
+    let buy_price, sell_price
     if (direction === TradeDirection.LONG) {
-      buy_price = entryPrice; // Entry price is required by validation
-      sell_price = exitPrice || undefined;
+      // Long trades: Entry price = Buy price, Exit price = Sell price
+      buy_price = entryPrice
+      // For LONG trades, only set sell_price for CLOSED_MANUAL status
+      // For CLOSED_TARGET/CLOSED_STOPLOSS, exit price comes from target_price/stop_loss
+      if (formattedValues.status === 'CLOSED_MANUAL') {
+        sell_price = exitPrice || undefined
+      } else {
+        sell_price = undefined
+      }
     } else {
-      // For short positions: entry_price is the sell price, exit_price is the buy price
-      // Note: buy_price is required by model, so we need to provide a value even for open short positions
-      sell_price = entryPrice;
-      buy_price = exitPrice || entryPrice; // Use entry_price as placeholder for open short positions
+      // Short trades: Entry price = Sell price, Exit price = Buy price
+      sell_price = entryPrice
+      // For SHORT trades, only set buy_price for CLOSED_MANUAL status
+      // For CLOSED_TARGET/CLOSED_STOPLOSS, exit price comes from target_price/stop_loss
+      if (formattedValues.status === 'CLOSED_MANUAL') {
+        buy_price = exitPrice || undefined
+      } else {
+        buy_price = undefined
+      }
     }
 
     onSubmit({
@@ -271,541 +477,593 @@ export function TradeForm({
       personal_notes: formattedValues.personal_notes,
       tags: formattedValues.tags || [],
       broker: selectedBroker,
-      exchange: formattedValues.exchange
-    });
+      exchange: formattedValues.exchange,
+    })
+  }
+
+  const handleFieldChange = (fieldName: string, onChange: (value: any) => void) => (value: string) => {
+    onChange(value)
+    // Clear backend validation errors when user changes field
+    if (onFieldChange && validationErrors[fieldName]) {
+      onFieldChange()
+    }
+    // Clear form errors for this field when user changes it
+    if (form.formState.errors[fieldName]) {
+      form.clearErrors(fieldName as any)
+    }
   }
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-8">
-        {/* Basic Trade Information Section */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-            <h3 className="text-lg font-semibold text-foreground">Basic Information</h3>
-          </div>
-          
-          {/* Broker and Trade Type Selector */}
-          <div>
-            <FormLabel className="text-base mb-3 block">Broker & Trade Configuration</FormLabel>
-            <BrokerTradeTypeSelector
-              selectedBroker={selectedBroker}
-              selectedTradeType={selectedTradeType}
-              onBrokerChange={handleBrokerChange}
-              onTradeTypeChange={handleTradeTypeChange}
-              positionType={selectedPositionType}
-              onPositionTypeChange={handlePositionTypeChange}
-              compact={true}
-            />
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Exchange Selector */}
-            <FormField
-              control={form.control}
-              name="exchange"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Exchange</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="NSE">NSE</SelectItem>
-                      <SelectItem value="BSE">BSE</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Company Name */}
-            <FormField
-              control={form.control}
-              name="company_name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Company Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Enter company name" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        </div>
-
-        {/* Price Information Section */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-            <h3 className="text-lg font-semibold text-foreground">Price Details</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          
-          {/* Quantity */}
-          <FormField
-            control={form.control}
-            name="quantity"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Quantity</FormLabel>
-                <FormControl>
-                  <NumericInput
-                    placeholder="Enter quantity"
-                    value={field.value || ""}
-                    onChange={(value) => field.onChange(value)}
-                    allowDecimal={false}
-                    min={1}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          {/* Entry Price */}
-          <FormField
-            control={form.control}
-            name="entry_price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Entry Price
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {selectedPositionType === 'long' ? "(Buy Price)" : "(Sell Price)"}
-                  </span>
-                </FormLabel>
-                <FormControl>
-                  <NumericInput
-                    placeholder="Enter entry price"
-                    value={field.value || ""}
-                    onChange={(value) => field.onChange(value)}
-                    allowDecimal={true}
-                    min={0.01}
-                    maxDecimalPlaces={2}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Exit Price */}
-          <FormField
-            control={form.control}
-            name="exit_price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>
-                  Exit Price (Optional)
-                  <span className="ml-2 text-xs text-muted-foreground">
-                    {selectedPositionType === 'long' ? "(Sell Price)" : "(Buy Price)"}
-                  </span>
-                </FormLabel>
-                <FormControl>
-                  <NumericInput
-                    placeholder="Enter exit price"
-                    value={field.value || ""}
-                    onChange={(value) => field.onChange(value)}
-                    allowDecimal={true}
-                    min={0.01}
-                    maxDecimalPlaces={2}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* SL */}
-          <FormField
-            control={form.control}
-            name="sl"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Stop Loss (Optional)</FormLabel>
-                <FormControl>
-                  <NumericInput
-                    placeholder="Enter stop loss"
-                    value={field.value || ""}
-                    onChange={(value) => field.onChange(value)}
-                    allowDecimal={true}
-                    min={0.01}
-                    maxDecimalPlaces={2}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Target Price */}
-          <FormField
-            control={form.control}
-            name="target_price"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Target Price (Optional)</FormLabel>
-                <FormControl>
-                  <NumericInput
-                    placeholder="Enter target price"
-                    value={field.value || ""}
-                    onChange={(value) => field.onChange(value)}
-                    allowDecimal={true}
-                    min={0.01}
-                    maxDecimalPlaces={2}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          </div>
-        </div>
-
-        {/* Date Information Section */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-            <h3 className="text-lg font-semibold text-foreground">Trade Dates</h3>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-          {/* Entry Date - Enhanced */}
-          <FormField
-            control={form.control}
-            name="entry_date"
-            render={({ field }) => (
-              <FormItem className="flex flex-col">
-                <FormLabel>Entry Date</FormLabel>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <FormControl>
-                      <Button
-                        variant={"outline"}
-                        className={cn(
-                          "w-full pl-3 text-left font-normal justify-between",
-                          !field.value && "text-muted-foreground"
-                        )}
-                      >
-                        <span>
-                          {field.value ? (
-                            format(field.value, "EEE, MMM d, yyyy")
-                          ) : (
-                            "Select entry date"
-                          )}
-                        </span>
-                        <CalendarIcon className="h-4 w-4 opacity-50" />
-                      </Button>
-                    </FormControl>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <div className="p-3 border-b">
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Clock className="h-4 w-4" />
-                        <span>Select the date you entered this trade</span>
-                      </div>
-                    </div>
-                    <Calendar
-                      mode="single"
-                      selected={field.value}
-                      onSelect={field.onChange}
-                      disabled={(date) =>
-                        date > new Date() || date < new Date("1900-01-01")
-                      }
-                      initialFocus
-                      showOutsideDays={false}
+    <div className="space-y-4">
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+          {/* Trade Configuration Card */}
+          <Card className="border-l-4 border-l-blue-500 dark:border-l-blue-400">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Settings2 className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+                Trade Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Broker Selector with Exchange Toggle */}
+              <div className="space-y-2">
+                <FormLabel className="text-sm font-medium">Broker & Exchange</FormLabel>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <BrokerTradeTypeSelector
+                      selectedBroker={selectedBroker}
+                      selectedTradeType={selectedTradeType}
+                      onBrokerChange={handleBrokerChange}
+                      onTradeTypeChange={handleTradeTypeChange}
+                      positionType={selectedPositionType}
+                      onPositionTypeChange={handlePositionTypeChange}
+                      compact={true}
                     />
-                    <div className="p-3 border-t">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => field.onChange(new Date())}
-                        className="w-full"
-                      >
-                        Today
-                      </Button>
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Exit Date - Enhanced */}
-          <FormField
-            control={form.control}
-            name="exit_date"
-            render={({ field }) => {
-              const isClosedStatus = status === TradeStatus.CLOSED_TARGET || 
-                                   status === TradeStatus.CLOSED_STOPLOSS || 
-                                   status === TradeStatus.CLOSED_MANUAL;
-              
-              return (
-                <FormItem className="flex flex-col">
-                  <FormLabel>
-                    Exit Date 
-                    {!isClosedStatus && <span className="text-muted-foreground"> (Optional)</span>}
-                    {isClosedStatus && <span className="text-red-500"> *</span>}
-                  </FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full pl-3 text-left font-normal justify-between",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          <span>
-                            {field.value ? (
-                              format(field.value, "EEE, MMM d, yyyy")
-                            ) : isClosedStatus ? (
-                              "Select exit date"
-                            ) : (
-                              "No exit date (trade open)"
-                            )}
-                          </span>
-                          <CalendarIcon className="h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <div className="p-3 border-b">
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="h-4 w-4" />
-                          <span>
-                            {isClosedStatus 
-                              ? "When did you close this trade?" 
-                              : "When will you exit this trade? (optional)"
-                            }
-                          </span>
-                        </div>
-                      </div>
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) =>
-                          date > new Date() || date < new Date("1900-01-01")
-                        }
-                        initialFocus
-                        showOutsideDays={false}
-                      />
-                      <div className="p-3 border-t space-y-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => field.onChange(new Date())}
-                          className="w-full"
-                        >
-                          Today
-                        </Button>
-                        {!isClosedStatus && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => field.onChange(undefined)}
-                            className="w-full"
-                          >
-                            Clear Date
-                          </Button>
-                        )}
-                      </div>
-                    </PopoverContent>
-                  </Popover>
-                  {isClosedStatus && (
-                    <FormDescription className="text-xs">
-                      Exit date is required for closed trades
-                    </FormDescription>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              );
-            }}
-          />
-          </div>
-        </div>
-
-        {/* Trade Status Section */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-            <h3 className="text-lg font-semibold text-foreground">Trade Status</h3>
-          </div>
-          <FormField
-            control={form.control}
-            name="status"
-            render={({ field }) => (
-              <FormItem className="space-y-4">
-                <FormLabel className="text-base">Current Status</FormLabel>
-                <FormControl>
-                  <RadioGroup
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    className="flex flex-col space-y-2"
-                  >
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {Object.values(TradeStatus).map((status) => (
-                        <FormItem key={status} className="flex items-center space-x-3 space-y-0 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
-                          <FormControl>
-                            <RadioGroupItem value={status} />
-                          </FormControl>
-                          <FormLabel className="font-normal cursor-pointer flex-1">
-                            {status.replace("_", " ")}
-                          </FormLabel>
-                        </FormItem>
-                      ))}
-                    </div>
-                  </RadioGroup>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        {/* Additional Information Section */}
-        <div className="space-y-6">
-          <div className="flex items-center gap-2 pb-2 border-b">
-            <div className="w-2 h-2 bg-indigo-500 rounded-full"></div>
-            <h3 className="text-lg font-semibold text-foreground">Additional Information</h3>
-          </div>
-          
-          {/* Personal Notes */}
-          <FormField
-            control={form.control}
-            name="personal_notes"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel className="text-base">Notes (Optional)</FormLabel>
-                <FormControl>
-                  <Textarea
-                    placeholder="Add any personal notes about this trade, strategy, market conditions, lessons learned, etc..."
-                    className="resize-none min-h-[120px]"
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          {/* Tags */}
-          {availableTags.length > 0 && (
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-base">Tags (Optional)</FormLabel>
-                  <FormDescription className="text-sm">
-                    Select tags to categorize and organize your trades
-                  </FormDescription>
-                  
-                  {/* Tag Selection Dropdown */}
-                  {getAvailableTagsForSelection().length > 0 && (
-                    <Select
-                      onValueChange={handleTagSelect}
-                      value=""
-                    >
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select tags to add" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {getAvailableTagsForSelection().map((tag) => (
-                          <SelectItem key={tag.id} value={tag.id.toString()}>
-                            <div className="flex items-center gap-2">
-                              <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
-                              {tag.name}
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                  
-                  {/* Selected Tags Display */}
-                  {selectedTags.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mt-3 p-3 bg-muted/30 rounded-lg">
-                      {selectedTags.map((tagId) => {
-                        const tag = availableTags.find((t) => t.id === tagId);
-                        if (!tag) return null;
-                        return (
-                          <Badge
-                            key={tag.id}
-                            variant="secondary"
-                            className="flex items-center gap-1 px-3 py-1.5 text-sm"
-                            style={{ 
-                              backgroundColor: tag.color + '20',
-                              borderColor: tag.color,
-                              color: tag.color
-                            }}
-                          >
-                            <TagIcon className="h-3 w-3" style={{ color: tag.color }} />
-                            {tag.name}
-                            <button
+                  </div>
+                  <FormField
+                    control={form.control}
+                    name="exchange"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <div className="flex rounded-lg border bg-background p-1">
+                            <Button
                               type="button"
-                              onClick={() => handleTagRemove(tag.id)}
-                              className="ml-1 hover:text-destructive transition-colors"
+                              variant={field.value === "NSE" ? "default" : "ghost"}
+                              size="sm"
+                              className="h-8 px-3 text-xs"
+                              onClick={() => field.onChange("NSE")}
                             >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        );
-                      })}
-                    </div>
-                  )}
-                  
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
-        </div>
-
-        {/* Form Actions */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-6 border-t bg-muted/20 -mx-6 px-6 py-4 mt-8">
-          <div className="text-sm text-muted-foreground">
-            {initialData ? "Make changes and click Update to save" : "Fill in the required fields and click Add Trade"}
-          </div>
-          <div className="flex space-x-3">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={onCancel}
-              disabled={isSubmitting}
-              className="min-w-[100px]"
-            >
-              Cancel
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting}
-              className="min-w-[120px] bg-primary hover:bg-primary/90"
-            >
-              {isSubmitting ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  Saving...
+                              NSE
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={field.value === "BSE" ? "default" : "ghost"}
+                              size="sm"
+                              className="h-8 px-3 text-xs"
+                              onClick={() => field.onChange("BSE")}
+                            >
+                              BSE
+                            </Button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-              ) : (
-                initialData ? "Update Trade" : "Add Trade"
+              </div>
+
+              {/* Company Name */}
+              <FormField
+                control={form.control}
+                name="company_name"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-2">
+                      <Building2 className="h-4 w-4" />
+                      Company Name
+                    </FormLabel>
+                    <FormControl>
+                      <Input placeholder="Enter company name" className="h-10" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Price & Quantity Card */}
+          <Card className="border-l-4 border-l-green-500 dark:border-l-green-400">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <DollarSign className="h-5 w-5 text-green-500 dark:text-green-400" />
+                Price & Quantity
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                {/* Quantity */}
+                <FormField
+                  control={form.control}
+                  name="quantity"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Quantity</FormLabel>
+                      <FormControl>
+                        <NumericInput
+                          placeholder="Enter quantity"
+                          value={field.value || ""}
+                          onChange={(value) => field.onChange(value)}
+                          allowDecimal={false}
+                          min={1}
+                          className="h-10"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Entry Price */}
+                <FormField
+                  control={form.control}
+                  name="entry_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Entry Price
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          {selectedPositionType === "long" ? "(Buy)" : "(Sell)"}
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <NumericInput
+                          placeholder="0.00"
+                          value={field.value || ""}
+                          onChange={(value) => field.onChange(value)}
+                          allowDecimal={true}
+                          min={0.01}
+                          maxDecimalPlaces={2}
+                          className="h-10"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Exit Price */}
+                <FormField
+                  control={form.control}
+                  name="exit_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">
+                        Exit Price
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          {selectedPositionType === "long" ? "(Sell)" : "(Buy)"}
+                        </span>
+                      </FormLabel>
+                      <FormControl>
+                        <NumericInput
+                          placeholder="0.00"
+                          value={field.value || ""}
+                          onChange={(value) => field.onChange(value)}
+                          allowDecimal={true}
+                          min={0.01}
+                          maxDecimalPlaces={2}
+                          className="h-10"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Stop Loss */}
+                <FormField
+                  control={form.control}
+                  name="sl"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Stop Loss</FormLabel>
+                      <FormControl>
+                        <ValidationFieldWrapper error={validationErrors.stop_loss} fieldName="stop_loss">
+                          <NumericInput
+                            placeholder="0.00"
+                            value={field.value || ""}
+                            onChange={handleFieldChange("stop_loss", field.onChange)}
+                            allowDecimal={true}
+                            min={0.01}
+                            maxDecimalPlaces={2}
+                            className={cn(
+                              "h-10",
+                              validationErrors.stop_loss
+                                ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                                : "",
+                            )}
+                            data-field="sl"
+                          />
+                        </ValidationFieldWrapper>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Target Price */}
+                <FormField
+                  control={form.control}
+                  name="target_price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Target Price</FormLabel>
+                      <FormControl>
+                        <ValidationFieldWrapper error={validationErrors.target_price} fieldName="target_price">
+                          <NumericInput
+                            placeholder="0.00"
+                            value={field.value || ""}
+                            onChange={handleFieldChange("target_price", field.onChange)}
+                            allowDecimal={true}
+                            min={0.01}
+                            maxDecimalPlaces={2}
+                            className={cn(
+                              "h-10",
+                              validationErrors.target_price
+                                ? "border-red-500 focus:border-red-500 focus:ring-red-500"
+                                : "",
+                            )}
+                            data-field="target_price"
+                          />
+                        </ValidationFieldWrapper>
+                      </FormControl>
+                      <FormMessage>
+                        {validationErrors.target_price && (
+                          <span className="text-red-500 text-sm font-medium">
+                            {validationErrors.target_price}
+                          </span>
+                        )}
+                      </FormMessage>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Trade Status Card */}
+          <Card className="border-l-4 border-l-purple-500 dark:border-l-purple-400">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarDays className="h-5 w-5 text-purple-500 dark:text-purple-400" />
+                Trade Status
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem className="space-y-2">
+                    <FormLabel className="text-sm font-medium">Current Status</FormLabel>
+                    <FormControl>
+                      <RadioGroup
+                        onValueChange={field.onChange}
+                        defaultValue={field.value}
+                        className="grid grid-cols-3 md:grid-cols-6 gap-2"
+                      >
+                        {Object.values(TradeStatus).map((status) => (
+                          <FormItem
+                            key={status}
+                            className="flex items-center space-x-2 space-y-0 p-2 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
+                          >
+                            <FormControl>
+                              <RadioGroupItem value={status} />
+                            </FormControl>
+                            <FormLabel className="font-normal cursor-pointer text-xs">
+                              {status.replace("_", " ")}
+                            </FormLabel>
+                          </FormItem>
+                        ))}
+                      </RadioGroup>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </CardContent>
+          </Card>
+
+          {/* Dates Card */}
+          <Card className="border-l-4 border-l-purple-500 dark:border-l-purple-400">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CalendarDays className="h-5 w-5 text-purple-500 dark:text-purple-400" />
+                Trade Dates
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Entry Date */}
+                <FormField
+                  control={form.control}
+                  name="entry_date"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col">
+                      <FormLabel className="text-sm">Entry Date</FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant={"outline"}
+                              className={cn(
+                                "w-full pl-3 text-left font-normal justify-between h-10",
+                                !field.value && "text-muted-foreground",
+                              )}
+                            >
+                              <span>{field.value ? format(field.value, "MMM d, yyyy") : "Select entry date"}</span>
+                              <CalendarIcon className="h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <div className="p-3 border-b">
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Clock className="h-4 w-4" />
+                              <span>Select the date you entered this trade</span>
+                            </div>
+                          </div>
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={field.onChange}
+                            disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
+                            initialFocus
+                            showOutsideDays={false}
+                          />
+                          <div className="p-3 border-t">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => field.onChange(new Date())}
+                              className="w-full"
+                            >
+                              Today
+                            </Button>
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Exit Date */}
+                <FormField
+                  control={form.control}
+                  name="exit_date"
+                  render={({ field }) => {
+                    const isClosedStatus =
+                      status === TradeStatus.CLOSED_TARGET ||
+                      status === TradeStatus.CLOSED_STOPLOSS ||
+                      status === TradeStatus.CLOSED_MANUAL
+
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel className="text-sm">
+                          Exit Date
+                          {!isClosedStatus && <span className="text-muted-foreground"> (Optional)</span>}
+                          {isClosedStatus && <span className="text-red-500"> *</span>}
+                        </FormLabel>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant={"outline"}
+                                className={cn(
+                                  "w-full pl-3 text-left font-normal justify-between h-10",
+                                  !field.value && "text-muted-foreground",
+                                )}
+                              >
+                                <span>
+                                  {field.value
+                                    ? format(field.value, "MMM d, yyyy")
+                                    : isClosedStatus
+                                      ? "Select exit date"
+                                      : "No exit date (trade open)"}
+                                </span>
+                                <CalendarIcon className="h-4 w-4 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <div className="p-3 border-b">
+                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Clock className="h-4 w-4" />
+                                <span>
+                                  {isClosedStatus
+                                    ? "When did you close this trade?"
+                                    : "When will you exit this trade? (optional)"}
+                                </span>
+                              </div>
+                            </div>
+                            <Calendar
+                              mode="single"
+                              selected={field.value}
+                              onSelect={field.onChange}
+                              disabled={(date) => date > new Date() || date < new Date("1900-01-01")}
+                              initialFocus
+                              showOutsideDays={false}
+                            />
+                            <div className="p-3 border-t space-y-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => field.onChange(new Date())}
+                                className="w-full"
+                              >
+                                Today
+                              </Button>
+                              {!isClosedStatus && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => field.onChange(undefined)}
+                                  className="w-full"
+                                >
+                                  Clear Date
+                                </Button>
+                              )}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                        {isClosedStatus && (
+                          <FormDescription className="text-xs">Exit date is required for closed trades</FormDescription>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Notes & Tags Card */}
+          <Card className="border-l-4 border-l-orange-500 dark:border-l-orange-400">
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FileText className="h-5 w-5 text-orange-500 dark:text-orange-400" />
+                Notes & Tags
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {/* Personal Notes */}
+              <FormField
+                control={form.control}
+                name="personal_notes"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm">Personal Notes</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Add notes about strategy, market conditions, lessons learned..."
+                        className="resize-none min-h-[100px]"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Tags */}
+              {availableTags.length > 0 && (
+                <FormField
+                  control={form.control}
+                  name="tags"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm">Tags</FormLabel>
+                      <FormDescription className="text-sm">
+                        Select tags to categorize and organize your trades
+                      </FormDescription>
+
+                      {/* Tag Selection Dropdown */}
+                      {getAvailableTagsForSelection().length > 0 && (
+                        <Select onValueChange={handleTagSelect} value="">
+                          <FormControl>
+                            <SelectTrigger className="w-full h-10">
+                              <SelectValue placeholder="Add tags..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {getAvailableTagsForSelection().map((tag) => (
+                              <SelectItem key={tag.id} value={tag.id.toString()}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: tag.color }} />
+                                  {tag.name}
+                                </div>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+
+                      {/* Selected Tags Display */}
+                      {selectedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {selectedTags.map((tagId) => {
+                            const tag = availableTags.find((t) => t.id === tagId)
+                            if (!tag) return null
+                            return (
+                              <Badge
+                                key={tag.id}
+                                variant="secondary"
+                                className="flex items-center gap-1.5 px-2.5 py-1 text-xs"
+                                style={{
+                                  backgroundColor: tag.color + "15",
+                                  borderColor: tag.color + "40",
+                                  color: tag.color,
+                                }}
+                              >
+                                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: tag.color }} />
+                                {tag.name}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTagRemove(tag.id)}
+                                  className="ml-1 hover:text-destructive transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            </Button>
+            </CardContent>
+          </Card>
+
+          {/* Form Actions */}
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4 border-t bg-muted/30 dark:bg-muted/20 -mx-6 px-6 py-4 rounded-b-lg">
+            <div className="text-sm text-muted-foreground">
+              {initialData ? "Update your trade details" : "All required fields must be filled"}
+            </div>
+            <div className="flex gap-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                disabled={isSubmitting}
+                className="min-w-[100px] bg-transparent"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting} className="min-w-[120px] bg-primary hover:bg-primary/90">
+                {isSubmitting ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    Saving...
+                  </div>
+                ) : initialData ? (
+                  "Update Trade"
+                ) : (
+                  "Add Trade"
+                )}
+              </Button>
+            </div>
           </div>
-        </div>
-      </form>
-    </Form>
-  );
+        </form>
+      </Form>
+    </div>
+  )
 }

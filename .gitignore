@@ -3,15 +3,11 @@ venv-stock-django-react/
 .vscode/
 .idea/
 PROJECT STRUCTURE.docx
-formulas.md
 backend/staticfiles/
 frontend/.env.production
 frontend/.env.development
 frontend/.vercel
-Docs/
-report.md
 .rovodev/
-
 
 # Build artifacts
 /dist

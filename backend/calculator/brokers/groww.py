@@ -12,14 +12,14 @@ class GrowwCalculator(BaseBroker):
             if buy_value > Decimal('0'):
                 buy_brokerage = buy_value * Decimal('0.001')
                 buy_brokerage = buy_brokerage.quantize(Decimal('0.01'), ROUND_HALF_UP)
-                buy_brokerage = max(min(buy_brokerage, Decimal('20')), Decimal('2'))
+                buy_brokerage = max(min(buy_brokerage, Decimal('20')), Decimal('5'))
                 total_brokerage += buy_brokerage
 
             # Sell side
             if sell_value > Decimal('0'):
                 sell_brokerage = sell_value * Decimal('0.001')
                 sell_brokerage = sell_brokerage.quantize(Decimal('0.01'), ROUND_HALF_UP)
-                sell_brokerage = max(min(sell_brokerage, Decimal('20')), Decimal('2'))
+                sell_brokerage = max(min(sell_brokerage, Decimal('20')), Decimal('5'))
                 total_brokerage += sell_brokerage
 
         return total_brokerage
