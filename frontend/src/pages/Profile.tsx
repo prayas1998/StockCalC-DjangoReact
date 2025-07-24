@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -82,7 +82,7 @@ const Profile = () => {
     if (user) {
       loadProfile();
     }
-  }, [user]);
+  }, [user]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadProfile = async () => {
     try {
@@ -96,11 +96,10 @@ const Profile = () => {
         last_name: data.last_name || ''
       });
       setIsProfileFormDirty(false);
-    } catch (error: any) {
-      console.error('Error loading profile:', error);
-      
+    } catch (error: unknown) {
+      console.error('Profile loading error:', error);
       // Handle specific error cases
-      if (error.response?.status === 401) {
+      if ((error as { response?: { status?: number } })?.response?.status === 401) {
         toast({
           variant: 'destructive',
           title: 'Authentication Error',
@@ -130,6 +129,7 @@ const Profile = () => {
       setLoading(false);
     }
   };
+
 
   const validateProfileForm = (): boolean => {
     const newErrors: ValidationErrors = {};
@@ -167,15 +167,12 @@ const Profile = () => {
     setUpdating(true);
 
     try {
-      console.log('Starting profile update...', profileForm);
       
       // Step 1: Update Django backend
       const response = await profileApi.updateProfile(profileForm);
-      console.log('Django update response:', response);
       
       // Step 2: Update Supabase user metadata (if user is authenticated via Supabase)
       if (user) {
-        console.log('Updating Supabase profile for user:', user.id);
         try {
           const supabaseResult = await updateUserProfile({
             email: profileForm.email,
@@ -183,10 +180,7 @@ const Profile = () => {
             last_name: profileForm.last_name
           }, false); // Disable toast from AuthContext
           
-          console.log('Supabase update result:', supabaseResult);
-          
           if (supabaseResult.error) {
-            console.warn('Supabase profile update failed:', supabaseResult.error);
             // Show warning but don't fail the entire operation
             toast({
               variant: 'default',
@@ -194,16 +188,15 @@ const Profile = () => {
               description: 'Profile updated in system, but Supabase sync had issues. Changes may take time to reflect.'
             });
           } else {
-            console.log('Supabase profile updated successfully');
             // Force refresh the session to get updated user data
             await refreshSession();
           }
-        } catch (supabaseError: any) {
-          console.warn('Supabase profile update failed:', supabaseError);
+        } catch (supabaseError: unknown) {
           // Don't fail the entire operation if Supabase update fails
+          console.warn('Supabase profile update failed:', supabaseError);
         }
       } else {
-        console.log('No user found, skipping Supabase update');
+        console.warn('No profile data returned from update');
       }
       
       // Update local state with the returned profile data
@@ -221,10 +214,9 @@ const Profile = () => {
         title: 'Success',
         description: response.message || 'Profile updated successfully'
       });
-    } catch (error: any) {
-      console.error('Error updating profile:', error);
-      if (error.response?.data?.errors) {
-        setErrors(error.response.data.errors);
+    } catch (error: unknown) {
+      if ((error as { response?: { data?: { errors?: ValidationErrors } } })?.response?.data?.errors) {
+        setErrors((error as { response: { data: { errors: ValidationErrors } } }).response.data.errors);
       } else {
         toast({
           variant: 'destructive',
@@ -287,10 +279,9 @@ const Profile = () => {
         description: response.message || 'Password changed successfully'
       });
       resetPasswordForm();
-    } catch (error: any) {
-      console.error('Error changing password:', error);
-      if (error.response?.data?.errors) {
-        setErrors(error.response.data.errors);
+    } catch (error: unknown) {
+      if ((error as { response?: { data?: { errors?: ValidationErrors } } })?.response?.data?.errors) {
+        setErrors((error as { response: { data: { errors: ValidationErrors } } }).response.data.errors);
       } else {
         toast({
           variant: 'destructive',
@@ -340,11 +331,10 @@ const Profile = () => {
           description: response.message || 'Failed to delete account completely'
         });
       }
-    } catch (error: any) {
-      console.error('Error deleting account:', error);
-      
-      if (error.response?.data?.errors) {
-        setErrors(error.response.data.errors);
+    } catch (error: unknown) {
+      console.error('Account deletion error:', error);
+      if ((error as { response?: { data?: { errors?: ValidationErrors } } })?.response?.data?.errors) {
+        setErrors((error as { response: { data: { errors: ValidationErrors } } }).response.data.errors);
       } else {
         toast({
           variant: 'destructive',

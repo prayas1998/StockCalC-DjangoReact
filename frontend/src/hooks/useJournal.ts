@@ -57,11 +57,15 @@ export const useJournal = (filters?: JournalFilters) => {
           const newSession = await refreshSession();
           if (newSession) {
             // Session refreshed, retry the query
-            return getJournalTrades({
+            const retryResponse = await getJournalTrades({
               ...filters,
               page: pageParam,
               page_size: 10
             });
+            if ('error' in retryResponse) {
+              throw new Error(formatApiError(retryResponse));
+            }
+            return retryResponse;
           }
         }
         throw new Error(formatApiError(response));
@@ -108,7 +112,7 @@ export const useJournal = (filters?: JournalFilters) => {
       queryClient.invalidateQueries({ queryKey: ['journalTrades'] });
       queryClient.invalidateQueries({ queryKey: ['journalAnalytics'] }); // Invalidate analytics on trade changes
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       // Don't show toast for validation errors - let form handle field-level errors
       // Only show toast for non-validation errors
       if (!error.message || !error.message.includes('{')) {
@@ -135,7 +139,7 @@ export const useJournal = (filters?: JournalFilters) => {
       queryClient.invalidateQueries({ queryKey: ['journalTrades'] });
       queryClient.invalidateQueries({ queryKey: ['journalAnalytics'] });
     },
-    onError: (error: any) => {
+    onError: (error: Error) => {
       // Don't show toast for validation errors - let form handle field-level errors
       // Only show toast for non-validation errors
       if (!error.message || !error.message.includes('{')) {

@@ -20,7 +20,8 @@ import {
   getTradeTypeDisplayText,
   calculateTradeDuration,
   calculatePnLPercentage,
-  formatPercentage
+  formatPercentage,
+  formatExitPriceDisplay
 } from "./utils";
 
 interface TradeCardProps {
@@ -61,25 +62,27 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
       <Card className="hover:shadow-md transition-shadow duration-200">
         <CardContent className="p-4">
           {/* Header Row */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <h3 className="font-semibold text-lg">{trade.company_name}</h3>
-              <Badge className={statusColor}>
-                {formatTradeStatus(trade.status)}
-              </Badge>
-              <Badge variant="outline" className="text-xs">
-                {tradeTypeText}
-              </Badge>
+          <div className="flex items-center justify-between mb-3 gap-2">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <h3 className="font-semibold text-lg break-words flex-shrink-0">{trade.company_name}</h3>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={statusColor}>
+                  {formatTradeStatus(trade.status)}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  {tradeTypeText}
+                </Badge>
+              </div>
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               {/* P&L Display */}
               {trade.status === TradeStatus.OPEN ? (
-                <div className="font-semibold text-muted-foreground">
+                <div className="font-semibold text-muted-foreground text-right">
                   --
                 </div>
               ) : trade.pnl !== undefined && (
-                <div className={`font-semibold ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
+                <div className={`font-semibold text-right ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
                   <div>{formatCurrency(trade.pnl)}</div>
                   {pnlPercentage !== null && (
                     <div className="text-xs opacity-75">
@@ -119,7 +122,7 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
           </div>
 
           {/* Quick Info Row */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
             <div>
               <span className="text-muted-foreground">Quantity:</span>
               <div className="font-medium">{trade.quantity.toLocaleString()}</div>
@@ -127,6 +130,10 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
             <div>
               <span className="text-muted-foreground">Entry Price:</span>
               <div className="font-medium">{formatCurrency(trade.buy_price)}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Exit Price:</span>
+              <div className="font-medium">{formatExitPriceDisplay(trade)}</div>
             </div>
             <div>
               <span className="text-muted-foreground">Entry Date:</span>
@@ -164,54 +171,76 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
           {/* Expanded Details */}
           {expanded && (
             <>
-              <Separator className="my-4" />
+              <Separator className="my-3" />
               
-              <div className="space-y-4">
-                {/* Price Details */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {trade.sell_price && (
-                    <div>
-                      <span className="text-muted-foreground text-sm">Exit Price:</span>
-                      <div className="font-medium">{formatCurrency(trade.sell_price)}</div>
-                    </div>
-                  )}
-                  {trade.stop_loss && (
-                    <div>
-                      <span className="text-muted-foreground text-sm">Stop Loss:</span>
-                      <div className="font-medium text-red-600">{formatCurrency(trade.stop_loss)}</div>
-                    </div>
-                  )}
-                  {trade.target_price && (
-                    <div>
-                      <span className="text-muted-foreground text-sm">Target:</span>
-                      <div className="font-medium text-green-600">{formatCurrency(trade.target_price)}</div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Trade Details */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                    <span className="text-muted-foreground text-sm">Trade Type:</span>
-                    <div className="font-medium">{trade.trade_type.replace('_', ' ')}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-sm">Broker:</span>
-                    <div className="font-medium">{trade.broker}</div>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground text-sm">Exchange:</span>
-                    <div className="font-medium">{trade.exchange}</div>
-                  </div>
-                </div>
-
-                {/* Exit Date */}
-                {trade.exit_date && (
-                  <div>
-                    <span className="text-muted-foreground text-sm">Exit Date:</span>
-                    <div className="font-medium">{formatDate(trade.exit_date)}</div>
+              <div className="space-y-3">
+                {/* Price Details - Compact Stop Loss and Target */}
+                {(trade.stop_loss || trade.target_price) && (
+                  <div className="flex items-center gap-4 text-sm">
+                    {trade.stop_loss && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">SL:</span>
+                        <span className="font-medium text-red-600">{formatCurrency(trade.stop_loss)}</span>
+                      </div>
+                    )}
+                    {trade.stop_loss && trade.target_price && (
+                      <span className="text-muted-foreground">•</span>
+                    )}
+                    {trade.target_price && (
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Target:</span>
+                        <span className="font-medium text-green-600">{formatCurrency(trade.target_price)}</span>
+                      </div>
+                    )}
                   </div>
                 )}
+
+                {/* Trade Details - Compact Professional Layout */}
+                <div className="bg-muted/30 rounded-lg p-3">
+                  <div className="flex flex-wrap items-center gap-4 text-sm">
+                    {/* Broker & Exchange */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Platform:</span>
+                      <Badge variant="secondary" className="text-xs font-medium">
+                        {trade.broker}
+                      </Badge>
+                      <span className="text-muted-foreground">•</span>
+                      <Badge variant="outline" className="text-xs">
+                        {trade.exchange}
+                      </Badge>
+                    </div>
+
+                    {/* Exit Date */}
+                    {trade.exit_date && (
+                      <>
+                        <span className="text-muted-foreground">•</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">Exit:</span>
+                          <span className="font-medium">{formatDate(trade.exit_date)}</span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Risk Reward Ratio */}
+                    {trade.risk_reward_ratio && (
+                      <>
+                        <span className="text-muted-foreground">•</span>
+                        <div className="flex items-center gap-1">
+                          <span className="text-muted-foreground">R:R</span>
+                          <span className={`text-xs font-medium ${trade.risk_reward_ratio >= 2 ? 'text-green-600' : 'text-muted-foreground'}`}>
+                            1:{trade.risk_reward_ratio}
+                          </span>
+                        </div>
+                      </>
+                    )}
+
+                    {/* Direction */}
+                    <span className="text-muted-foreground">•</span>
+                    <span className={`text-xs font-medium ${trade.direction === 'LONG' ? 'text-blue-600' : 'text-red-600'}`}>
+                      {trade.direction}
+                    </span>
+                  </div>
+                </div>
 
 
                 {/* Personal Notes */}

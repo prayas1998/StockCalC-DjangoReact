@@ -4,8 +4,14 @@
  */
 
 import React, { memo } from 'react';
-import { Building2, Tag, FileText, ArrowUp, ArrowDown } from 'lucide-react';
-import { SearchSuggestion } from '@/hooks/useSearchSuggestions';
+import { Building2, Tag, ArrowUp, ArrowDown } from 'lucide-react';
+// Simple search suggestion interface
+interface SearchSuggestion {
+  id: string;
+  text: string;
+  type: 'company' | 'tag';
+  score: number;
+}
 import { cn } from '@/lib/utils';
 
 interface SearchSuggestionsProps {
@@ -13,6 +19,7 @@ interface SearchSuggestionsProps {
   selectedIndex: number;
   onSuggestionClick: (index: number) => void;
   className?: string;
+  searchQuery?: string;
 }
 
 const getIconForType = (type: SearchSuggestion['type']) => {
@@ -21,8 +28,6 @@ const getIconForType = (type: SearchSuggestion['type']) => {
       return <Building2 className="h-4 w-4 text-blue-500" />;
     case 'tag':
       return <Tag className="h-4 w-4 text-green-500" />;
-    case 'note':
-      return <FileText className="h-4 w-4 text-orange-500" />;
     default:
       return null;
   }
@@ -34,26 +39,35 @@ const getTypeLabel = (type: SearchSuggestion['type']) => {
       return 'Company';
     case 'tag':
       return 'Tag';
-    case 'note':
-      return 'Note';
     default:
       return '';
   }
+};
+
+// Simple text highlighting function
+const highlightMatch = (text: string, query: string): React.ReactNode => {
+  if (!query.trim()) return text;
+  const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+  const parts = text.split(regex);
+  
+  return parts.map((part, index) => {
+    if (regex.test(part)) {
+      return <mark key={index} className="bg-yellow-200 dark:bg-yellow-800">{part}</mark>;
+    }
+    return part;
+  });
 };
 
 export const SearchSuggestions = memo<SearchSuggestionsProps>(({
   suggestions,
   selectedIndex,
   onSuggestionClick,
-  className
+  className,
+  searchQuery = ''
 }) => {
-  if (suggestions.length === 0) {
-    return null;
-  }
-
-  // Scroll selected item into view
+  // Scroll selected item into view - moved before early return
   React.useEffect(() => {
-    if (selectedIndex >= 0) {
+    if (suggestions.length > 0 && selectedIndex >= 0) {
       const selectedElement = document.querySelector(`[data-suggestion-index="${selectedIndex}"]`);
       if (selectedElement) {
         selectedElement.scrollIntoView({
@@ -62,16 +76,24 @@ export const SearchSuggestions = memo<SearchSuggestionsProps>(({
         });
       }
     }
-  }, [selectedIndex]);
+  }, [selectedIndex, suggestions.length]);
+
+  if (suggestions.length === 0) {
+    return null;
+  }
 
   return (
     <div 
       className={cn(
-        "absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-64 overflow-y-auto",
+        "absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-80 overflow-y-auto",
         className
       )}
       role="listbox"
       aria-label="Search suggestions"
+      style={{
+        scrollbarWidth: 'thin',
+        scrollbarColor: 'hsl(var(--border)) transparent'
+      }}
     >
       {suggestions.map((suggestion, index) => {
         const isSelected = selectedIndex === index;
@@ -98,13 +120,20 @@ export const SearchSuggestions = memo<SearchSuggestionsProps>(({
           
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-foreground truncate">
-                {suggestion.text}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-foreground break-words">
+                {highlightMatch(suggestion.text, searchQuery)}
               </span>
-              <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                {getTypeLabel(suggestion.type)}
-              </span>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                  {getTypeLabel(suggestion.type)}
+                </span>
+                {(suggestion as SearchSuggestion & { trade_count?: number }).trade_count && (suggestion as SearchSuggestion & { trade_count?: number }).trade_count! > 1 && (
+                  <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900 px-1.5 py-0.5 rounded">
+                    {(suggestion as SearchSuggestion & { trade_count?: number }).trade_count} trades
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </div>

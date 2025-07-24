@@ -61,8 +61,21 @@ export const TradesList = memo<TradesListProps>(({
     );
   }
 
-  // Determine which list to show
-  const displayTrades = searchQuery && searchResults !== null ? searchResults : trades;
+  // Determine which list to show and ensure uniqueness
+  let displayTrades = searchQuery && searchResults !== null ? searchResults : trades;
+  const isSearchActive = searchQuery && searchResults !== null;
+  
+  // Ensure unique trades by ID (additional safety check)
+  if (displayTrades) {
+    const seenIds = new Set();
+    displayTrades = displayTrades.filter(trade => {
+      if (seenIds.has(trade.id)) {
+        return false;
+      }
+      seenIds.add(trade.id);
+      return true;
+    });
+  }
 
   // Empty state
   if (!displayTrades || displayTrades.length === 0) {
@@ -78,7 +91,25 @@ export const TradesList = memo<TradesListProps>(({
 
   return (
     <div className="space-y-4">
+      {/* Search results count */}
+      {isSearchActive && (
+        <div className="flex items-center justify-between py-2 px-1 text-sm text-muted-foreground border-b border-border/50">
+          <span>
+            {displayTrades.length === 1 
+              ? `1 search result for "${searchQuery}"`
+              : `${displayTrades.length} search results for "${searchQuery}"`
+            }
+          </span>
+          {displayTrades.length > 0 && (
+            <span className="text-xs">
+              {displayTrades.length === 1 ? 'trade' : 'trades'} found
+            </span>
+          )}
+        </div>
+      )}
+      
       {displayTrades.map((trade) => (
+
         <TradeCard
           key={trade.id}
           trade={trade}

@@ -23,6 +23,7 @@ export const API_ENDPOINTS = {
   JOURNAL_TAGS: `${API_PREFIX}/tags/`,
   JOURNAL_ANALYTICS: `${API_PREFIX}/journal/analytics/`,
   JOURNAL_SEARCH: `${API_PREFIX}/journal/search/`,
+  JOURNAL_SUGGESTIONS: `${API_PREFIX}/journal/suggestions/`,
   PROFILE: `${API_PREFIX}/profile/`,
   CHANGE_PASSWORD: `${API_PREFIX}/profile/change-password/`,
   DELETE_ACCOUNT: `${API_PREFIX}/profile/delete-account/`,

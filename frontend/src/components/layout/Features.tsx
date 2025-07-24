@@ -11,7 +11,7 @@ const Features = () => {
             <Award className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             <span className="text-blue-700 dark:text-blue-300 font-medium">Premium Features</span>
           </div>
-          <h2 className="text-4xl font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 dark:from-slate-100 dark:via-slate-200 dark:to-slate-100 bg-clip-text text-transparent mb-4">
+          <h2 className="text-4xl font-bold bg-gradient-to-r from-slate-800 via-slate-700 to-slate-800 dark:from-slate-100 dark:via-slate-200 dark:to-slate-100 bg-clip-text text-transparent mb-4 leading-tight pb-1">
             Why Choose Our Calculator?
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">

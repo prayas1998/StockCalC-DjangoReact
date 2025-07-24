@@ -87,12 +87,12 @@ api.interceptors.request.use(
 
 // Simple mutex and queue for token refresh
 let isRefreshing = false;
-let failedQueue: Array<{resolve: Function, reject: Function, config: any}> = [];
+let failedQueue: Array<{resolve: (value?: unknown) => void, reject: (reason?: unknown) => void, config: Record<string, unknown>}> = [];
 
 // Development logging helper
-const logTokenRefresh = (event: string, data?: any) => {
+const logTokenRefresh = (event: string, data?: unknown) => {
   if (import.meta.env.DEV) {
-    console.log(`[TokenRefresh] ${event}:`, data);
+    console.log(`Token refresh: ${event}`, data);
   }
 };
 

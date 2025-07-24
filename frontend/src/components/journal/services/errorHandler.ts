@@ -52,7 +52,7 @@ export function handleApiError(
 
   // Log error for debugging in development
   if (process.env.NODE_ENV === 'development') {
-    console.error(`${context} failed:`, error);
+    console.error(`${context} error:`, error);
   }
 
   // Show toast notification if requested
@@ -95,7 +95,7 @@ export function handleNetworkError(error: unknown): string {
  */
 export function handleValidationError(
   field: string,
-  value: any,
+  value: unknown,
   rules: ValidationRule[]
 ): string | null {
   for (const rule of rules) {
@@ -111,7 +111,7 @@ export function handleValidationError(
  * Validation rule interface
  */
 export interface ValidationRule {
-  validate: (value: any) => string | null;
+  validate: (value: unknown) => string | null;
 }
 
 /**

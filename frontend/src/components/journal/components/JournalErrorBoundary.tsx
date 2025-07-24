@@ -55,8 +55,8 @@ export class JournalErrorBoundary extends Component<Props, State> {
     }
 
     // Report to error tracking service (if available)
-    if (typeof window !== 'undefined' && (window as any).Sentry) {
-      (window as any).Sentry.captureException(error, {
+    if (typeof window !== 'undefined' && (window as { Sentry?: { captureException: (error: Error, options?: unknown) => void } }).Sentry) {
+      (window as { Sentry: { captureException: (error: Error, options?: unknown) => void } }).Sentry.captureException(error, {
         contexts: {
           react: {
             componentStack: errorInfo.componentStack,
@@ -160,8 +160,8 @@ export function useErrorHandler() {
     }
     
     // Report to error tracking service
-    if (typeof window !== 'undefined' && (window as any).Sentry) {
-      (window as any).Sentry.captureException(error);
+    if (typeof window !== 'undefined' && (window as { Sentry?: { captureException: (error: Error) => void } }).Sentry) {
+      (window as { Sentry: { captureException: (error: Error) => void } }).Sentry.captureException(error);
     }
   };
 }

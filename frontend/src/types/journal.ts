@@ -171,6 +171,15 @@ export interface JournalAnalytics {
     status: string;
     count: number;
   }[];
+  tag_performance: {
+    tag_name: string;
+    tag_color: string;
+    total_pnl: number;
+    trade_count: number;
+    win_rate: number;
+    profitable_trades: number;
+    losing_trades: number;
+  }[];
 }
 
 // Utility Types
@@ -191,6 +200,7 @@ export interface JournalFilters {
   start_date?: string;
   end_date?: string;
   tags?: number[];
+  companies?: string[];
   is_profitable?: boolean;
   query?: string;
   page?: number;

@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { toast } from 'sonner';
 import { useAuth } from '@/context/AuthContext';
 import { checkApiConnection, formatApiError } from '@/lib/api-helpers';
 import { getJournalAnalytics } from '@/services/journalApi';
@@ -40,7 +39,11 @@ export const useJournalAnalytics = () => {
           const newSession = await refreshSession();
           if (newSession) {
             // Session refreshed, retry the query
-            return getJournalAnalytics();
+            const retryResponse = await getJournalAnalytics();
+            if ('error' in retryResponse) {
+              throw new Error(formatApiError(retryResponse));
+            }
+            return retryResponse;
           }
         }
         throw new Error(formatApiError(response));

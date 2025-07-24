@@ -42,8 +42,8 @@ export interface FrontendError {
   severity: ErrorSeverity;
   message: string;
   userMessage: string;
-  originalError?: any;
-  context?: Record<string, any>;
+  originalError?: unknown;
+  context?: Record<string, unknown>;
   timestamp: Date;
 }
 
@@ -62,14 +62,14 @@ class ErrorHandler {
     return ErrorHandler.instance;
   }
 
-  handleApiError(error: any, context?: Record<string, any>): FrontendError {
+  handleApiError(error: unknown, context?: Record<string, unknown>): FrontendError {
     const frontendError = this.createFrontendError(error, context);
     this.logError(frontendError);
     this.showUserNotification(frontendError);
     return frontendError;
   }
 
-  handleNetworkError(error: any, context?: Record<string, any>): FrontendError {
+  handleNetworkError(error: unknown, context?: Record<string, unknown>): FrontendError {
     const frontendError: FrontendError = {
       id: this.generateErrorId(),
       category: ErrorCategory.NETWORK,
@@ -86,12 +86,12 @@ class ErrorHandler {
     return frontendError;
   }
 
-  handleValidationError(error: any, context?: Record<string, any>): FrontendError {
+  handleValidationError(error: unknown, context?: Record<string, unknown>): FrontendError {
     const frontendError: FrontendError = {
       id: this.generateErrorId(),
       category: ErrorCategory.VALIDATION,
       severity: ErrorSeverity.LOW,
-      message: error.message || 'Validation error',
+      message: (error as { message?: string })?.message || 'Validation error',
       userMessage: this.extractUserMessage(error) || 'Please check your input and try again.',
       originalError: error,
       context,
@@ -102,12 +102,12 @@ class ErrorHandler {
     return frontendError;
   }
 
-  handleAuthenticationError(error: any, context?: Record<string, any>): FrontendError {
+  handleAuthenticationError(error: unknown, context?: Record<string, unknown>): FrontendError {
     const frontendError: FrontendError = {
       id: this.generateErrorId(),
       category: ErrorCategory.AUTHENTICATION,
       severity: ErrorSeverity.MEDIUM,
-      message: error.message || 'Authentication error',
+      message: (error as { message?: string })?.message || 'Authentication error',
       userMessage: 'Your session has expired. Please log in again.',
       originalError: error,
       context,
@@ -124,30 +124,31 @@ class ErrorHandler {
     return frontendError;
   }
 
-  private createFrontendError(error: any, context?: Record<string, any>): FrontendError {
-    if (error.response?.data && this.isBackendErrorResponse(error.response.data)) {
-      return this.createFromBackendError(error.response.data, error, context);
+  private createFrontendError(error: unknown, context?: Record<string, unknown>): FrontendError {
+    const errorWithResponse = error as { response?: { data?: unknown; status?: number } };
+    if (errorWithResponse.response?.data && this.isBackendErrorResponse(errorWithResponse.response.data)) {
+      return this.createFromBackendError(errorWithResponse.response.data, error, context);
     }
 
-    if (error.response?.status) {
-      return this.createFromHttpStatus(error.response.status, error, context);
+    if (errorWithResponse.response?.status) {
+      return this.createFromHttpStatus(errorWithResponse.response.status, error, context);
     }
 
-    if (error.code === 'NETWORK_ERROR' || error.message?.includes('Network Error')) {
+    if ((error as { code?: string })?.code === 'NETWORK_ERROR' || (error as { message?: string })?.message?.includes('Network Error')) {
       return this.handleNetworkError(error, context);
     }
 
     return this.createGenericError(error, context);
   }
 
-  private isBackendErrorResponse(data: any): data is BackendErrorResponse {
+  private isBackendErrorResponse(data: unknown): data is BackendErrorResponse {
     return data && typeof data === 'object' && data.error === true && data.category;
   }
 
   private createFromBackendError(
     backendError: BackendErrorResponse,
-    originalError: any,
-    context?: Record<string, any>
+    originalError: unknown,
+    context?: Record<string, unknown>
   ): FrontendError {
     return {
       id: backendError.error_id || this.generateErrorId(),
@@ -163,8 +164,8 @@ class ErrorHandler {
 
   private createFromHttpStatus(
     status: number,
-    originalError: any,
-    context?: Record<string, any>
+    originalError: unknown,
+    context?: Record<string, unknown>
   ): FrontendError {
     let category: ErrorCategory;
     let userMessage: string;
@@ -217,12 +218,12 @@ class ErrorHandler {
     };
   }
 
-  private createGenericError(error: any, context?: Record<string, any>): FrontendError {
+  private createGenericError(error: unknown, context?: Record<string, unknown>): FrontendError {
     return {
       id: this.generateErrorId(),
       category: ErrorCategory.SERVER_ERROR,
       severity: ErrorSeverity.MEDIUM,
-      message: error.message || 'Unknown error',
+      message: (error as { message?: string })?.message || 'Unknown error',
       userMessage: 'An unexpected error occurred. Please try again.',
       originalError: error,
       context,
@@ -262,17 +263,18 @@ class ErrorHandler {
     return severityMap[category] || ErrorSeverity.MEDIUM;
   }
 
-  private extractUserMessage(error: any): string | null {
-    if (error.response?.data?.message) {
-      return error.response.data.message;
+  private extractUserMessage(error: unknown): string | null {
+    const errorWithResponse = error as { response?: { data?: { message?: string; error?: string } } };
+    if (errorWithResponse.response?.data?.message) {
+      return errorWithResponse.response.data.message;
     }
     
-    if (error.response?.data?.error) {
-      return error.response.data.error;
+    if (errorWithResponse.response?.data?.error) {
+      return errorWithResponse.response.data.error;
     }
     
-    if (error.message && !this.containsSensitiveInfo(error.message)) {
-      return error.message;
+    if ((error as { message?: string })?.message && !this.containsSensitiveInfo((error as { message: string }).message)) {
+      return (error as { message: string }).message;
     }
     
     return null;
@@ -367,14 +369,14 @@ class ErrorHandler {
 
 export const errorHandler = ErrorHandler.getInstance();
 
-export const handleApiError = (error: any, context?: Record<string, any>) => 
+export const handleApiError = (error: unknown, context?: Record<string, unknown>) => 
   errorHandler.handleApiError(error, context);
 
-export const handleNetworkError = (error: any, context?: Record<string, any>) => 
+export const handleNetworkError = (error: unknown, context?: Record<string, unknown>) => 
   errorHandler.handleNetworkError(error, context);
 
-export const handleValidationError = (error: any, context?: Record<string, any>) => 
+export const handleValidationError = (error: unknown, context?: Record<string, unknown>) => 
   errorHandler.handleValidationError(error, context);
 
-export const handleAuthenticationError = (error: any, context?: Record<string, any>) => 
+export const handleAuthenticationError = (error: unknown, context?: Record<string, unknown>) => 
   errorHandler.handleAuthenticationError(error, context);

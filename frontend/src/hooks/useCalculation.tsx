@@ -157,6 +157,15 @@ export const useCalculation = () => {
     await handleCalculateCharges(true);
   }, [handleCalculateCharges, clearChangedSettingsFlag]);
 
+  // Helper function to check if there's meaningful transaction data
+  const hasValidTransactionData = useCallback(() => {
+    return transactions.some(t => 
+      (t.quantity && Number(t.quantity) > 0) || 
+      (t.buyPrice && Number(t.buyPrice) > 0) || 
+      (t.sellPrice && Number(t.sellPrice) > 0)
+    );
+  }, [transactions]);
+
   // Detect settings changes and clear results
   useEffect(() => {
     const currentSettings = {
@@ -182,12 +191,17 @@ export const useCalculation = () => {
     }
 
     if (changes.length > 0) {
-      // Settings have changed, clear results and set flag
+      // Settings have changed, clear results
       setCalculationState({
         error: null,
         result: null,
       });
-      setChangedSettings(changes);
+      
+      // Only show validation message if user has entered meaningful data
+      if (hasValidTransactionData()) {
+        setChangedSettings(changes);
+      }
+      
       setPreviousSettings(currentSettings);
       
       // Clear any pending calculations
@@ -196,7 +210,7 @@ export const useCalculation = () => {
         debounceTimerRef.current = null;
       }
     }
-  }, [platform, tradeType, positionType, exchange, previousSettings]);
+  }, [platform, tradeType, positionType, exchange, previousSettings, hasValidTransactionData]);
 
   // Clear results when inputs change (but don't auto-calculate)
   useEffect(() => {

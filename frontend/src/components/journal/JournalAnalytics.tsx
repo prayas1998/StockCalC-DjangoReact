@@ -1,562 +1,540 @@
-import { useMemo } from 'react';
-import { ArrowDown, ArrowUp, TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, Target, Shield, Calculator, PieChart as PieChartIcon, LineChart } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area, LineChart as RechartsLineChart, Line } from 'recharts';
-import { useJournalAnalytics } from '@/hooks/useJournalAnalytics';
-import { formatCurrency } from '@/lib/utils';
-import { isJournalAnalytics, getProfitFactorBadge } from './utils';
-import { CHART_COLORS } from './constants';
-import type { JournalAnalytics } from '@/types/journal';
-import type { CalculationError } from '@/types/api';
+"use client"
+
+import { useState, useEffect } from "react"
+import {
+  TrendingUp,
+  TrendingDown,
+  Activity,
+  Trophy,
+  Tag,
+  Zap,
+  AlertTriangle,
+  Calendar,
+  Star,
+  Target,
+  BarChart3,
+  PieChart,
+  Filter,
+  Sparkles,
+} from "lucide-react"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
+import { useJournalAnalytics } from "@/hooks/useJournalAnalytics"
+import { formatCurrency } from "@/lib/utils"
+import { isJournalAnalytics } from "./utils"
+import { getTagAnalytics } from "@/services/journalApi"
 
 export function JournalAnalytics() {
-  const { analytics, derivedMetrics, isLoading, isError, refreshAnalytics } = useJournalAnalytics();
+  const { analytics, isLoading, isError, refreshAnalytics } = useJournalAnalytics()
+  const [selectedTag, setSelectedTag] = useState<string>("")
+  const [tagAnalytics, setTagAnalytics] = useState<Record<string, unknown> | null>(null)
+  const [loadingTagAnalytics, setLoadingTagAnalytics] = useState(false)
 
-  // Format monthly performance data for chart
-  const monthlyChartData = useMemo(() => {
-    if (!isJournalAnalytics(analytics) || !analytics.monthly_performance) return [];
-    return analytics.monthly_performance.map(month => ({
-      name: month.month,
-      pnl: month.total_pnl,
-      trades: month.trade_count
-    }));
-  }, [analytics]);
+  // Fetch tag analytics when a tag is selected
+  useEffect(() => {
+    if (selectedTag) {
+      setLoadingTagAnalytics(true)
+      getTagAnalytics(selectedTag)
+        .then((data) => {
+          if ("error" in data) {
+            setTagAnalytics(null)
+          } else {
+            setTagAnalytics(data)
+          }
+        })
+        .catch(() => {
+          setTagAnalytics(null)
+        })
+        .finally(() => {
+          setLoadingTagAnalytics(false)
+        })
+    } else {
+      setTagAnalytics(null)
+    }
+  }, [selectedTag])
 
-  // Format stock performance data for chart
-  const stockPerformanceData = useMemo(() => {
-    if (!isJournalAnalytics(analytics) || !analytics.best_performing_stocks || !analytics.worst_performing_stocks) return [];
-    
-    // Combine and deduplicate stocks by company name
-    const stockMap = new Map();
-    
-    // Add best performing stocks
-    analytics.best_performing_stocks.forEach(stock => {
-      stockMap.set(stock.company_name, {
-        name: stock.company_name,
-        pnl: stock.total_pnl,
-        trades: stock.trade_count
-      });
-    });
-    
-    // Add worst performing stocks (only if not already present)
-    analytics.worst_performing_stocks.forEach(stock => {
-      if (!stockMap.has(stock.company_name)) {
-        stockMap.set(stock.company_name, {
-          name: stock.company_name,
-          pnl: stock.total_pnl,
-          trades: stock.trade_count
-        });
-      }
-    });
-    
-    // Convert map to array and sort by P&L
-    return Array.from(stockMap.values())
-      .sort((a, b) => b.pnl - a.pnl)
-      .slice(0, 10); // Show top 10
-  }, [analytics]);
-
-  // Format trade type distribution for pie chart
-  const tradeTypeData = useMemo(() => {
-    if (!isJournalAnalytics(analytics) || !analytics.trade_type_distribution) return [];
-    return analytics.trade_type_distribution.map(item => ({
-      name: item.trade_type.replace('_', ' '),
-      value: item.count
-    }));
-  }, [analytics]);
-
-  // Format status distribution for pie chart
-  const statusData = useMemo(() => {
-    if (!isJournalAnalytics(analytics) || !analytics.status_distribution) return [];
-    return analytics.status_distribution.map(item => ({
-      name: item.status.replace('_', ' '),
-      value: item.count
-    }));
-  }, [analytics]);
-
-  // Format drawdown data for chart
-  const drawdownData = useMemo(() => {
-    if (!isJournalAnalytics(analytics) || !analytics.drawdown_series) return [];
-    return analytics.drawdown_series.map((item, index) => ({
-      trade: index + 1,
-      cumulative_pnl: item.cumulative_pnl,
-      drawdown: -item.drawdown // Negative for visual representation
-    }));
-  }, [analytics]);
-
-  // Get profit factor badge configuration
-  const profitFactorBadge = useMemo(() => {
-    if (!isJournalAnalytics(analytics)) return null;
-    return getProfitFactorBadge(analytics.profit_factor || 0);
-  }, [analytics]);
-
-  if (isError || (analytics && 'error' in analytics)) {
+  if (isLoading) {
     return (
-      <div className="p-4 border rounded-lg bg-destructive/10 text-destructive">
-        <h3 className="font-medium mb-2">Failed to load analytics</h3>
-        <p className="text-sm mb-4">{analytics && 'error' in analytics ? analytics.error : 'There was an error loading your trading analytics.'}</p>
-        <button 
-          onClick={refreshAnalytics}
-          className="px-4 py-2 bg-card text-card-foreground rounded-md text-sm"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
+      <div className="space-y-8">
+        {/* Header Skeleton */}
+        <div className="text-center space-y-3">
+          <Skeleton className="h-8 w-64 mx-auto" />
+          <Skeleton className="h-4 w-96 mx-auto" />
+        </div>
 
-  if (isLoading || !analytics) {
-    return <AnalyticsSkeleton />;
-  }
+        {/* Overview Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Card
+              key={i}
+              className="relative overflow-hidden bg-gradient-to-br from-white/90 to-slate-50/90 dark:from-slate-800/90 dark:to-slate-900/90 border border-slate-200/50 dark:border-slate-700/50 shadow-md backdrop-blur-sm"
+            >
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-8 w-16" />
+                  </div>
+                  <Skeleton className="h-8 w-8 rounded-full" />
+                </div>
+                <Skeleton className="h-3 w-20 mt-2" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
 
-  if (!isJournalAnalytics(analytics)) {
-    return (
-      <div className="space-y-6">
-        <div className="p-8 text-center text-muted-foreground">
-          <BarChart3 className="h-16 w-16 mx-auto mb-4 opacity-20" />
-          <h3 className="text-lg font-medium mb-2">No Analytics Data Available</h3>
-          <p>Start adding trades to your journal to see analytics and insights.</p>
+        {/* Performance Cards Skeleton */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {Array.from({ length: 2 }).map((_, i) => (
+            <Card
+              key={i}
+              className="bg-gradient-to-br from-white/90 to-slate-50/90 dark:from-slate-800/90 dark:to-slate-900/90"
+            >
+              <CardHeader>
+                <Skeleton className="h-6 w-32" />
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {Array.from({ length: 3 }).map((_, j) => (
+                  <div key={j} className="flex justify-between">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-4 w-16" />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </div>
-    );
+    )
   }
 
+  if (isError || !isJournalAnalytics(analytics)) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 space-y-6">
+        <div className="relative">
+          <div className="absolute inset-0 bg-red-500/10 rounded-full blur-xl animate-pulse" />
+          <AlertTriangle className="h-16 w-16 text-red-500 relative z-10" />
+        </div>
+        <div className="text-center space-y-3">
+          <h3 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+            Unable to load analytics
+          </h3>
+          <p className="text-slate-600 dark:text-slate-400 max-w-md">
+            {isError ? "There was an error loading your analytics data." : "No analytics data available."}
+          </p>
+          <Button
+            onClick={refreshAnalytics}
+            className="mt-6 bg-primary hover:bg-primary/90 text-primary-foreground shadow-md hover:shadow-lg transition-all duration-200"
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            Try Again
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  const {
+    total_trades,
+    closed_trades,
+    open_trades,
+    total_pnl,
+    win_rate,
+    profit_factor,
+    avg_win,
+    avg_loss,
+    best_performing_stocks,
+    worst_performing_stocks,
+    tag_performance,
+    monthly_performance,
+  } = analytics
+
   return (
-    <div className="space-y-6">
-      {/* Key Performance Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Trades Card */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center">
-              <Activity className="h-4 w-4 mr-1" />
-              Total Trades
-            </CardDescription>
-            <CardTitle className="text-3xl">
-              {analytics.total_trades || 0}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-2">
+    <div className="space-y-8">
+      {/* Dashboard Header */}
+      <div className="text-center space-y-3">
+        <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
+          Comprehensive insights into your trading performance, patterns, and opportunities for improvement.
+        </p>
+      </div>
+
+      {/* Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200/50 dark:border-blue-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-bl-3xl" />
+          <CardContent className="relative p-6">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                <span className="font-medium text-green-600">{analytics.open_trades || 0}</span> open
+              <div>
+                <p className="text-sm font-medium text-blue-700 dark:text-blue-300">Total Trades</p>
+                <p className="text-3xl font-bold text-blue-800 dark:text-blue-200">{total_trades}</p>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">{analytics.closed_trades || 0}</span> closed
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <Activity className="h-6 w-6 text-white" />
               </div>
             </div>
+            <p className="text-xs text-blue-600/70 dark:text-blue-400/70 mt-2 font-medium">
+              {closed_trades} closed • {open_trades} open
+            </p>
           </CardContent>
         </Card>
 
-        {/* Win Rate Card */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center">
-              <Target className="h-4 w-4 mr-1" />
-              Win Rate
-            </CardDescription>
-            <CardTitle className="text-3xl">
-              {(derivedMetrics?.winRatePercentage || 0).toFixed(1)}%
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-2">
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-emerald-200/50 dark:border-emerald-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-bl-3xl" />
+          <CardContent className="relative p-6">
             <div className="flex items-center justify-between">
-              <div className="text-sm text-muted-foreground">
-                <span className="font-medium text-green-600">{analytics.profitable_trades || 0}</span> wins
+              <div>
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">Total P&L</p>
+                <p className={`text-3xl font-bold ${total_pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {formatCurrency(total_pnl)}
+                </p>
               </div>
-              <div className="text-sm text-muted-foreground">
-                <span className="font-medium text-red-600">{analytics.losing_trades || 0}</span> losses
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Total P&L Card */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center">
-              <DollarSign className="h-4 w-4 mr-1" />
-              Total P&L
-            </CardDescription>
-            <CardTitle className={`text-3xl ${(analytics.total_pnl || 0) > 0 ? 'text-green-500' : (analytics.total_pnl || 0) < 0 ? 'text-red-500' : ''}`}>
-              {formatCurrency(analytics.total_pnl || 0)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-2">
-            <div className="flex items-center">
-              {(analytics.total_pnl || 0) > 0 ? (
-                <Badge className="bg-green-500/10 text-green-500 hover:bg-green-500/20">
-                  <ArrowUp className="h-3 w-3 mr-1" />
-                  Profitable
-                </Badge>
-              ) : (analytics.total_pnl || 0) < 0 ? (
-                <Badge className="bg-red-500/10 text-red-500 hover:bg-red-500/20">
-                  <ArrowDown className="h-3 w-3 mr-1" />
-                  Loss
-                </Badge>
-              ) : (
-                <Badge variant="outline">
-                  <Activity className="h-3 w-3 mr-1" />
-                  Breakeven
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Profit Factor Card */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center">
-              <Calculator className="h-4 w-4 mr-1" />
-              Profit Factor
-            </CardDescription>
-            <CardTitle className={`text-3xl ${(analytics.profit_factor || 0) > 1 ? 'text-green-500' : (analytics.profit_factor || 0) < 1 ? 'text-red-500' : ''}`}>
-              {(analytics.profit_factor || 0).toFixed(2)}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pb-2">
-            <div className="flex items-center">
-              {profitFactorBadge && (
-                <Badge className={profitFactorBadge.variant}>
-                  {profitFactorBadge.icon === 'TrendingUp' ? (
-                    <TrendingUp className="h-3 w-3 mr-1" />
-                  ) : (
-                    <TrendingDown className="h-3 w-3 mr-1" />
-                  )}
-                  {profitFactorBadge.label}
-                </Badge>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Advanced Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Avg P&L Per Trade</CardDescription>
-            <CardTitle className={`text-2xl ${(analytics.avg_pnl_per_trade || 0) > 0 ? 'text-green-500' : (analytics.avg_pnl_per_trade || 0) < 0 ? 'text-red-500' : ''}`}>
-              {formatCurrency(analytics.avg_pnl_per_trade || 0)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription className="flex items-center">
-              <Shield className="h-4 w-4 mr-1" />
-              Max Drawdown
-            </CardDescription>
-            <CardTitle className="text-2xl text-red-500">
-              -{formatCurrency(Math.abs(analytics.max_drawdown || 0))}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Expectancy</CardDescription>
-            <CardTitle className={`text-2xl ${(analytics.expectancy || 0) > 0 ? 'text-green-500' : 'text-red-500'}`}>
-              {formatCurrency(analytics.expectancy || 0)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Avg Risk:Reward</CardDescription>
-            <CardTitle className="text-2xl">
-              1:{(analytics.avg_risk_reward || 0).toFixed(2)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      {/* Win/Loss Analysis */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Largest Win</CardDescription>
-            <CardTitle className="text-2xl text-green-500">
-              {formatCurrency(analytics.largest_win || 0)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Largest Loss</CardDescription>
-            <CardTitle className="text-2xl text-red-500">
-              {formatCurrency(analytics.largest_loss || 0)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Average Win</CardDescription>
-            <CardTitle className="text-2xl text-green-500">
-              {formatCurrency(analytics.avg_win || 0)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Average Loss</CardDescription>
-            <CardTitle className="text-2xl text-red-500">
-              {formatCurrency(analytics.avg_loss || 0)}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      {/* Charts Section */}
-      <Tabs defaultValue="performance" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="performance" className="flex items-center gap-2">
-            <LineChart className="h-4 w-4" />
-            Performance
-          </TabsTrigger>
-          <TabsTrigger value="stocks" className="flex items-center gap-2">
-            <BarChart3 className="h-4 w-4" />
-            Stocks
-          </TabsTrigger>
-          <TabsTrigger value="distribution" className="flex items-center gap-2">
-            <PieChartIcon className="h-4 w-4" />
-            Distribution
-          </TabsTrigger>
-          <TabsTrigger value="drawdown" className="flex items-center gap-2">
-            <TrendingDown className="h-4 w-4" />
-            Drawdown
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="performance" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Monthly Performance</CardTitle>
-              <CardDescription>P&L and trade count by month</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                {monthlyChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={monthlyChartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <defs>
-                        <linearGradient id="colorPnl" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip formatter={(value, name) => {
-                        if (name === 'pnl') return [formatCurrency(value as number), 'P&L'];
-                        return [value, 'Trades'];
-                      }} />
-                      <Area type="monotone" dataKey="pnl" stroke="#10b981" fillOpacity={1} fill="url(#colorPnl)" name="pnl" />
-                    </AreaChart>
-                  </ResponsiveContainer>
+              <div
+                className={`inline-flex p-3 rounded-xl shadow-lg group-hover:scale-110 transition-transform duration-300 ${
+                  total_pnl >= 0
+                    ? "bg-gradient-to-r from-green-500 to-emerald-500"
+                    : "bg-gradient-to-r from-red-500 to-rose-500"
+                }`}
+              >
+                {total_pnl >= 0 ? (
+                  <TrendingUp className="h-6 w-6 text-white" />
                 ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>No monthly data available</p>
-                    </div>
-                  </div>
+                  <TrendingDown className="h-6 w-6 text-white" />
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+            <p className={`text-xs font-medium mt-2 ${total_pnl >= 0 ? "text-green-600/70" : "text-red-600/70"}`}>
+              {total_pnl >= 0 ? "Total Profit" : "Total Loss"}
+            </p>
+          </CardContent>
+        </Card>
 
-        <TabsContent value="stocks" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Stock Performance</CardTitle>
-              <CardDescription>Top performing stocks by P&L</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                {stockPerformanceData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={stockPerformanceData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                      <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                      <YAxis />
-                      <Tooltip formatter={(value, name) => {
-                        if (name === 'pnl') return [formatCurrency(value as number), 'P&L'];
-                        return [value, 'Trades'];
-                      }} />
-                      <Bar dataKey="pnl" fill="#3b82f6" name="pnl" />
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>No stock data available</p>
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200/50 dark:border-purple-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-bl-3xl" />
+          <CardContent className="relative p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-purple-700 dark:text-purple-300">Win Rate</p>
+                <p className="text-3xl font-bold text-purple-800 dark:text-purple-200">{win_rate}%</p>
+              </div>
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <Trophy className="h-6 w-6 text-white" />
+              </div>
+            </div>
+            <Badge
+              variant={win_rate >= 50 ? "default" : "secondary"}
+              className={`text-xs mt-2 ${win_rate >= 50 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300"}`}
+            >
+              {win_rate >= 50 ? "Excellent" : "Needs Improvement"}
+            </Badge>
+          </CardContent>
+        </Card>
+
+        <Card className="group relative overflow-hidden bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border-cyan-200/50 dark:border-cyan-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
+          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-bl-3xl" />
+          <CardContent className="relative p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-cyan-700 dark:text-cyan-300">Profit Factor</p>
+                <p className="text-3xl font-bold text-cyan-800 dark:text-cyan-200">{profit_factor}</p>
+              </div>
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 shadow-lg group-hover:scale-110 transition-transform duration-300">
+                <Zap className="h-6 w-6 text-white" />
+              </div>
+            </div>
+            <Badge
+              variant={profit_factor >= 1.5 ? "default" : "secondary"}
+              className={`text-xs mt-2 ${
+                profit_factor >= 1.5
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                  : profit_factor >= 1.0
+                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                    : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"
+              }`}
+            >
+              {profit_factor >= 1.5 ? "Excellent" : profit_factor >= 1.0 ? "Good" : "Poor"}
+            </Badge>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Performance Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 shadow-lg">
+                <Target className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                  Risk & Reward Analysis
+                </CardTitle>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Average performance metrics</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex justify-between items-center p-3 rounded-lg bg-green-50/50 dark:bg-green-900/10 border border-green-200/30 dark:border-green-700/30">
+              <div className="flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Average Win</span>
+              </div>
+              <span className="font-bold text-green-600 text-lg">{formatCurrency(avg_win)}</span>
+            </div>
+
+            <div className="flex justify-between items-center p-3 rounded-lg bg-red-50/50 dark:bg-red-900/10 border border-red-200/30 dark:border-red-700/30">
+              <div className="flex items-center gap-2">
+                <TrendingDown className="h-4 w-4 text-red-600" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Average Loss</span>
+              </div>
+              <span className="font-bold text-red-600 text-lg">{formatCurrency(Math.abs(avg_loss))}</span>
+            </div>
+
+            <div className="flex justify-between items-center pt-4 border-t border-slate-200/50 dark:border-slate-700/50">
+              <div className="flex items-center gap-2">
+                <Sparkles className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Risk/Reward Ratio</span>
+              </div>
+              <span className="font-bold text-blue-600 text-xl">
+                {avg_loss !== 0 ? (avg_win / Math.abs(avg_loss)).toFixed(2) : "N/A"}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+          <CardHeader className="pb-4">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg">
+                <Star className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                  Top Performers
+                </CardTitle>
+                <p className="text-sm text-slate-600 dark:text-slate-400">Best performing stocks</p>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {best_performing_stocks && best_performing_stocks.length > 0 ? (
+              best_performing_stocks
+                .filter(stock => stock.total_pnl > 0) // Additional frontend safety filter
+                .slice(0, 5)
+                .map((stock, index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center p-3 rounded-lg bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors duration-200 border border-slate-200/30 dark:border-slate-600/30"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm">
+                        {index + 1}
+                      </div>
+                      <span className="font-medium text-slate-800 dark:text-slate-100">{stock.company_name}</span>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-green-600 text-lg">{formatCurrency(stock.total_pnl)}</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{stock.trade_count} trades</div>
                     </div>
                   </div>
-                )}
+                ))
+            ) : (
+              <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                <Star className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                <p className="text-sm font-medium">No top performing stocks currently.</p>
+                <p className="text-xs mt-1 opacity-75">Keep Trading!</p>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value="distribution" className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Trade Type Distribution</CardTitle>
-                <CardDescription>Breakdown by trade types</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64">
-                  {tradeTypeData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={tradeTypeData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {tradeTypeData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground">
-                      <p>No trade type data available</p>
-                    </div>
-                  )}
+      {/* Tag Performance */}
+      {tag_performance && tag_performance.length > 0 && (
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+          <CardHeader className="pb-6">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 shadow-lg">
+                <Tag className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                  Strategy Performance
+                </CardTitle>
+                <CardDescription className="text-slate-600 dark:text-slate-400 mt-1">
+                  Analyze performance by trading strategies and tags
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div className="bg-slate-50/50 dark:bg-slate-700/30 p-4 rounded-xl border border-slate-200/30 dark:border-slate-600/30">
+              <div className="flex items-center gap-2 mb-3">
+                <Filter className="h-4 w-4 text-purple-600" />
+                <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Strategy</span>
+              </div>
+              <Select value={selectedTag} onValueChange={setSelectedTag}>
+                <SelectTrigger className="w-full bg-background/50 border-border/50 focus:bg-background focus:border-primary/50 transition-all duration-200">
+                  <SelectValue placeholder="Choose a tag to analyze performance" />
+                </SelectTrigger>
+                <SelectContent className="bg-background/90 backdrop-blur-sm border-border/50">
+                  {tag_performance.map((tag) => (
+                    <SelectItem key={tag.tag_name} value={tag.tag_name}>
+                      <div className="flex items-center justify-between w-full">
+                        <span>{tag.tag_name}</span>
+                        <span className="text-xs text-muted-foreground ml-2">({tag.trade_count} trades)</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tag Analytics Display */}
+            {selectedTag && (
+              <div className="bg-blue-50/50 dark:bg-blue-900/10 p-6 rounded-xl border border-blue-200/30 dark:border-blue-700/30">
+                <div className="flex items-center gap-2 mb-4">
+                  <PieChart className="h-5 w-5 text-blue-600" />
+                  <h4 className="font-semibold text-slate-800 dark:text-slate-100">
+                    Detailed Analytics for "{selectedTag}"
+                  </h4>
                 </div>
-              </CardContent>
-            </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Status Distribution</CardTitle>
-                <CardDescription>Breakdown by trade status</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-64">
-                  {statusData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={statusData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {statusData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground">
-                      <p>No status data available</p>
+                {loadingTagAnalytics ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="space-y-2">
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-6 w-16" />
+                      </div>
+                    ))}
+                  </div>
+                ) : tagAnalytics ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total P&L</div>
+                      <div
+                        className={`text-xl font-bold ${(tagAnalytics.total_pnl as number) >= 0 ? "text-green-600" : "text-red-600"}`}
+                      >
+                        {formatCurrency(tagAnalytics.total_pnl as number)}
+                      </div>
                     </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="drawdown" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Drawdown Analysis</CardTitle>
-              <CardDescription>Cumulative P&L and drawdown over time</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                {drawdownData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <RechartsLineChart data={drawdownData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
-                      <XAxis dataKey="trade" />
-                      <YAxis yAxisId="left" orientation="left" stroke="#10b981" />
-                      <YAxis yAxisId="right" orientation="right" stroke="#ef4444" />
-                      <Tooltip formatter={(value, name) => {
-                        if (name === 'cumulative_pnl') return [formatCurrency(value as number), 'Cumulative P&L'];
-                        if (name === 'drawdown') return [formatCurrency(value as number), 'Drawdown'];
-                        return [value, name];
-                      }} />
-                      <Line yAxisId="left" type="monotone" dataKey="cumulative_pnl" stroke="#10b981" strokeWidth={2} name="cumulative_pnl" />
-                      <Line yAxisId="right" type="monotone" dataKey="drawdown" stroke="#ef4444" strokeWidth={2} name="drawdown" />
-                    </RechartsLineChart>
-                  </ResponsiveContainer>
+                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Win Rate</div>
+                      <div className="text-xl font-bold text-blue-600">{tagAnalytics.win_rate as number}%</div>
+                    </div>
+                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Trades</div>
+                      <div className="text-xl font-bold text-slate-800 dark:text-slate-100">
+                        {tagAnalytics.trade_count as number}
+                      </div>
+                    </div>
+                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                      <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Avg P&L</div>
+                      <div
+                        className={`text-xl font-bold ${(tagAnalytics.avg_pnl as number) >= 0 ? "text-green-600" : "text-red-600"}`}
+                      >
+                        {formatCurrency(tagAnalytics.avg_pnl as number)}
+                      </div>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="h-full flex items-center justify-center text-muted-foreground">
-                    <div className="text-center">
-                      <LineChart className="h-12 w-12 mx-auto mb-4 opacity-20" />
-                      <p>No drawdown data available</p>
-                    </div>
+                  <div className="text-center py-8 text-slate-500 dark:text-slate-400">
+                    <AlertTriangle className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No analytics data available for this tag</p>
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
+            )}
 
-// Skeleton loader for analytics
-function AnalyticsSkeleton() {
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {Array(4).fill(0).map((_, i) => (
-          <Card key={i}>
-            <CardHeader className="pb-2">
-              <Skeleton className="h-4 w-24" />
-              <Skeleton className="h-10 w-20 mt-1" />
-            </CardHeader>
-            <CardContent className="pb-2">
-              <div className="flex items-center justify-between">
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-4 w-16" />
+            {/* Tag Performance List */}
+            <div className="space-y-3">
+              <h4 className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                All Strategy Performance
+              </h4>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {tag_performance.slice(0, 10).map((tag, index) => (
+                  <div
+                    key={index}
+                    className="flex justify-between items-center p-4 rounded-lg bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors duration-200 border border-slate-200/30 dark:border-slate-600/30"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full ${tag.total_pnl >= 0 ? "bg-green-500" : "bg-red-500"}`} />
+                      <Badge
+                        variant="outline"
+                        className="bg-muted/30 border-border/50 text-slate-700 dark:text-slate-300"
+                      >
+                        {tag.tag_name}
+                      </Badge>
+                      <span className="text-sm text-slate-500 dark:text-slate-400">{tag.trade_count} trades</span>
+                    </div>
+                    <div className="text-right">
+                      <div className={`font-bold ${tag.total_pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                        {formatCurrency(tag.total_pnl)}
+                      </div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">{tag.win_rate}% win rate</div>
+                    </div>
+                  </div>
+                ))}
               </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      <Card>
-        <CardHeader>
-          <Skeleton className="h-6 w-48" />
-          <Skeleton className="h-4 w-64 mt-1" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-80 w-full" />
-        </CardContent>
-      </Card>
+      {/* Monthly Performance */}
+      {monthly_performance && monthly_performance.length > 0 && (
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+          <CardHeader className="pb-6">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 shadow-lg">
+                <Calendar className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
+                  Monthly Performance Trends
+                </CardTitle>
+                <CardDescription className="text-slate-600 dark:text-slate-400 mt-1">
+                  Track your trading performance over time
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="grid gap-3">
+              {monthly_performance.slice(-6).map((month, index) => (
+                <div
+                  key={index}
+                  className="flex justify-between items-center p-4 rounded-lg bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors duration-200 border border-slate-200/30 dark:border-slate-600/30"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-4 h-4 rounded-full ${month.total_pnl >= 0 ? "bg-green-500" : "bg-red-500"} shadow-lg`}
+                    />
+                    <span className="font-medium text-slate-800 dark:text-slate-100 text-lg">{month.month}</span>
+                  </div>
+                  <div className="text-right">
+                    <div className={`font-bold text-lg ${month.total_pnl >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {formatCurrency(month.total_pnl)}
+                    </div>
+                    <div className="text-sm text-slate-500 dark:text-slate-400">{month.trade_count} trades</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
-  );
+  )
 }

@@ -78,32 +78,31 @@ export function useOptimizedJournal({
 
   // Debounced search function
   const debouncedSearch = useCallback(
-    debounce((query: string, callback: (results: TradeJournal[]) => void) => {
-      if (!query || query.length < SEARCH_CONFIG.MIN_QUERY_LENGTH) {
-        callback(journalQuery.trades);
-        return;
-      }
+    (query: string, callback: (results: TradeJournal[]) => void) => {
+      const debouncedFn = debounce(() => {
+        if (!query || query.length < SEARCH_CONFIG.MIN_QUERY_LENGTH) {
+          callback(journalQuery.trades);
+          return;
+        }
 
-      const searchQuery = query.toLowerCase();
-      const results = journalQuery.trades.filter((trade) =>
-        trade.company_name.toLowerCase().includes(searchQuery) ||
-        (trade.personal_notes && trade.personal_notes.toLowerCase().includes(searchQuery)) ||
-        trade.tags.some(tag => tag.name.toLowerCase().includes(searchQuery))
-      );
+        const searchQuery = query.toLowerCase();
+        const results = journalQuery.trades.filter((trade) =>
+          trade.company_name.toLowerCase().includes(searchQuery) ||
+          (trade.personal_notes && trade.personal_notes.toLowerCase().includes(searchQuery)) ||
+          trade.tags.some(tag => tag.name.toLowerCase().includes(searchQuery))
+        );
+        
+        callback(results);
+      }, SEARCH_CONFIG.DEBOUNCE_DELAY);
       
-      callback(results);
-    }, SEARCH_CONFIG.DEBOUNCE_DELAY),
+      debouncedFn();
+    },
     [journalQuery.trades]
   );
 
   // Optimized delete handler with optimistic updates
   const optimizedDeleteTrade = useCallback(async (tradeId: number) => {
-    try {
-      await journalQuery.deleteTrade.mutateAsync(tradeId);
-    } catch (error) {
-      // Error handling is done in the mutation
-      throw error;
-    }
+    await journalQuery.deleteTrade.mutateAsync(tradeId);
   }, [journalQuery.deleteTrade]);
 
   return {

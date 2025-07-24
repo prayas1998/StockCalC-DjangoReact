@@ -19,6 +19,7 @@ interface TradeFormDialogProps {
   tradeId?: number;
   mode: "add" | "edit";
   availableTags: TradeTags[];
+  onTradeUpdated?: () => void; // Callback to refresh search results
 }
 
 export function TradeFormDialog({
@@ -28,6 +29,7 @@ export function TradeFormDialog({
   tradeId,
   mode,
   availableTags,
+  onTradeUpdated,
 }: TradeFormDialogProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { createTrade, updateTrade } = useJournal();
@@ -49,17 +51,22 @@ export function TradeFormDialog({
           id: tradeId,
           trade: data as TradeJournalUpdate,
         });
+        // Refresh search results if callback provided
+        if (onTradeUpdated) {
+          onTradeUpdated();
+        }
         // Only close on success - errors will be caught below
         onOpenChange(false);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       
       // Handle validation errors by setting field-level errors
-      if (error.message && setErrorsFromResponse(error.message)) {
+      const errorMessage = (error as { message?: string })?.message;
+      if (errorMessage && setErrorsFromResponse(errorMessage)) {
         // Validation errors were set, don't show toast
       } else {
         // Non-validation error, show toast
-        toast.error(`Failed to ${mode === "add" ? "add" : "update"} trade: ${error.message || 'Unknown error'}`);
+        toast.error(`Failed to ${mode === "add" ? "add" : "update"} trade: ${errorMessage || 'Unknown error'}`);
       }
     } finally {
       setIsSubmitting(false);

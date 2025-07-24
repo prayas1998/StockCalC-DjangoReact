@@ -18,8 +18,8 @@ export function sanitizeInput(input: string): string {
 /**
  * Validate and sanitize trade data before submission
  */
-export function sanitizeTradeData(data: Record<string, any>): Record<string, any> {
-  const sanitized: Record<string, any> = {};
+export function sanitizeTradeData(data: Record<string, unknown>): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
   
   for (const [key, value] of Object.entries(data)) {
     if (typeof value === 'string') {

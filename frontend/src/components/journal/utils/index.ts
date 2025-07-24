@@ -22,7 +22,7 @@ export function isJournalAnalytics(
 /**
  * Type guard to check if data is a tags array
  */
-export function isTagsArray(tags: any): tags is any[] {
+export function isTagsArray(tags: unknown): tags is unknown[] {
   return Array.isArray(tags);
 }
 
@@ -106,7 +106,7 @@ export function isValidHexColor(color: string): boolean {
 /**
  * Debounce function for search input
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   delay: number
 ): (...args: Parameters<T>) => void {
@@ -181,4 +181,66 @@ export function calculateTradeDuration(entryDate: string, exitDate?: string): nu
   const exit = exitDate ? new Date(exitDate) : new Date();
   const diffTime = Math.abs(exit.getTime() - entry.getTime());
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+}
+
+/**
+ * Get dynamic exit price based on trade status with descriptive label
+ */
+export function getExitPriceWithLabel(trade: TradeJournal): { price: number; label: string } | null {
+  switch (trade.status) {
+    case TradeStatus.CLOSED_TARGET:
+      return trade.target_price ? { 
+        price: trade.target_price, 
+        label: 'Target' 
+      } : null;
+      
+    case TradeStatus.CLOSED_STOPLOSS:
+      return trade.stop_loss ? { 
+        price: trade.stop_loss, 
+        label: 'StopLoss' 
+      } : null;
+      
+    case TradeStatus.CLOSED_MANUAL:
+      // For CLOSED_MANUAL, the exit price depends on trade direction:
+      // - LONG trades: Exit price is stored in sell_price (sell to close)
+      // - SHORT trades: Exit price is stored in buy_price (buy to close)
+      if (trade.direction === 'SHORT') {
+        return trade.buy_price ? { 
+          price: trade.buy_price, 
+          label: 'Manual' 
+        } : null;
+      } else {
+        return trade.sell_price ? { 
+          price: trade.sell_price, 
+          label: 'Manual' 
+        } : null;
+      }
+      
+    case TradeStatus.OPEN:
+    case TradeStatus.CANCELLED:
+    default:
+      return null;
+  }
+}
+
+/**
+ * Format exit price with label for display
+ */
+export function formatExitPriceDisplay(trade: TradeJournal): string {
+  const exitPriceData = getExitPriceWithLabel(trade);
+  if (!exitPriceData) {
+    return '--';
+  }
+  
+  // Safely convert to number and format
+  const priceNumber = typeof exitPriceData.price === 'string' 
+    ? parseFloat(exitPriceData.price) 
+    : exitPriceData.price;
+    
+  if (isNaN(priceNumber)) {
+    return '--';
+  }
+  
+  const formattedPrice = priceNumber.toFixed(2);
+  return `₹${formattedPrice} (${exitPriceData.label})`;
 }

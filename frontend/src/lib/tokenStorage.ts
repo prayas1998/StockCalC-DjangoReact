@@ -36,7 +36,7 @@ export const hasAuthToken = (): boolean => {
 /**
  * Parse JWT token payload
  */
-export const parseTokenPayload = (token: string): any | null => {
+export const parseTokenPayload = (token: string): Record<string, unknown> | null => {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]));
     return payload;

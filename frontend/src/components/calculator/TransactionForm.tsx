@@ -69,7 +69,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
   const getBreakevenPrice = () => {
     if (!calculationState.result?.summary) return 0
 
-    const summary = calculationState.result.summary as Record<string, any>
+    const summary = calculationState.result.summary as Record<string, string | number>
     // Check all possible variations of the property name
     const possibleNames = ["breakevenPrice", "breakeven_price", "breakevenPrice", "breakeven_price", "BreakevenPrice"]
 

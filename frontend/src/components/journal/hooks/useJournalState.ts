@@ -12,16 +12,14 @@ interface JournalState {
   editingTrade: TradeJournal | null;
   formMode: 'add' | 'edit';
   
-  // Search and filter state
+  // Search state
   searchQuery: string;
   isSearching: boolean;
   searchResults: TradeJournal[] | null;
+  selectedCompany: string | null;
   
   // Filter dialog state
   filterDialogOpen: boolean;
-  selectedStatuses: TradeStatus[];
-  selectedTypes: TradeType[];
-  selectedTagIds: number[];
   
   // UI state
   activeTab: string;
@@ -37,15 +35,12 @@ interface JournalStateActions {
   setSearchQuery: (query: string) => void;
   setIsSearching: (searching: boolean) => void;
   setSearchResults: (results: TradeJournal[] | null) => void;
+  setSelectedCompany: (company: string | null) => void;
   clearSearch: () => void;
   
-  // Filter actions
+  // Filter dialog actions
   openFilterDialog: () => void;
   closeFilterDialog: () => void;
-  setSelectedStatuses: (statuses: TradeStatus[]) => void;
-  setSelectedTypes: (types: TradeType[]) => void;
-  setSelectedTagIds: (tagIds: number[]) => void;
-  clearAllFilters: () => void;
   
   // UI actions
   setActiveTab: (tab: string) => void;
@@ -58,10 +53,8 @@ const initialState: JournalState = {
   searchQuery: '',
   isSearching: false,
   searchResults: null,
+  selectedCompany: null,
   filterDialogOpen: false,
-  selectedStatuses: [],
-  selectedTypes: [],
-  selectedTagIds: [],
   activeTab: 'trades',
 };
 
@@ -108,11 +101,16 @@ export function useJournalState(): JournalState & JournalStateActions {
     setState(prev => ({ ...prev, searchResults: results }));
   }, []);
 
+  const setSelectedCompany = useCallback((company: string | null) => {
+    setState(prev => ({ ...prev, selectedCompany: company }));
+  }, []);
+
   const clearSearch = useCallback(() => {
     setState(prev => ({
       ...prev,
       searchQuery: '',
       searchResults: null,
+      selectedCompany: null,
       isSearching: false,
     }));
   }, []);
@@ -126,27 +124,6 @@ export function useJournalState(): JournalState & JournalStateActions {
     setState(prev => ({ ...prev, filterDialogOpen: false }));
   }, []);
 
-  const setSelectedStatuses = useCallback((statuses: TradeStatus[]) => {
-    setState(prev => ({ ...prev, selectedStatuses: statuses }));
-  }, []);
-
-  const setSelectedTypes = useCallback((types: TradeType[]) => {
-    setState(prev => ({ ...prev, selectedTypes: types }));
-  }, []);
-
-  const setSelectedTagIds = useCallback((tagIds: number[]) => {
-    setState(prev => ({ ...prev, selectedTagIds: tagIds }));
-  }, []);
-
-  const clearAllFilters = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      selectedStatuses: [],
-      selectedTypes: [],
-      selectedTagIds: [],
-      filterDialogOpen: false,
-    }));
-  }, []);
 
   // UI actions
   const setActiveTab = useCallback((tab: string) => {
@@ -161,13 +138,10 @@ export function useJournalState(): JournalState & JournalStateActions {
     setSearchQuery,
     setIsSearching,
     setSearchResults,
+    setSelectedCompany,
     clearSearch,
     openFilterDialog,
     closeFilterDialog,
-    setSelectedStatuses,
-    setSelectedTypes,
-    setSelectedTagIds,
-    clearAllFilters,
     setActiveTab,
   };
 }

@@ -16,7 +16,6 @@ let connectionErrorToastShown = false;
  */
 export const checkApiConnection = async (showToast = true): Promise<boolean> => {
   try {
-    console.log(`Checking API connectivity at: ${getApiUrl(API_ENDPOINTS.HEALTH_CHECK)}`);
     
     const response = await fetch(getApiUrl(API_ENDPOINTS.HEALTH_CHECK), {
       method: 'GET',
@@ -26,12 +25,10 @@ export const checkApiConnection = async (showToast = true): Promise<boolean> => 
     });
     
     if (response.ok) {
-      console.log('API connection successful');
       // Reset the flag when connection is successful
       connectionErrorToastShown = false;
       return true;
     } else {
-      console.error(`API connection failed: ${response.status} ${response.statusText}`);
       
       // Show a helpful toast with debugging information, but only if requested and not shown recently
       if (showToast && !connectionErrorToastShown) {
@@ -47,7 +44,6 @@ export const checkApiConnection = async (showToast = true): Promise<boolean> => 
       return false;
     }
   } catch (error) {
-    console.error('API connection error:', error);
     
     // Show a toast only if requested and not shown recently
     if (showToast && !connectionErrorToastShown) {
@@ -75,7 +71,7 @@ export const resetConnectionErrorToast = (): void => {
 /**
  * Formats an error message for display
  */
-export const formatApiError = (error: any): string => {
+export const formatApiError = (error: unknown): string => {
   if (typeof error === 'string') {
     return error;
   }

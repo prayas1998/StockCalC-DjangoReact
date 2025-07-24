@@ -31,9 +31,9 @@ export const profileApi = {
     try {
       const response = await api.get('/profile/');
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       // Handle authentication errors specially
-      if (error.response?.status === 401 || error.response?.status === 403) {
+      if ((error as { response?: { status?: number } })?.response?.status === 401 || (error as { response?: { status?: number } })?.response?.status === 403) {
         handleAuthenticationError(error, { operation: 'getProfile' });
       } else {
         handleApiError(error, { operation: 'getProfile' });
@@ -49,8 +49,8 @@ export const profileApi = {
     try {
       const response = await api.patch('/profile/', data);
       return response.data;
-    } catch (error: any) {
-      if (error.response?.status === 401 || error.response?.status === 403) {
+    } catch (error: unknown) {
+      if ((error as { response?: { status?: number } })?.response?.status === 401 || (error as { response?: { status?: number } })?.response?.status === 403) {
         handleAuthenticationError(error, { operation: 'updateProfile' });
       } else {
         handleApiError(error, { operation: 'updateProfile' });
@@ -85,7 +85,7 @@ export const profileApi = {
       }
       
       return response.data;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Profile API - Change password error:', error);
       throw error;
     }
@@ -95,7 +95,7 @@ export const profileApi = {
    * Delete user account with complete backend handling.
    * Backend handles both Django data cleanup and Supabase user deletion.
    */
-  async deleteAccount(password: string): Promise<{ message: string; cleanup_summary?: any; success: boolean; support_needed?: boolean }> {
+  async deleteAccount(password: string): Promise<{ message: string; cleanup_summary?: Record<string, unknown>; success: boolean; support_needed?: boolean }> {
     try {
       // Call backend to handle complete account deletion
       const response = await api.delete('/profile/delete-account/', {
@@ -110,25 +110,25 @@ export const profileApi = {
         support_needed: response.data.support_needed
       };
       
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Profile API - Delete account error:', error);
       
       // Handle specific error responses
-      if (error.response?.status === 401) {
+      if ((error as { response?: { status?: number } })?.response?.status === 401) {
         throw new Error('Please log in again to delete your account');
-      } else if (error.response?.status === 403) {
+      } else if ((error as { response?: { status?: number } })?.response?.status === 403) {
         throw new Error('You do not have permission to delete this account');
-      } else if (error.response?.status === 500) {
+      } else if ((error as { response?: { status?: number } })?.response?.status === 500) {
         // Server error during deletion
-        const errorData = error.response?.data;
+        const errorData = (error as { response?: { data?: { support_needed?: boolean; message?: string } } })?.response?.data;
         if (errorData?.support_needed) {
           throw new Error(errorData.message || 'Account deletion partially failed. Please contact support.');
         }
         throw new Error('Server error during account deletion. Please try again or contact support.');
-      } else if (error.response?.data?.message) {
-        throw new Error(error.response.data.message);
-      } else if (error.response?.data?.detail) {
-        throw new Error(error.response.data.detail);
+      } else if ((error as { response?: { data?: { message?: string } } })?.response?.data?.message) {
+        throw new Error((error as { response: { data: { message: string } } }).response.data.message);
+      } else if ((error as { response?: { data?: { detail?: string } } })?.response?.data?.detail) {
+        throw new Error((error as { response: { data: { detail: string } } }).response.data.detail);
       } else {
         throw new Error('Failed to delete account. Please try again or contact support.');
       }

@@ -22,8 +22,7 @@ def assign_user_id_to_existing_trades(apps, schema_editor):
         # Generate a placeholder UUID for orphaned data
         placeholder_uuid = uuid.uuid4()
         
-        print(f"Found {trades_without_user} trades and {tags_without_user} tags without user_id")
-        print(f"Assigning placeholder UUID: {placeholder_uuid}")
+        # Found trades and tags without user_id, assigning placeholder UUID
         
         # Update trades
         TradeJournal.objects.filter(user_id__isnull=True).update(user_id=placeholder_uuid)
@@ -31,7 +30,7 @@ def assign_user_id_to_existing_trades(apps, schema_editor):
         # Update tags
         TradeTags.objects.filter(user_id__isnull=True).update(user_id=placeholder_uuid)
         
-        print("Migration completed. Users will need to re-associate their data.")
+        # Migration completed. Users will need to re-associate their data.
 
 
 class Migration(migrations.Migration):

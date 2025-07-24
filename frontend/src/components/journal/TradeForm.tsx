@@ -126,7 +126,7 @@ export function TradeForm({
 
     // Handle both array of objects and array of numbers
     if (Array.isArray(initialData.tags)) {
-      return initialData.tags.map((tag: any) => (typeof tag === "object" ? tag.id : tag))
+      return initialData.tags.map((tag: TradeTags | number) => (typeof tag === "object" ? tag.id : tag))
     }
 
     return []
@@ -481,7 +481,7 @@ export function TradeForm({
     })
   }
 
-  const handleFieldChange = (fieldName: string, onChange: (value: any) => void) => (value: string) => {
+  const handleFieldChange = (fieldName: string, onChange: (value: string) => void) => (value: string) => {
     onChange(value)
     // Clear backend validation errors when user changes field
     if (onFieldChange && validationErrors[fieldName]) {
@@ -489,7 +489,7 @@ export function TradeForm({
     }
     // Clear form errors for this field when user changes it
     if (form.formState.errors[fieldName]) {
-      form.clearErrors(fieldName as any)
+      form.clearErrors(fieldName as keyof TradeFormValues)
     }
   }
 

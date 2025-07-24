@@ -100,7 +100,8 @@ export const BrokerTradeTypeSelector: React.FC<BrokerTradeTypeSelectorProps> = (
 
   // Original version for shared selector (not compact)
   return (
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+    <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-md border-l-4 border-primary">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
       {/* Broker Selector */}
       <div className="flex items-center gap-2">
         <Label className="text-xs font-medium text-gray-500 dark:text-gray-300 whitespace-nowrap">Broker:</Label>
@@ -225,6 +226,7 @@ export const BrokerTradeTypeSelector: React.FC<BrokerTradeTypeSelectorProps> = (
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

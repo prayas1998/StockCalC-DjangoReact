@@ -12,13 +12,19 @@ export const useJournalFilters = () => {
   useEffect(() => {
     const initialFilters: JournalFilters = {};
     
-    // Parse status filter
-    const status = searchParams.get('status') as TradeStatus | null;
-    if (status) initialFilters.status = status;
+    // Parse status filter - always return arrays to maintain consistency with components
+    const status = searchParams.get('status');
+    if (status) {
+      const statusValues = status.split(',') as TradeStatus[];
+      initialFilters.status = statusValues;
+    }
     
-    // Parse trade type filter
-    const tradeType = searchParams.get('trade_type') as TradeType | null;
-    if (tradeType) initialFilters.trade_type = tradeType;
+    // Parse trade type filter - always return arrays to maintain consistency with components
+    const tradeType = searchParams.get('trade_type');
+    if (tradeType) {
+      const tradeTypeValues = tradeType.split(',') as TradeType[];
+      initialFilters.trade_type = tradeTypeValues;
+    }
     
     // Parse date filters
     const startDate = searchParams.get('start_date');
@@ -30,7 +36,7 @@ export const useJournalFilters = () => {
     // Parse tag IDs
     const tagIds = searchParams.get('tag_ids');
     if (tagIds) {
-      initialFilters.tag_ids = tagIds.split(',').map(id => parseInt(id, 10));
+      initialFilters.tags = tagIds.split(',').map(id => parseInt(id, 10));
     }
     
     // Parse profitability filter
@@ -50,11 +56,21 @@ export const useJournalFilters = () => {
   const syncFiltersToUrl = useCallback((newFilters: JournalFilters, query?: string) => {
     const params = new URLSearchParams();
     
-    if (newFilters.status) params.set('status', newFilters.status);
-    if (newFilters.trade_type) params.set('trade_type', newFilters.trade_type);
+    if (newFilters.status && newFilters.status.length > 0) {
+      const statusValue = Array.isArray(newFilters.status) 
+        ? newFilters.status.join(',') 
+        : newFilters.status;
+      params.set('status', statusValue);
+    }
+    if (newFilters.trade_type && newFilters.trade_type.length > 0) {
+      const tradeTypeValue = Array.isArray(newFilters.trade_type) 
+        ? newFilters.trade_type.join(',') 
+        : newFilters.trade_type;
+      params.set('trade_type', tradeTypeValue);
+    }
     if (newFilters.start_date) params.set('start_date', newFilters.start_date);
     if (newFilters.end_date) params.set('end_date', newFilters.end_date);
-    if (newFilters.tag_ids?.length) params.set('tag_ids', newFilters.tag_ids.join(','));
+    if (newFilters.tags?.length) params.set('tag_ids', newFilters.tags.join(','));
     if (newFilters.is_profitable !== undefined) params.set('is_profitable', String(newFilters.is_profitable));
     if (query) params.set('query', query);
     

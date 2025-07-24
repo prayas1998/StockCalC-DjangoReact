@@ -8,15 +8,15 @@ def recover_user_trade_associations(apps, schema_editor):
     """
     Migration already completed - this is a no-op now since Django auth is removed
     """
-    print("Data recovery migration - skipping since Django auth is removed")
-    print("User-trade associations should already be established")
+    # Data recovery migration - skipping since Django auth is removed
+    # User-trade associations should already be established
 
 
 def reverse_recovery(apps, schema_editor):
     """
     No-op reverse migration
     """
-    print("Reverse migration - no action needed")
+    # Reverse migration - no action needed
 
 
 class Migration(migrations.Migration):

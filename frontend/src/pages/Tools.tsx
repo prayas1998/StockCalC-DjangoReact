@@ -89,7 +89,6 @@ const Tools = () => {
                   onTradeTypeChange={sharedState.setSelectedTradeType}
                   positionType={sharedState.positionType}
                   onPositionTypeChange={sharedState.setPositionType}
-                  compact={true}
                 />
               </div>
             </div>
