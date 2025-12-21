@@ -13,11 +13,7 @@ export function verifyToken(token: string): any {
   }
 }
 
-// Supabase client for admin operations
-const supabaseAdmin = createClient(
-  config.supabase.url,
-  config.supabase.serviceRoleKey
-);
+// Supabase admin client - import from services to avoid duplication
 
 interface JWTPayload {
   sub: string; // user ID
@@ -128,4 +124,4 @@ export const getAccessToken = (c: any) => {
 };
 
 // Export Supabase admin client for privileged operations
-export { supabaseAdmin };
+export { supabaseAdmin } from '../services/supabase';

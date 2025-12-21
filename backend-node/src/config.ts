@@ -1,6 +1,8 @@
 /*
  * Environment Variables Configuration
  */
+import dotenv from 'dotenv';
+dotenv.config();
 
 export const config = {
   // Supabase Configuration
@@ -56,7 +58,9 @@ export const config = {
   ]
 } as const;
 
-// Environment validation
+// Environment validation - run immediately when module is imported
+validateConfig();
+
 export function validateConfig(): void {
   const missing = config.requiredEnvVars.filter(key => !process.env[key]);
   

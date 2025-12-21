@@ -2,7 +2,10 @@ import { Context } from 'hono';
 import { requireAuth } from '../middleware/auth';
 import { calculationRequestSchema } from '../validators/schemas';
 import { CalculationRequest, CalculationResponse } from '../types';
-import { EquityDeliveryCalculator, EquityIntradayCalculator, DecimalUtils } from '../calculations';
+import { EquityDeliveryCalculator } from '../calculations/equityDelivery';
+import { EquityIntradayCalculator } from '../calculations/equityIntraday';
+import { BreakevenCalculator } from '../calculations/breakevenCalculator';
+import { DecimalUtils } from '../calculations/index';
 
 export const calcRoutes = [
   {

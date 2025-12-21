@@ -19,7 +19,8 @@ async function calculatePnl(trade: any): Promise<number | null> {
   
   try {
     // Import calculator classes
-    const { EquityDeliveryCalculator, EquityIntradayCalculator } = await import('../calculations');
+    const { EquityDeliveryCalculator } = await import('../calculations/equityDelivery');
+    const { EquityIntradayCalculator } = await import('../calculations/equityIntraday');
     
     // Map journal trade type to calculator trade type (exact match to Django)
     const tradeTypeMapping: Record<string, string> = {
