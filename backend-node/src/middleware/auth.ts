@@ -76,9 +76,10 @@ export const authMiddleware = async (c: any, next: any) => {
       is_superuser: false
     };
     
-    // Attach user to context
+    // Attach user and token to context
     c.set('user', user);
     c.set('userId', payload.sub);
+    c.set('accessToken', token);
     
     await next();
   } catch (error) {
@@ -115,6 +116,15 @@ export const requireAuth = (c: any) => {
     throw new Error('Authentication required');
   }
   return user;
+};
+
+// Helper to get the access token for authenticated requests
+export const getAccessToken = (c: any) => {
+  const token = c.get('accessToken');
+  if (!token) {
+    throw new Error('Access token not found');
+  }
+  return token;
 };
 
 // Export Supabase admin client for privileged operations

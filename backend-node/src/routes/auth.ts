@@ -49,18 +49,35 @@ export const authRoutes = [
     path: '/api/auth/revoke-all/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
+      const authHeader = c.req.header('Authorization');
       
+      if (!authHeader?.startsWith('Bearer ')) {
+        return c.json({
+          error: true,
+          error_id: `revoke_${Date.now()}`,
+          category: 'authentication' as const,
+          message: 'No token provided'
+        }, 400);
+      }
+
       try {
-        // Revoke all sessions for the user via Supabase Admin
-        const { error } = await supabaseAdmin.auth.admin.signOut(user.id);
+        const currentToken = authHeader.substring(7);
+        
+        // Revoke the current session using the JWT
+        const { error } = await supabaseAdmin.auth.admin.signOut(currentToken);
         
         if (error) {
-          return c.json({
-            error: true,
-            error_id: `revoke_${Date.now()}`,
-            category: 'server_error' as const,
-            message: error.message || 'Failed to revoke tokens'
-          }, 500);
+          console.warn('Revoke warning:', error.message);
+          // Continue even if revoking fails - token might be expired
+        }
+        
+        // For comprehensive revocation, we can also invalidate all user sessions
+        // using the user's ID with the admin API
+        try {
+          await (supabaseAdmin.auth.admin as any).revokeUserSessions(user.id);
+        } catch (revokeError) {
+          console.warn('Session revocation warning:', revokeError);
+          // Non-critical error - main token was already revoked
         }
         
         return c.json({

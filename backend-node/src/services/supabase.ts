@@ -27,54 +27,78 @@ export const supabaseAdmin = createClient(
 
 // Helper to execute queries with user scoping
 export async function executeWithUserScope<T>(
-  userId: string,
+  accessToken: string,
   queryFn: (client: SupabaseClient) => Promise<T>
 ): Promise<T> {
-  // Set user context for RLS
-  const client = supabaseClient;
-  
-  // Override auth context for this request
-  client.auth.setSession({
-    access_token: '', // We'll use the user ID directly
-    refresh_token: ''
-  });
+  // Create a new client instance for this request with the user's JWT
+  const client = createClient(
+    config.supabase.url,
+    config.supabase.anonKey,
+    {
+      auth: {
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    }
+  );
   
   try {
     return await queryFn(client);
   } catch (error) {
-    console.error(`Database operation failed for user ${userId}:`, error);
+    console.error('Database operation failed:', error);
     throw error;
   }
 }
 
 // Helper to build user-scoped queries
-export function withUserScope(userId: string, table: string) {
+export function withUserScope(accessToken: string, table: string) {
+  // Create a new client instance with the user's JWT
+  const client = createClient(
+    config.supabase.url,
+    config.supabase.anonKey,
+    {
+      auth: {
+        persistSession: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    }
+  );
+
   return {
     select: (columns = '*') => 
-      supabaseClient
+      client
         .from(table)
-        .select(columns)
-        .eq('user_id', userId),
+        .select(columns),
         
     insert: (data: any) =>
-      supabaseClient
+      client
         .from(table)
-        .insert({ ...data, user_id: userId }),
+        .insert(data),
         
-    update: (data: any) =>
-      supabaseClient
+    update: (data: any, filter?: any) =>
+      client
         .from(table)
         .update(data)
-        .eq('user_id', userId),
+        .match(filter || {}),
         
-    delete: () =>
-      supabaseClient
+    delete: (filter?: any) =>
+      client
         .from(table)
         .delete()
-        .eq('user_id', userId),
+        .match(filter || {}),
         
     // For operations that need both select and other clauses
-    from: () => supabaseClient.from(table)
+    from: () => client.from(table)
   };
 }
 

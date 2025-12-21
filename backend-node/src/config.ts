@@ -51,6 +51,7 @@ export const config = {
   requiredEnvVars: [
     'SUPABASE_URL',
     'SUPABASE_ANON_KEY', 
+    'SUPABASE_SERVICE_ROLE_KEY',
     'SUPABASE_JWT_SECRET'
   ]
 } as const;
@@ -76,6 +77,10 @@ export function validateConfig(): void {
   
   if (!config.supabase.jwtSecret) {
     throw new Error('SUPABASE_JWT_SECRET cannot be empty');
+  }
+  
+  if (!config.supabase.serviceRoleKey) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY cannot be empty');
   }
 }
 

@@ -1,5 +1,5 @@
 import { Context } from 'hono';
-import { requireAuth } from '../middleware/auth';
+import { requireAuth, getAccessToken } from '../middleware/auth';
 import { tradeJournalCreateSchema, paginationSchema, journalFilterSchema, tagCreateSchema } from '../validators/schemas';
 import { TradeJournalCreate, PaginatedResponse } from '../types';
 import { supabaseClient, withUserScope } from '../services/supabase';
@@ -383,7 +383,8 @@ export const journalRoutes = [
         
         // Create journal entry with user scoping (strip tags field as it doesn't exist in TradeJournal table)
         const { tags, ...journalData } = validatedData;
-        const { data: trade, error } = await withUserScope(user.id, 'TradeJournal').insert({
+        const accessToken = getAccessToken(c);
+        const { data: trade, error } = await withUserScope(accessToken, 'TradeJournal').insert({
           ...journalData,
           user_id: user.id
         }).select().single();
@@ -478,7 +479,8 @@ export const journalRoutes = [
         // Validate update data
         const validatedData = tradeJournalCreateSchema.partial().parse(body);
         
-        const { data: trade, error } = await withUserScope(user.id, 'TradeJournal')
+        const accessToken = getAccessToken(c);
+        const { data: trade, error } = await withUserScope(accessToken, 'TradeJournal')
           .update(validatedData)
           .eq('id', id)
           .select()
@@ -516,7 +518,8 @@ export const journalRoutes = [
       const id = c.req.param('id');
       
       try {
-        const { error } = await withUserScope(user.id, 'TradeJournal')
+        const accessToken = getAccessToken(c);
+        const { error } = await withUserScope(accessToken, 'TradeJournal')
           .delete()
           .eq('id', id);
         
@@ -600,7 +603,8 @@ export const journalRoutes = [
           }, 400);
         }
         
-        const { data: tag, error } = await withUserScope(user.id, 'TradeTags').insert({
+        const accessToken = getAccessToken(c);
+        const { data: tag, error } = await withUserScope(accessToken, 'TradeTags').insert({
           ...validatedData,
           user_id: user.id
         }).select().single();
@@ -755,7 +759,8 @@ export const journalRoutes = [
       try {
         const validatedData = tagCreateSchema.partial().parse(body);
         
-        const { data: tag, error } = await withUserScope(user.id, 'TradeTags')
+        const accessToken = getAccessToken(c);
+        const { data: tag, error } = await withUserScope(accessToken, 'TradeTags')
           .update(validatedData)
           .eq('id', id)
           .select()
@@ -793,7 +798,8 @@ export const journalRoutes = [
       const id = c.req.param('id');
       
       try {
-        const { error } = await withUserScope(user.id, 'TradeTags')
+        const accessToken = getAccessToken(c);
+        const { error } = await withUserScope(accessToken, 'TradeTags')
           .delete()
           .eq('id', id);
         
