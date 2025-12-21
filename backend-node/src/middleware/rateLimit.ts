@@ -35,8 +35,16 @@ export const rateLimitMiddleware = async (c: Context, next: Next) => {
     rateLimit = c.get('user') ? config.rateLimiting.general.user : config.rateLimiting.general.anon;
   }
   
-  const [limit, window] = rateLimit.split('/');
-  const windowMs = parseInt(window) * 60 * 1000; // Convert minutes to ms
+  // Map time units to milliseconds
+  const unitToMs: Record<string, number> = {
+    'sec': 1000,
+    'min': 60 * 1000,
+    'hour': 60 * 60 * 1000,
+    'day': 24 * 60 * 60 * 1000
+  };
+  
+  const [limit, windowUnit] = rateLimit.split('/');
+  const windowMs = unitToMs[windowUnit] || 60 * 1000; // Default to 1 minute if unknown
   
   if (!rateLimiter.isAllowed(key, limit, windowMs)) {
     const retryAfter = Math.ceil(windowMs / 1000);
