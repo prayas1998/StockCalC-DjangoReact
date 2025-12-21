@@ -39,8 +39,8 @@ app.get('/api/health-check/', (c) => {
 
 // Global middleware (order matters)
 app.use('/*', requestLogger);
-app.use('/*', rateLimitMiddleware);
 app.use('/*', authMiddleware);
+app.use('/*', rateLimitMiddleware);
 app.use('/*', errorHandler);
 
 // API routes - register all routes from route modules

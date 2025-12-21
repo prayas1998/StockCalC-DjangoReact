@@ -381,9 +381,10 @@ export const journalRoutes = [
       try {
         const validatedData = tradeJournalCreateSchema.parse(body);
         
-        // Create journal entry with user scoping
+        // Create journal entry with user scoping (strip tags field as it doesn't exist in TradeJournal table)
+        const { tags, ...journalData } = validatedData;
         const { data: trade, error } = await withUserScope(user.id, 'TradeJournal').insert({
-          ...validatedData,
+          ...journalData,
           user_id: user.id
         }).select().single();
         
@@ -391,10 +392,10 @@ export const journalRoutes = [
           throw error;
         }
         
-        // Handle tags if provided
-        if (validatedData.tags && validatedData.tags.length > 0) {
+        // Handle tags if provided (after journal entry is created)
+        if (tags && tags.length > 0) {
           // Create tag relationships
-          const tagRelations = validatedData.tags.map(tagId => ({
+          const tagRelations = tags.map(tagId => ({
             trade_journal_id: trade.id,
             tag_id: tagId
           }));
@@ -672,11 +673,15 @@ export const journalRoutes = [
         const avgPnl = tradePnls.length > 0 ? totalPnl / tradePnls.length : 0;
         const winRate = tradePnls.length > 0 ? profitableTrades.length / tradePnls.length : 0;
         
-        // Profit factor and expectancy
+        // Profit factor and expectancy (with zero guards)
         const totalWins = profitableTrades.reduce((sum, t) => sum + t.pnl, 0);
         const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
         const profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0;
-        const expectancy = (winRate * (totalWins / profitableTrades.length)) - ((1 - winRate) * (totalLosses / losingTrades.length));
+        
+        let expectancy = 0;
+        if (profitableTrades.length > 0 && losingTrades.length > 0) {
+          expectancy = (winRate * (totalWins / profitableTrades.length)) - ((1 - winRate) * (totalLosses / losingTrades.length));
+        }
         
         // Performance metrics
         const largestWin = profitableTrades.length > 0 ? Math.max(...profitableTrades.map(t => t.pnl)) : 0;

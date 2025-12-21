@@ -22,17 +22,27 @@ class RateLimiter {
 const rateLimiter = new RateLimiter();
 
 export const rateLimitMiddleware = async (c: Context, next: Next) => {
-  const key = `rate_limit_${c.get('user')?.id || c.get('ip')}`;
+  // Get client IP (handle forwarded headers)
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 
+              c.req.header('x-real-ip') || 
+              'unknown';
+  
+  // Get user ID if available (after auth middleware)
+  const userId = c.get('userId');
+  const isAuthenticated = !!userId;
+  
+  // Create unique key per IP, and per user if authenticated
+  const key = `rate_limit_${isAuthenticated ? `user_${userId}` : `anon_${ip}`}`;
   const path = c.req.path;
   
   // Determine rate limit category
   let rateLimit = '500/hour'; // default
   if (path.includes('/auth/')) {
-    rateLimit = c.get('user') ? config.rateLimiting.auth.user : config.rateLimiting.auth.anon;
+    rateLimit = isAuthenticated ? config.rateLimiting.auth.user : config.rateLimiting.auth.anon;
   } else if (path.includes('/calculate/') || path.includes('/journal/') || path.includes('/profile/')) {
-    rateLimit = c.get('user') ? config.rateLimiting.dataOperations.user : config.rateLimiting.dataOperations.anon;
+    rateLimit = isAuthenticated ? config.rateLimiting.dataOperations.user : config.rateLimiting.dataOperations.anon;
   } else {
-    rateLimit = c.get('user') ? config.rateLimiting.general.user : config.rateLimiting.general.anon;
+    rateLimit = isAuthenticated ? config.rateLimiting.general.user : config.rateLimiting.general.anon;
   }
   
   // Map time units to milliseconds
