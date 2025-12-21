@@ -155,3 +155,8 @@ export const DecimalUtils = {
     return new Decimal(String(value));
   }
 };
+
+// Export specific calculator classes
+export { EquityDeliveryCalculator } from './equityDelivery';
+export { EquityIntradayCalculator } from './equityIntraday';
+export { BreakevenCalculator } from './breakevenCalculator';

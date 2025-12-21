@@ -31,35 +31,55 @@ app.use('/*', cors({
   ]
 }));
 
+// Health check (no auth required, before auth middleware)
+app.get('/api/health-check/', (c) => {
+  console.log('Health check accessed');
+  return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
+});
+
 // Global middleware (order matters)
 app.use('/*', requestLogger);
 app.use('/*', rateLimitMiddleware);
 app.use('/*', authMiddleware);
 app.use('/*', errorHandler);
 
-// Health check (no auth required)
-app.get('/api/health-check/', (c) => {
-  console.log('Health check accessed');
-  return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
-});
-
-// API routes - simplified for now
-app.post('/api/calculate/', async (c) => {
-  // TODO: Implement actual calculation logic
-  return c.json({ message: 'Calculation endpoint ready' }, 200);
-});
-
-app.get('/api/profile/', async (c) => {
-  const user = (c as any).get('user');
-  if (!user) {
-    return c.json({ error: true, message: 'Authentication required' }, 401);
+// API routes - register all routes from route modules
+calcRoutes.forEach(route => {
+  if (route.method === 'POST') {
+    app.post(route.path, route.handler as any);
   }
-  return c.json({ id: user.id, email: user.email }, 200);
 });
 
-// Health check
-app.get('/api/health-check/', (c) => {
-  return c.json({ status: 'healthy', timestamp: new Date().toISOString() });
+profileRoutes.forEach(route => {
+  if (route.method === 'GET') {
+    app.get(route.path, route.handler as any);
+  } else if (route.method === 'PATCH') {
+    app.patch(route.path, route.handler as any);
+  } else if (route.method === 'POST') {
+    app.post(route.path, route.handler as any);
+  } else if (route.method === 'DELETE') {
+    app.delete(route.path, route.handler as any);
+  }
+});
+
+authRoutes.forEach(route => {
+  if (route.method === 'POST') {
+    app.post(route.path, route.handler as any);
+  } else if (route.method === 'GET') {
+    app.get(route.path, route.handler as any);
+  }
+});
+
+journalRoutes.forEach(route => {
+  if (route.method === 'GET') {
+    app.get(route.path, route.handler as any);
+  } else if (route.method === 'POST') {
+    app.post(route.path, route.handler as any);
+  } else if (route.method === 'PATCH') {
+    app.patch(route.path, route.handler as any);
+  } else if (route.method === 'DELETE') {
+    app.delete(route.path, route.handler as any);
+  }
 });
 
 // Root endpoint

@@ -3,6 +3,12 @@ import { requireAuth } from '../middleware/auth';
 import { profileUpdateSchema, changePasswordSchema } from '../validators/schemas';
 import { ProfileUpdateRequest, ChangePasswordRequest } from '../types';
 
+// Extend the type to include username for frontend compatibility
+interface ExtendedProfileUpdateRequest extends ProfileUpdateRequest {
+  username?: string;
+}
+import { supabaseClient, supabaseAdmin } from '../services/supabase';
+
 export const profileRoutes = [
   {
     method: 'GET' as const,
@@ -10,18 +16,39 @@ export const profileRoutes = [
     handler: async (c: Context) => {
       const user = requireAuth(c);
       
-      // TODO: Implement actual profile retrieval from Supabase
-      const mockProfile = {
-        id: user.id,
-        email: user.email,
-        first_name: user.first_name || '',
-        last_name: user.last_name || '',
-        username: user.username || '',
-        date_joined: '2024-01-01T00:00:00Z',
-        last_login: '2024-12-01T00:00:00Z'
-      };
-      
-      return c.json(mockProfile, 200);
+      try {
+        // Get user profile from Supabase auth
+        const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.getUserById(user.id);
+        
+        if (authError || !authUser.user) {
+          return c.json({
+            error: true,
+            error_id: `prof_${Date.now()}`,
+            category: 'authentication' as const,
+            message: 'User not found'
+          }, 404);
+        }
+
+        // Get additional profile metadata if stored elsewhere
+        const profile = {
+          id: authUser.user.id,
+          email: authUser.user.email || '',
+          first_name: authUser.user.user_metadata?.first_name || '',
+          last_name: authUser.user.user_metadata?.last_name || '',
+          username: authUser.user.user_metadata?.username || '',
+          date_joined: authUser.user.created_at,
+          last_login: authUser.user.last_sign_in_at || authUser.user.created_at
+        };
+        
+        return c.json(profile, 200);
+      } catch (error) {
+        return c.json({
+          error: true,
+          error_id: `prof_${Date.now()}`,
+          category: 'server_error' as const,
+          message: 'Failed to retrieve profile'
+        }, 500);
+      }
     }
   },
   {
@@ -32,21 +59,50 @@ export const profileRoutes = [
       const body = await c.req.json();
       
       try {
-        const validatedData = profileUpdateSchema.parse(body);
+        const validatedData = profileUpdateSchema.parse(body) as ExtendedProfileUpdateRequest;
         
-        // TODO: Implement actual profile update in Supabase
-        // For now, return mock updated profile
-        const updatedProfile = {
-          id: user.id,
-          email: validatedData.email || user.email,
-          first_name: validatedData.first_name || user.first_name,
-          last_name: validatedData.last_name || user.last_name,
-          username: user.username || '',
-          date_joined: '2024-01-01T00:00:00Z',
-          last_login: '2024-12-01T00:00:00Z'
+        // Update user metadata in Supabase
+        const { data: updatedUser, error } = await supabaseAdmin.auth.admin.updateUserById(
+          user.id,
+          {
+            email: validatedData.email,
+            user_metadata: {
+              first_name: validatedData.first_name,
+              last_name: validatedData.last_name,
+              username: validatedData.username
+            }
+          }
+        );
+        
+        if (error) {
+          return c.json({
+            error: true,
+            error_id: `prof_${Date.now()}`,
+            category: 'validation' as const,
+            message: error.message || 'Failed to update profile'
+          }, 400);
+        }
+
+        if (!updatedUser.user) {
+          return c.json({
+            error: true,
+            error_id: `prof_${Date.now()}`,
+            category: 'server_error' as const,
+            message: 'Failed to update profile'
+          }, 500);
+        }
+
+        const profile = {
+          id: updatedUser.user.id,
+          email: updatedUser.user.email || '',
+          first_name: updatedUser.user.user_metadata?.first_name || '',
+          last_name: updatedUser.user.user_metadata?.last_name || '',
+          username: updatedUser.user.user_metadata?.username || '',
+          date_joined: updatedUser.user.created_at,
+          last_login: updatedUser.user.last_sign_in_at || updatedUser.user.created_at
         };
         
-        return c.json(updatedProfile, 200);
+        return c.json(profile, 200);
       } catch (error) {
         return c.json({
           error: true,
@@ -67,10 +123,23 @@ export const profileRoutes = [
       try {
         const validatedData = changePasswordSchema.parse(body);
         
-        // TODO: Redirect to Supabase client for password change
+        // Change password via Supabase Admin
+        const { error } = await supabaseAdmin.auth.admin.updateUserById(
+          user.id,
+          { password: validatedData.new_password }
+        );
+        
+        if (error) {
+          return c.json({
+            error: true,
+            error_id: `pwd_${Date.now()}`,
+            category: 'validation' as const,
+            message: error.message || 'Failed to change password'
+          }, 400);
+        }
+        
         return c.json({
-          message: 'Please use the Supabase client to change your password.',
-          note: 'Password changes should be handled client-side via Supabase auth.'
+          message: 'Password changed successfully'
         }, 200);
       } catch (error) {
         return c.json({
@@ -89,9 +158,20 @@ export const profileRoutes = [
       const user = requireAuth(c);
       
       try {
-        // TODO: Implement actual account deletion via Supabase Admin
+        // Delete user via Supabase Admin (this also deletes all their data due to RLS)
+        const { error } = await supabaseAdmin.auth.admin.deleteUser(user.id);
+        
+        if (error) {
+          return c.json({
+            error: true,
+            error_id: `del_${Date.now()}`,
+            category: 'server_error' as const,
+            message: error.message || 'Failed to delete account'
+          }, 500);
+        }
+        
         return c.json({
-          message: 'Account deletion requested. You will receive confirmation when complete.',
+          message: 'Account deleted successfully',
           user_id: user.id
         }, 200);
       } catch (error) {

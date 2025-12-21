@@ -3,6 +3,16 @@ import { createClient } from '@supabase/supabase-js';
 import config from '../config';
 import { RequestContext } from '../types';
 
+// JWT verification function
+export function verifyToken(token: string): any {
+  try {
+    const decoded = jwt.verify(token, config.supabase.jwtSecret, { algorithms: ['HS256'] });
+    return decoded;
+  } catch (error) {
+    throw new Error('Invalid token');
+  }
+}
+
 // Supabase client for admin operations
 const supabaseAdmin = createClient(
   config.supabase.url,
