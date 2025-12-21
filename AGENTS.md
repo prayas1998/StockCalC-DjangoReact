@@ -5,7 +5,7 @@
   - Frontend: React 18 + TypeScript + Vite.
   - Backend: Migration from Django to Node.js + TypeScript (Hono) for Vercel.
   - Data: Supabase is the source of truth (Postgres + Auth).
-  - Goal: Migrate backend tech stack only. No UI or behavior changes.
+  - Goal: Migrate backend tech stack only. No UI or behavior changes. Plan is in MIGRATION_PLAN.md
 
   ## Non-negotiable requirements
   - Preserve exact behavior, status codes, and response shapes.

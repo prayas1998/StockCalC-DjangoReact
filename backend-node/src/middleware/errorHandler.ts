@@ -1,7 +1,8 @@
 import { Context } from 'hono';
 import { ApiErrorResponse, RequestContext } from '../types';
+import { randomUUID } from 'crypto';
 
-// Error categories (matching Django implementation)
+// Error categories (matching Django implementation exactly)
 const ERROR_MESSAGES = {
   authentication: 'Authentication failed. Please log in again.',
   authorization: 'You don\'t have permission to perform this action.',
@@ -19,12 +20,17 @@ const STATUS_CODES = {
   authorization: 403,
   validation: 400,
   not_found: 404,
-  rate_limit: 429,
+  rate_limit:429,
   database: 500,
   external_service: 503,
   server_error: 500,
   configuration: 500
 } as const;
+
+// Helper function to generate UUID4 error IDs (matching Django)
+function generateErrorId(): string {
+  return randomUUID();
+}
 
 export const errorHandler = async (c: Context, next: () => Promise<void>) => {
   try {
@@ -49,9 +55,12 @@ export const errorHandler = async (c: Context, next: () => Promise<void>) => {
       
       message = ERROR_MESSAGES[category];
       
+      // Generate unique error ID (matching Django UUID4)
+      const errorId = generateErrorId();
+      
       // Log error with context
       console.error(`Error ${category}:`, {
-        error_id: `err_${Date.now()}`,
+        error_id: errorId,
         category,
         error_type: error?.constructor?.name || 'Unknown',
         error_message: error?.message || 'Unknown error',
@@ -66,9 +75,10 @@ export const errorHandler = async (c: Context, next: () => Promise<void>) => {
     }
     
     const statusCode = STATUS_CODES[category];
+    const errorId = generateErrorId(); // Generate here too for cases without error object
     const response: ApiErrorResponse = {
       error: true,
-      error_id: `err_${Date.now()}`,
+      error_id: errorId,
       category,
       message
     };

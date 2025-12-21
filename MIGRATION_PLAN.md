@@ -20,7 +20,7 @@ Goal: Replace the Django backend with a Vercel-deployable Node.js/TypeScript bac
 - [x] Define shared error response shape and status code conventions.
 - [x] Define rate limiting and request logging strategy for Vercel functions.
 - [x] Define API versioning approach (keep `/api/` prefix for compatibility).
-- [ ] Define a centralized calculation module with zero logic changes, shared across all endpoints.
+- [x] Define a centralized calculation module with zero logic changes, shared across all endpoints.
 
 ## Phase 2 - Bootstrap the Node.js/TypeScript Backend
 - [x] Initialize Hono server with TypeScript and Vercel function adapter.
@@ -31,67 +31,67 @@ Goal: Replace the Django backend with a Vercel-deployable Node.js/TypeScript bac
 - [x] Implement a compatibility layer to mirror Django response shapes and defaults.
 
 ## Phase 3 - Core Endpoints (Parity First)
-- [ ] Health check: `GET /api/health-check/`.
-- [ ] Charges calculator: `POST /api/calculate/` using existing calculation rules.
-- [ ] Profile endpoints:
-  - [ ] `GET /api/profile/` (pull user data via Supabase Admin as needed).
-  - [ ] `PATCH /api/profile/` (return updated response; actual change via Supabase client).
-  - [ ] `POST /api/profile/change-password/` (tell frontend to use Supabase client).
-  - [ ] `DELETE /api/profile/delete-account/` (delete Supabase user + data cleanup).
-- [ ] Auth utility endpoints:
-  - [ ] `POST /api/auth/logout/`.
-  - [ ] `POST /api/auth/revoke-all/`.
-  - [ ] `GET /api/auth/introspect/`.
-  - [ ] `GET /api/auth/security-status/`.
+- [x] Health check: `GET /api/health-check/`.
+- [x] Charges calculator: `POST /api/calculate/` using existing calculation rules.
+- [x] Profile endpoints:
+  - [x] `GET /api/profile/` (pull user data via Supabase Admin as needed).
+  - [x] `PATCH /api/profile/` (return updated response; actual change via Supabase client).
+  - [x] `POST /api/profile/change-password/` (tell frontend to use Supabase client).
+  - [x] `DELETE /api/profile/delete-account/` (delete Supabase user + data cleanup).
+- [x] Auth utility endpoints:
+  - [x] `POST /api/auth/logout/`.
+  - [x] `POST /api/auth/revoke-all/`.
+  - [x] `GET /api/auth/introspect/`.
+  - [x] `GET /api/auth/security-status/`.
 
 ## Phase 4 - Journal and Tags API (CRUD + Search + Analytics)
-- [ ] Journal CRUD:
-  - [ ] `GET /api/journal/` with filters, pagination, and user scoping.
-  - [ ] `POST /api/journal/` with validation and user assignment.
-  - [ ] `PATCH /api/journal/:id/` with validation and ownership check.
-  - [ ] `DELETE /api/journal/:id/` with ownership check.
-- [ ] Tags CRUD:
-  - [ ] `GET /api/tags/` scoped to user.
-  - [ ] `POST /api/tags/` with uniqueness and user scoping.
-  - [ ] `PATCH /api/tags/:id/` and `DELETE /api/tags/:id/` with ownership check.
-  - [ ] `GET /api/tags/popular/` with usage count.
-- [ ] Search and suggestions:
-  - [ ] `GET /api/journal/search/` with relevance scoring.
-  - [ ] `GET /api/journal/suggestions/` for quick matches.
-- [ ] Analytics:
-  - [ ] `GET /api/journal/analytics/` (portfolio metrics, distributions).
-  - [ ] `GET /api/journal/tag-analytics/` (per-tag metrics).
+- [x] Journal CRUD:
+  - [x] `GET /api/journal/` with filters, pagination, and user scoping.
+  - [x] `POST /api/journal/` with validation and user assignment.
+  - [x] `PATCH /api/journal/:id/` with validation and ownership check.
+  - [x] `DELETE /api/journal/:id/` with ownership check.
+- [x] Tags CRUD:
+  - [x] `GET /api/tags/` scoped to user.
+  - [x] `POST /api/tags/` with uniqueness and user scoping.
+  - [x] `PATCH /api/tags/:id/` and `DELETE /api/tags/:id/` with ownership check.
+  - [x] `GET /api/tags/popular/` with usage count.
+- [x] Search and suggestions:
+  - [x] `GET /api/journal/search/` with relevance scoring.
+  - [x] `GET /api/journal/suggestions/` for quick matches.
+- [x] Analytics:
+  - [x] `GET /api/journal/analytics/` (portfolio metrics, distributions).
+  - [x] `GET /api/journal/tag-analytics/` (per-tag metrics).
 
 ## Phase 4a - Calculation Logic Preservation (No Changes Allowed)
-- [ ] Port calculation modules as-is (equity delivery, equity intraday, breakeven, utils).
-- [ ] Preserve rounding, precision, and charge computations exactly as current behavior.
-- [ ] Centralize calculation logic in a single shared module used by all endpoints.
-- [ ] Add tests only if explicitly requested; otherwise validate parity by manual comparison.
+- [x] Port calculation modules as-is (equity delivery, equity intraday, breakeven, utils).
+- [x] Preserve rounding, precision, and charge computations exactly as current behavior.
+- [x] Centralize calculation logic in a single shared module used by all endpoints.
+- [x] Add tests only if explicitly requested; otherwise validate parity by manual comparison.
 
 ## Phase 5 - Supabase Data Access Layer
-- [ ] Create a data access module for trades and tags (all queries centralized).
-- [ ] Implement pagination, filtering, and sorting using Supabase query APIs.
-- [ ] Ensure RLS policies enforce user scoping for all user data.
-- [ ] Use service role key only for privileged operations (account deletion).
-- [ ] Add defensive checks for invalid UUIDs and missing user context.
-- [ ] Mirror Django schema fields and types in Supabase (no schema drift).
+- [x] Create a data access module for trades and tags (all queries centralized).
+- [x] Implement pagination, filtering, and sorting using Supabase query APIs.
+- [x] Ensure RLS policies enforce user scoping for all user data.
+- [x] Use service role key only for privileged operations (account deletion).
+- [x] Add defensive checks for invalid UUIDs and missing user context.
+- [x] Mirror Django schema fields and types in Supabase (no schema drift).
 
 ## Phase 6 - Frontend Compatibility Verification
-- [ ] Confirm API endpoints and response shapes match existing frontend expectations.
-- [ ] Confirm pagination, filtering, and sorting behavior matches Django outputs.
-- [ ] Confirm auth token refresh flow works with new backend.
-- [ ] Update `VITE_API_URL` values if backend base URL changes.
-- [ ] Ensure error responses are consistent with current frontend handlers.
+- [x] Confirm API endpoints and response shapes match existing frontend expectations.
+- [x] Confirm pagination, filtering, and sorting behavior matches Django outputs.
+- [x] Confirm auth token refresh flow works with new backend.
+- [x] Update `VITE_API_URL` values if backend base URL changes.
+- [x] Ensure error responses are consistent with current frontend handlers.
 
 ## Phase 7 - Deployment and Configuration
-- [ ] Add Vercel config for API routes and runtime settings.
-- [ ] Set required environment variables in Vercel.
-- [ ] Verify CORS and security headers for production.
-- [ ] Confirm logging and monitoring expectations for production use.
+- [x] Add Vercel config for API routes and runtime settings.
+- [x] Set required environment variables in Vercel.
+- [x] Verify CORS and security headers for production.
+- [x] Confirm logging and monitoring expectations for production use.
 
 ## Phase 8 - Cutover and Cleanup
-- [ ] Run a staging release with both backends available.
-- [ ] Switch frontend API base URL to the new backend.
+- [x] Run a staging release with both backends available.
+- [ ] Switch frontend API base URL to new backend.
 - [ ] Monitor for errors and regressions.
 - [ ] Remove Django backend references after stable rollout.
 

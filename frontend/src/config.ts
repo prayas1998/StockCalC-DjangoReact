@@ -8,6 +8,7 @@ export const API_PREFIX = '/api';
 
 // Determine if we're in a production environment
 export const isProduction = 
+  window.location.hostname.includes('vercel.app') ||
   window.location.hostname.includes('onrender.com') || 
   window.location.hostname.includes('netlify.app') ||
   import.meta.env.PROD === true;
