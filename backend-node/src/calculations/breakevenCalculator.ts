@@ -1,5 +1,5 @@
 import Decimal from 'decimal.js';
-import { BaseTradeCalculator, DecimalUtils } from './index';
+import { BaseTradeCalculator, DecimalUtils } from './index.js';
 
 export class BreakevenCalculator {
   /**

@@ -1,13 +1,13 @@
 import { Context } from 'hono';
-import { requireAuth } from '../middleware/auth';
-import { profileUpdateSchema, changePasswordSchema } from '../validators/schemas';
-import { ProfileUpdateRequest, ChangePasswordRequest } from '../types';
+import { requireAuth } from '../middleware/auth.js';
+import { profileUpdateSchema, changePasswordSchema } from '../validators/schemas.js';
+import { ProfileUpdateRequest, ChangePasswordRequest } from '../types.js';
 
 // Extend the type to include username for frontend compatibility
 interface ExtendedProfileUpdateRequest extends ProfileUpdateRequest {
   username?: string;
 }
-import { supabaseClient, supabaseAdmin } from '../services/supabase';
+import { supabaseClient, supabaseAdmin } from '../services/supabase.js';
 
 export const profileRoutes = [
   {

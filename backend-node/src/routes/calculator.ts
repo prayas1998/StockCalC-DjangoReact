@@ -1,11 +1,11 @@
 import { Context } from 'hono';
-import { requireAuth } from '../middleware/auth';
-import { calculationRequestSchema } from '../validators/schemas';
-import { CalculationRequest, CalculationResponse } from '../types';
-import { EquityDeliveryCalculator } from '../calculations/equityDelivery';
-import { EquityIntradayCalculator } from '../calculations/equityIntraday';
-import { BreakevenCalculator } from '../calculations/breakevenCalculator';
-import { DecimalUtils } from '../calculations/index';
+import { requireAuth } from '../middleware/auth.js';
+import { calculationRequestSchema } from '../validators/schemas.js';
+import { CalculationRequest, CalculationResponse } from '../types.js';
+import { EquityDeliveryCalculator } from '../calculations/equityDelivery.js';
+import { EquityIntradayCalculator } from '../calculations/equityIntraday.js';
+import { BreakevenCalculator } from '../calculations/breakevenCalculator.js';
+import { DecimalUtils } from '../calculations/index.js';
 
 export const calcRoutes = [
   {

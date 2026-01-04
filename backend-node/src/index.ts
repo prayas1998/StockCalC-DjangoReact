@@ -1,17 +1,52 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { requestLogger } from './utils/logger';
-import { errorHandler } from './middleware/errorHandler';
-import { authMiddleware } from './middleware/auth';
-import { rateLimitMiddleware } from './middleware/rateLimit';
-import config from './config';
-import { calcRoutes } from './routes/calculator';
-import { profileRoutes } from './routes/profile';
-import { authRoutes } from './routes/auth';
-import { journalRoutes } from './routes/journal';
+import { requestLogger } from './utils/logger.js';
+import { errorHandler } from './middleware/errorHandler.js';
+import { authMiddleware } from './middleware/auth.js';
+import { rateLimitMiddleware } from './middleware/rateLimit.js';
+import config from './config.js';
+import { calcRoutes } from './routes/calculator.js';
+import { profileRoutes } from './routes/profile.js';
+import { authRoutes } from './routes/auth.js';
+import { journalRoutes } from './routes/journal.js';
+import type { Context } from 'hono';
+
+type RouteDef = {
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  path: string;
+  handler: (c: Context) => Promise<Response> | Response;
+};
 
 // Initialize Hono app
 const app = new Hono();
+
+// Global middleware (order matters)
+app.use('*', errorHandler);
+app.use(
+  '*',
+  cors({
+    origin: config.api.corsOrigins,
+    allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    credentials: true
+  })
+);
+app.use('*', requestLogger);
+app.use('*', authMiddleware);
+app.use('*', rateLimitMiddleware);
+
+const registerRoutes = (routes: RouteDef[]) => {
+  for (const route of routes) {
+    const method = route.method.toLowerCase();
+    (app as any)[method](route.path, route.handler);
+  }
+};
+
+// API routes
+registerRoutes(calcRoutes);
+registerRoutes(profileRoutes);
+registerRoutes(authRoutes);
+registerRoutes(journalRoutes);
 
 // Simple health check only
 app.get('/api/health-check/', (c) => {
@@ -24,17 +59,5 @@ app.get('/', (c) => {
   return c.text('API is running fine!');
 });
 
+// Export for Vercel deployment
 export default app;
-
-// Start the server
-const port = process.env.PORT || 8000;
-console.log(`Starting server on port ${port}...`);
-
-// Try using Node.js HTTP server directly
-import { createServer } from 'http';
-
-const server = createServer(app.fetch);
-
-server.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
-});

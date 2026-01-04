@@ -1,4 +1,4 @@
-import { BaseTradeCalculator, DecimalUtils } from './index';
+import { BaseTradeCalculator, DecimalUtils } from './index.js';
 import Decimal from 'decimal.js';
 
 export class EquityIntradayCalculator extends BaseTradeCalculator {

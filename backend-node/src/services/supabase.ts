@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import config from '../config';
+import config from '../config.js';
 
 // Supabase client for user operations (uses anon key, respects RLS)
 export const supabaseClient = createClient(

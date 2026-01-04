@@ -1,5 +1,5 @@
 import { Context } from 'hono';
-import { ApiErrorResponse, RequestContext } from '../types';
+import { ApiErrorResponse, RequestContext } from '../types.js';
 import { randomUUID } from 'crypto';
 
 // Error categories (matching Django implementation exactly)

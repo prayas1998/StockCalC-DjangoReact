@@ -1,9 +1,9 @@
 import { Context } from 'hono';
-import { requireAuth, getAccessToken } from '../middleware/auth';
-import { tradeJournalCreateSchema, paginationSchema, journalFilterSchema, tagCreateSchema } from '../validators/schemas';
-import { TradeJournalCreate, PaginatedResponse } from '../types';
-import { supabaseClient, withUserScope } from '../services/supabase';
-import { TradeType, Broker, Exchange } from '../types/database';
+import { requireAuth, getAccessToken } from '../middleware/auth.js';
+import { tradeJournalCreateSchema, paginationSchema, journalFilterSchema, tagCreateSchema } from '../validators/schemas.js';
+import { TradeJournalCreate, PaginatedResponse } from '../types.js';
+import { supabaseClient, withUserScope } from '../services/supabase.js';
+import { TradeType, Broker, Exchange } from '../types/database.js';
 
 // Helper function to calculate P&L for a trade (mirrors Django calculate_pnl exactly)
 async function calculatePnl(trade: any): Promise<number | null> {
@@ -19,8 +19,8 @@ async function calculatePnl(trade: any): Promise<number | null> {
   
   try {
     // Import calculator classes
-    const { EquityDeliveryCalculator } = await import('../calculations/equityDelivery');
-    const { EquityIntradayCalculator } = await import('../calculations/equityIntraday');
+    const { EquityDeliveryCalculator } = await import('../calculations/equityDelivery.js');
+    const { EquityIntradayCalculator } = await import('../calculations/equityIntraday.js');
     
     // Map journal trade type to calculator trade type (exact match to Django)
     const tradeTypeMapping: Record<string, string> = {
@@ -200,9 +200,9 @@ async function calculateTagPerformance(closedTrades: any[], userId: string): Pro
   
   for (const trade of closedTrades) {
     const pnl = await calculatePnl(trade);
-    if (trade.TradeJournalTags) {
-      for (const tagRelation of trade.TradeJournalTags) {
-        const tag = tagRelation.TradeTags;
+    if (trade.journal_tradejournaltags) {
+      for (const tagRelation of trade.journal_tradejournaltags) {
+        const tag = tagRelation.journal_tradetags;
         if (!tag) continue;
         
         const tagId = tag.id;
@@ -306,10 +306,11 @@ export const journalRoutes = [
         const page = parseInt(url.searchParams.get('page') || '1');
         const pageSize = parseInt(url.searchParams.get('page_size') || '20');
         const search = url.searchParams.get('search') || '';
-        const status = url.searchParams.get('status');
-        const tradeType = url.searchParams.get('trade_type');
-        const broker = url.searchParams.get('broker');
-        const tags = url.searchParams.get('tags')?.split(',').filter(Boolean) || [];
+        const statusFilters = url.searchParams.getAll('status').flatMap(value => value.split(',')).filter(Boolean);
+        const tradeTypeFilters = url.searchParams.getAll('trade_type').flatMap(value => value.split(',')).filter(Boolean);
+        const brokerFilters = url.searchParams.getAll('broker').flatMap(value => value.split(',')).filter(Boolean);
+        const tagFilters = url.searchParams.getAll('tags').flatMap(value => value.split(',')).filter(Boolean);
+        const companyFilters = url.searchParams.getAll('companies').flatMap(value => value.split(',')).filter(Boolean);
         
         // Calculate range
         const from = (page - 1) * pageSize;
@@ -317,33 +318,67 @@ export const journalRoutes = [
         
         // Build query
         let query = supabaseClient
-          .from('TradeJournal')
+          .from('journal_tradejournal')
           .select(`
             *,
-            TradeTags(id, name, color),
-            TradeJournalTags(
-              TradeTags(id, name, color)
+            journal_tradejournaltags(
+              journal_tradetags(id, name, color)
             )
           `, { count: 'exact' })
           .eq('user_id', user.id)
           .range(from, to)
-          .order('created_at', { ascending: false });
+          .order('entry_date', { ascending: false });
         
         // Apply filters
         if (search) {
           query = query.ilike('company_name', `%${search}%`);
         }
-        if (status) {
-          query = query.eq('status', status);
+        if (statusFilters.length > 0) {
+          query = query.in('status', statusFilters);
         }
-        if (tradeType && ['EQUITY_DELIVERY', 'EQUITY_INTRADAY'].includes(tradeType)) {
-          query = query.eq('trade_type', tradeType);
+        if (tradeTypeFilters.length > 0) {
+          query = query.in('trade_type', tradeTypeFilters);
         }
-        if (broker && ['Dhan', 'Groww'].includes(broker)) {
-          query = query.eq('broker', broker);
+        if (brokerFilters.length > 0) {
+          query = query.in('broker', brokerFilters);
         }
-        if (tags.length > 0) {
-          query = query.contains('tags', tags);
+        if (companyFilters.length > 0) {
+          query = query.in('company_name', companyFilters);
+        }
+
+        if (tagFilters.length > 0) {
+          const { data: tagRelations, error: tagError } = await supabaseClient
+            .from('journal_tradejournaltags')
+            .select('trade, tag')
+            .in('tag', tagFilters);
+
+          if (tagError) {
+            throw tagError;
+          }
+
+          const tradeToTags = new Map<string, Set<string>>();
+          for (const relation of tagRelations || []) {
+            const tradeId = String(relation.trade);
+            const tagId = String(relation.tag);
+            const tagSet = tradeToTags.get(tradeId) || new Set<string>();
+            tagSet.add(tagId);
+            tradeToTags.set(tradeId, tagSet);
+          }
+
+          const matchingTradeIds = Array.from(tradeToTags.entries())
+            .filter(([, tagSet]) => tagFilters.every(tagId => tagSet.has(String(tagId))))
+            .map(([tradeId]) => tradeId);
+
+          if (matchingTradeIds.length === 0) {
+            return c.json({
+              count: 0,
+              next: null,
+              previous: null,
+              results: []
+            }, 200);
+          }
+
+          query = query.in('id', matchingTradeIds);
         }
         
         const { data: trades, error, count } = await query;
@@ -353,10 +388,16 @@ export const journalRoutes = [
         }
         
         // Format response
+        const buildPageUrl = (targetPage: number) => {
+          const pageUrl = new URL(c.req.url);
+          pageUrl.searchParams.set('page', String(targetPage));
+          return pageUrl.toString();
+        };
+
         const response: PaginatedResponse<any> = {
           count: count || 0,
-          next: count && from + pageSize < count ? `?page=${page + 1}` : null,
-          previous: page > 1 ? `?page=${page - 1}` : null,
+          next: count && from + pageSize < count ? buildPageUrl(page + 1) : null,
+          previous: page > 1 ? buildPageUrl(page - 1) : null,
           results: trades || []
         };
         
@@ -382,10 +423,10 @@ export const journalRoutes = [
       try {
         const validatedData = tradeJournalCreateSchema.parse(body);
         
-        // Create journal entry with user scoping (strip tags field as it doesn't exist in TradeJournal table)
+        // Create journal entry with user scoping (strip tags field as it doesn't exist in journal_tradejournal table)
         const { tags, ...journalData } = validatedData;
         const accessToken = getAccessToken(c);
-        const { data: trade, error } = await withUserScope(accessToken, 'TradeJournal').insert({
+        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal').insert({
           ...journalData,
           user_id: user.id
         }).select().single();
@@ -403,7 +444,7 @@ export const journalRoutes = [
           }));
           
           const { error: tagError } = await supabaseClient
-            .from('TradeJournalTags')
+            .from('journal_tradejournaltags')
             .insert(tagRelations);
           
           if (tagError) {
@@ -432,12 +473,11 @@ export const journalRoutes = [
       
       try {
         const { data: trade, error } = await supabaseClient
-          .from('TradeJournal')
+          .from('journal_tradejournal')
           .select(`
             *,
-            TradeTags(id, name, color),
-            TradeJournalTags(
-              TradeTags(id, name, color)
+            journal_tradejournaltags(
+              journal_tradetags(id, name, color)
             )
           `)
           .eq('id', id)
@@ -481,7 +521,7 @@ export const journalRoutes = [
         const validatedData = tradeJournalCreateSchema.partial().parse(body);
         
         const accessToken = getAccessToken(c);
-        const { data: trade, error } = await withUserScope(accessToken, 'TradeJournal')
+        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
           .update(validatedData)
           .eq('id', id)
           .select()
@@ -520,7 +560,7 @@ export const journalRoutes = [
       
       try {
         const accessToken = getAccessToken(c);
-        const { error } = await withUserScope(accessToken, 'TradeJournal')
+        const { error } = await withUserScope(accessToken, 'journal_tradejournal')
           .delete()
           .eq('id', id);
         
@@ -556,7 +596,7 @@ export const journalRoutes = [
       
       try {
         const { data: tags, error } = await supabaseClient
-          .from('TradeTags')
+          .from('journal_tradetags')
           .select('*')
           .eq('user_id', user.id)
           .order('name');
@@ -589,7 +629,7 @@ export const journalRoutes = [
         
         // Check if tag name already exists for this user
         const { data: existing, error: checkError } = await supabaseClient
-          .from('TradeTags')
+          .from('journal_tradetags')
           .select('id')
           .eq('user_id', user.id)
           .eq('name', validatedData.name)
@@ -605,7 +645,7 @@ export const journalRoutes = [
         }
         
         const accessToken = getAccessToken(c);
-        const { data: tag, error } = await withUserScope(accessToken, 'TradeTags').insert({
+        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags').insert({
           ...validatedData,
           user_id: user.id
         }).select().single();
@@ -635,12 +675,11 @@ export const journalRoutes = [
       try {
         // Get all user trades with tags for analytics
         const { data: trades, error } = await supabaseClient
-          .from('TradeJournal')
+          .from('journal_tradejournal')
           .select(`
             *,
-            TradeTags(id, name, color),
-            TradeJournalTags(
-              TradeTags(id, name, color)
+            journal_tradejournaltags(
+              journal_tradetags(id, name, color)
             )
           `)
           .eq('user_id', user.id)
@@ -761,7 +800,7 @@ export const journalRoutes = [
         const validatedData = tagCreateSchema.partial().parse(body);
         
         const accessToken = getAccessToken(c);
-        const { data: tag, error } = await withUserScope(accessToken, 'TradeTags')
+        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
           .update(validatedData)
           .eq('id', id)
           .select()
@@ -800,7 +839,7 @@ export const journalRoutes = [
       
       try {
         const accessToken = getAccessToken(c);
-        const { error } = await withUserScope(accessToken, 'TradeTags')
+        const { error } = await withUserScope(accessToken, 'journal_tradetags')
           .delete()
           .eq('id', id);
         
@@ -844,12 +883,12 @@ export const journalRoutes = [
           
           // Fallback: Get tags and count usage manually
           const { data: allTags } = await supabaseClient
-            .from('TradeTags')
+            .from('journal_tradetags')
             .select('*')
             .eq('user_id', user.id);
             
           const { data: tagRelations } = await supabaseClient
-            .from('TradeJournalTags')
+            .from('journal_tradejournaltags')
             .select('tag_id');
             
           const tagCounts = tagRelations?.reduce((acc, relation) => {
@@ -885,7 +924,7 @@ export const journalRoutes = [
       
       try {
         const url = new URL(c.req.url);
-        const query = url.searchParams.get('q') || '';
+        const query = url.searchParams.get('query') || url.searchParams.get('q') || '';
         const page = parseInt(url.searchParams.get('page') || '1');
         const pageSize = parseInt(url.searchParams.get('page_size') || '20');
         
@@ -904,16 +943,15 @@ export const journalRoutes = [
         
         // Get all trades first (since we need to calculate relevance scores)
         const { data: allTrades, error: fetchError } = await supabaseClient
-          .from('TradeJournal')
+          .from('journal_tradejournal')
           .select(`
             *,
-            TradeTags(id, name, color),
-            TradeJournalTags(
-              TradeTags(id, name, color)
+            journal_tradejournaltags(
+              journal_tradetags(id, name, color)
             )
           `)
           .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
+          .order('entry_date', { ascending: false });
         
         if (fetchError) {
           throw fetchError;
@@ -934,9 +972,9 @@ export const journalRoutes = [
           }
           
           // Tags scoring
-          if (trade.TradeJournalTags) {
-            for (const tagRelation of trade.TradeJournalTags) {
-              const tag = tagRelation.TradeTags;
+          if (trade.journal_tradejournaltags) {
+            for (const tagRelation of trade.journal_tradejournaltags) {
+              const tag = tagRelation.journal_tradetags;
               if (tag?.name) {
                 const tagName = tag.name.toLowerCase();
                 if (tagName === queryLower) {
@@ -975,11 +1013,17 @@ export const journalRoutes = [
         const totalCount = matchedTrades.length;
         const paginatedTrades = matchedTrades.slice(from, to + 1);
         
+        const buildPageUrl = (targetPage: number) => {
+          const pageUrl = new URL(c.req.url);
+          pageUrl.searchParams.set('page', String(targetPage));
+          return pageUrl.toString();
+        };
+
         const response = {
           query,
           count: totalCount,
-          next: totalCount > to ? `?q=${encodeURIComponent(query)}&page=${page + 1}` : null,
-          previous: page > 1 ? `?q=${encodeURIComponent(query)}&page=${page - 1}` : null,
+          next: totalCount > to ? buildPageUrl(page + 1) : null,
+          previous: page > 1 ? buildPageUrl(page - 1) : null,
           results: paginatedTrades
         };
         
@@ -1003,7 +1047,7 @@ export const journalRoutes = [
       
       try {
         const url = new URL(c.req.url);
-        const query = url.searchParams.get('q') || '';
+        const query = url.searchParams.get('query') || url.searchParams.get('q') || '';
         const limit = parseInt(url.searchParams.get('limit') || '10');
         
         if (query.length < 2) {
@@ -1015,7 +1059,7 @@ export const journalRoutes = [
         
         // Get company name suggestions with 3-tier scoring
         const { data: trades, error: tradeError } = await supabaseClient
-          .from('TradeJournal')
+          .from('journal_tradejournal')
           .select('company_name')
           .eq('user_id', user.id)
           .ilike('company_name', `%${query}%`)
@@ -1060,7 +1104,7 @@ export const journalRoutes = [
         
         // Get tag suggestions with 3-tier scoring
         const { data: tags, error: tagError } = await supabaseClient
-          .from('TradeTags')
+          .from('journal_tradetags')
           .select('*')
           .eq('user_id', user.id)
           .ilike('name', `%${query}%`)
@@ -1134,12 +1178,12 @@ export const journalRoutes = [
       try {
         // Get all trades with their tags
         const { data: trades, error } = await supabaseClient
-          .from('TradeJournal')
+          .from('journal_tradejournal')
           .select(`
             pnl,
             status,
-            TradeJournalTags(
-              TradeTags(id, name, color)
+            journal_tradejournaltags(
+              journal_tradetags(id, name, color)
             )
           `)
           .eq('user_id', user.id);
@@ -1152,9 +1196,9 @@ export const journalRoutes = [
         const tagAnalytics = new Map<string, any>();
         
         trades?.forEach(trade => {
-          if (trade.TradeJournalTags) {
-            trade.TradeJournalTags.forEach((tagRelation: any) => {
-              const tag = tagRelation.TradeTags;
+          if (trade.journal_tradejournaltags) {
+            trade.journal_tradejournaltags.forEach((tagRelation: any) => {
+              const tag = tagRelation.journal_tradetags;
               if (!tag) return;
               
               const tagId = tag.id;

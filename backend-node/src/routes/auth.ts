@@ -1,7 +1,7 @@
 import { Context } from 'hono';
-import { requireAuth } from '../middleware/auth';
-import { supabaseAdmin } from '../services/supabase';
-import { verifyToken } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth.js';
+import { supabaseAdmin } from '../services/supabase.js';
+import { verifyToken } from '../middleware/auth.js';
 
 export const authRoutes = [
   {

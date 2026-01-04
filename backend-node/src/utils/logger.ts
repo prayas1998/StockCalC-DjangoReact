@@ -1,5 +1,5 @@
 import { Context } from 'hono';
-import { RequestContext } from '../types';
+import { RequestContext } from '../types.js';
 
 export const requestLogger = async (c: Context, next: () => Promise<void>) => {
   const start = Date.now();

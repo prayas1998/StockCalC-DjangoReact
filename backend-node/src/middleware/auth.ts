@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
-import config from '../config';
-import { RequestContext } from '../types';
+import config from '../config.js';
+import { RequestContext } from '../types.js';
 
 // JWT verification function
 export function verifyToken(token: string): any {
@@ -36,7 +36,7 @@ export const authMiddleware = async (c: any, next: any) => {
     }
     
     // Extract token from Authorization header
-    const authHeader = c.req.headers.get('authorization');
+    const authHeader = c.req.header('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       // Continue without auth for routes that might not require it
       // Individual routes will check authentication
@@ -124,4 +124,4 @@ export const getAccessToken = (c: any) => {
 };
 
 // Export Supabase admin client for privileged operations
-export { supabaseAdmin } from '../services/supabase';
+export { supabaseAdmin } from '../services/supabase.js';

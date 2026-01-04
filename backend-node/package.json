@@ -2,6 +2,7 @@
   "name": "stockcalc-backend",
   "version": "1.0.0",
   "description": "Node.js/TypeScript backend for TradeSmart stock brokerage calculator and journal",
+  "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
