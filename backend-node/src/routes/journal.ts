@@ -1,7 +1,7 @@
 import { Context } from 'hono';
 import { requireAuth, getAccessToken } from '../middleware/auth.js';
 import { tradeJournalCreateSchema, paginationSchema, journalFilterSchema, tagCreateSchema } from '../validators/schemas.js';
-import { TradeJournalCreate, PaginatedResponse } from '../types.js';
+import { TradeJournalCreate, PaginatedResponse } from '../types/index.js';
 import { supabaseClient, withUserScope } from '../services/supabase.js';
 import { TradeType, Broker, Exchange } from '../types/database.js';
 

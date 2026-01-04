@@ -22,16 +22,19 @@ export const config = {
         ?.split(',')
         .map(origin => origin.trim())
         .filter(Boolean);
-      return parsed && parsed.length > 0
-        ? parsed
-        : [
-            'http://localhost:8080',
-            'http://127.0.0.1:8080',
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-            'https://stockcalc-frontend.vercel.app',
-            'https://stockcalc-frontend-prayas1998-prayas1998s-projects.vercel.app'
-          ];
+      if (parsed && parsed.length > 0) {
+        return parsed;
+      }
+      return [
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'https://stockcalc-frontend.vercel.app',
+        'https://stockcalc-frontend-prayas1998-prayas1998s-projects.vercel.app',
+        /^https:\/\/stockcalc-frontend-.*\.vercel\.app$/,
+        /^https:\/\/stockcalc-frontend-.*-prayas1998s-projects\.vercel\.app$/
+      ];
     })()
   },
   

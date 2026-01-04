@@ -1,7 +1,7 @@
 import { Context } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
 import { calculationRequestSchema } from '../validators/schemas.js';
-import { CalculationRequest, CalculationResponse } from '../types.js';
+import { CalculationRequest, CalculationResponse } from '../types/index.js';
 import { EquityDeliveryCalculator } from '../calculations/equityDelivery.js';
 import { EquityIntradayCalculator } from '../calculations/equityIntraday.js';
 import { BreakevenCalculator } from '../calculations/breakevenCalculator.js';
@@ -12,9 +12,15 @@ export const calcRoutes = [
     method: 'POST' as const,
     path: '/api/calculate/',
     handler: async (c: Context) => {
-      const body = await c.req.json();
-      
       try {
+        const rawBody = await Promise.race([
+          c.req.text(),
+          new Promise<string>((_, reject) => {
+            setTimeout(() => reject(new Error('Request body read timeout')), 5000);
+          })
+        ]);
+
+        const body = JSON.parse(rawBody);
         const validatedData = calculationRequestSchema.parse(body);
         
         // Get appropriate calculator
@@ -53,6 +59,14 @@ export const calcRoutes = [
         return c.json(result, 200);
         
       } catch (error) {
+        if (error instanceof Error && error.message === 'Request body read timeout') {
+          return c.json({
+            error: true,
+            error_id: `calc_${Date.now()}`,
+            category: 'validation' as const,
+            message: 'Request body read timed out'
+          }, 408);
+        }
         return c.json({
           error: true,
           error_id: `calc_${Date.now()}`,

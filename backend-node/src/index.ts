@@ -25,7 +25,19 @@ app.use('*', errorHandler);
 app.use(
   '*',
   cors({
-    origin: config.api.corsOrigins,
+    origin: (origin) => {
+      if (!origin) return undefined;
+      const isAllowed = config.api.corsOrigins.some((allowed) => {
+        if (typeof allowed === 'string') {
+          return origin === allowed;
+        }
+        if (allowed instanceof RegExp) {
+          return allowed.test(origin);
+        }
+        return false;
+      });
+      return isAllowed ? origin : undefined;
+    },
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true

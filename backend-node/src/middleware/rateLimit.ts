@@ -1,6 +1,6 @@
 import { Context, Next } from 'hono';
 import config from '../config.js';
-import { ApiErrorResponse, RequestContext } from '../types.js';
+import { ApiErrorResponse, RequestContext } from '../types/index.js';
 
 // Rate limiting implementation (simplified in-memory store)
 class RateLimiter {

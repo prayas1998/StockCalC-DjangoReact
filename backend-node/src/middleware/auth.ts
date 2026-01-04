@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 import config from '../config.js';
-import { RequestContext } from '../types.js';
+import { RequestContext } from '../types/index.js';
 
 // JWT verification function
 export function verifyToken(token: string): any {

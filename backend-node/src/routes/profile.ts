@@ -1,7 +1,7 @@
 import { Context } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
 import { profileUpdateSchema, changePasswordSchema } from '../validators/schemas.js';
-import { ProfileUpdateRequest, ChangePasswordRequest } from '../types.js';
+import { ProfileUpdateRequest, ChangePasswordRequest } from '../types/index.js';
 
 // Extend the type to include username for frontend compatibility
 interface ExtendedProfileUpdateRequest extends ProfileUpdateRequest {
