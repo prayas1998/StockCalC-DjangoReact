@@ -190,7 +190,7 @@ export class ProfitTargetCalculatorService {
           exitPrice = (low + exitPrice) / 2;
         } else {
           low = exitPrice;
-          exitPrice = (exitPrice + low) / 2;
+          exitPrice = (exitPrice + high) / 2;
         }
       }
 

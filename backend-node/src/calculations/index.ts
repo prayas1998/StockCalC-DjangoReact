@@ -74,13 +74,39 @@ export const DecimalUtils = {
     return new Decimal(String(value));
   },
 
-  // Mimic Python Decimal string output for values derived from `Decimal(str(a)) * Decimal(str(b))`.
-  // Python Decimal preserves the combined scale (decimal places) of the operands.
+  // Mimic Python Decimal's scale preservation.
+  // Django uses `Decimal(str(x))`, and `str(Decimal(...))` preserves trailing zeros.
+  // We approximate that by deriving an "effective" decimal places count from the original input.
+  //
+  // Supports:
+  // - "10", "10.00", ".5", "10."
+  // - scientific notation like "1e-2", "1.2300e2"
   decimalPlacesFromInput: (value: string | number): number => {
-    const asString = String(value);
-    const dot = asString.indexOf('.');
-    if (dot === -1) return 0;
-    return asString.length - dot - 1;
+    const asString = String(value).trim();
+
+    const match = asString.match(/^[+-]?(?<mantissa>(?:\d+(?:\.\d*)?|\.\d+))(?:[eE](?<exp>[+-]?\d+))?$/);
+    if (!match || !match.groups) return 0;
+
+    const mantissa = match.groups.mantissa;
+    const expRaw = match.groups.exp;
+
+    const dot = mantissa.indexOf('.');
+    const mantissaDecimals = dot === -1 ? 0 : mantissa.length - dot - 1;
+
+    if (expRaw === undefined) {
+      return mantissaDecimals;
+    }
+
+    const exp = Number(expRaw);
+    if (!Number.isFinite(exp)) return mantissaDecimals;
+
+    // Shift decimal point by exponent.
+    // - Positive exponent reduces decimal places (or eliminates them).
+    // - Negative exponent increases decimal places.
+    if (exp >= 0) {
+      return Math.max(0, mantissaDecimals - exp);
+    }
+    return mantissaDecimals + Math.abs(exp);
   },
   toPythonStringFromInput: (input: string | number, value: Decimal): string => {
     const places = DecimalUtils.decimalPlacesFromInput(input);

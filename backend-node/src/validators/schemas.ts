@@ -7,9 +7,23 @@ export const calculationRequestSchema = z.object({
   exchange: z.string().min(1, 'Exchange is required').default('NSE').transform((v) => v.toUpperCase()),
   tradeType: z.string().min(1, 'Trade type is required').default('equity-delivery'),
   transactions: z.array(z.object({
-    quantity: z.string().min(1, 'Quantity is required'),
-    buyPrice: z.string().min(1, 'Buy price is required'),
-    sellPrice: z.string().min(1, 'Sell price is required')
+    // Django parity: Django accepts numbers and many valid Decimal(str(x)) string forms
+    // (e.g. ".5", "10.", "1e-2"). Accept those here too.
+    quantity: z.union([z.string(), z.number()])
+      .transform((v) => typeof v === 'number' ? String(v) : v.trim())
+      .refine((v) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(v), {
+        message: 'Quantity must be a numeric value'
+      }),
+    buyPrice: z.union([z.string(), z.number()])
+      .transform((v) => typeof v === 'number' ? String(v) : v.trim())
+      .refine((v) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(v), {
+        message: 'Buy price must be a numeric value'
+      }),
+    sellPrice: z.union([z.string(), z.number()])
+      .transform((v) => typeof v === 'number' ? String(v) : v.trim())
+      .refine((v) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(v), {
+        message: 'Sell price must be a numeric value'
+      })
   })).min(1, 'At least one transaction is required'),
   positionType: z.enum(['long', 'short']).default('long')
 });

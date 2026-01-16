@@ -1,127 +1,23 @@
 // Fixed breakeven price calculation with proper short position handling
 
-export type Charges = {
-    brokerage: number;
-    stt: number;
-    exchangeCharges: number;
-    gst: number;
-    stampDuty: number;
-    sebiCharges: number;
-    ipft: number;
-    totalCharges: number;
-    dpCharges: number;
-  };
-  
-  export const getDpCharge = (broker: string) => {
-    if (broker === 'Dhan') return 14.75;
-    if (broker === 'Groww') return 21.54;
-    return 0;
-  };
-  
-  /**
-   * Round Half Up implementation to match backend Decimal precision
-   * This ensures consistency with regulatory calculations
-   */
-  const roundHalfUp = (value: number, decimals: number): number => {
-    const factor = Math.pow(10, decimals);
-    return Math.floor(value * factor + 0.5) / factor;
-  };
+import { calculateCharges } from './ChargesUtils';
 
-  /**
-   * Round to nearest rupee using Round Half Up
-   */
-  const roundToRupee = (value: number): number => {
-    return Math.floor(value + 0.5);
-  };
+// Django parity: midpoint quantize uses Decimal's default ROUND_HALF_EVEN.
+const roundHalfEven = (value: number, decimals: number): number => {
+  const factor = Math.pow(10, decimals);
+  const scaled = value * factor;
+  const floor = Math.floor(scaled);
+  const diff = scaled - floor;
 
-  export const calculateCharges = (
-    buyValue: number,
-    sellValue: number,
-    exchange: string,
-    broker: 'Dhan' | 'Groww',
-    tradeType: 'equity-delivery' | 'equity-intraday'
-  ): Charges => {
-    const totalTurnover = buyValue + sellValue;
-    let brokerage = 0;
-    let stt = 0;
-    let exchangeCharges = 0;
-    let stampDuty = 0;
-    let sebiCharges = 0;
-    let ipft = 0;
-    let gst = 0;
-    let dpCharges = 0;
-    let totalCharges = 0;
-  
-    if (tradeType === 'equity-delivery') {
-      if (broker === 'Groww') {
-        // Groww equity delivery logic
-        const buyBrokerage = Math.min(Math.max(buyValue * 0.001, 5), 20);
-        const sellBrokerage = Math.min(Math.max(sellValue * 0.001, 5), 20);
-        brokerage = buyBrokerage + sellBrokerage;
-      } else if (broker === 'Dhan') {
-        brokerage = 0;
-      }
-      
-      // Use Round Half Up for all calculations to match backend
-      stt = roundToRupee(totalTurnover * 0.001);
-      exchangeCharges = exchange === "NSE"
-        ? roundHalfUp(totalTurnover * 0.0000297, 2)
-        : roundHalfUp(totalTurnover * 0.0000375, 2);
-      stampDuty = roundToRupee(buyValue * 0.00015);
-      sebiCharges = roundHalfUp(totalTurnover * 0.000001, 2);
-      ipft = exchange === "NSE"
-        ? roundHalfUp(totalTurnover * 0.000001, 2)
-        : 0;
-      const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-      gst = roundHalfUp(taxableAmount * 0.18, 2);
-      // DP charge only if sellValue > 0
-      dpCharges = sellValue > 0 ? getDpCharge(broker) : 0;
-      totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst + dpCharges;
-    } else if (tradeType === 'equity-intraday') {
-      if (broker === 'Dhan') {
-        // Dhan intraday logic
-        // Brokerage: min(20, 0.03% of turnover per leg) for buy and sell
-        const buyBrokerage = buyValue > 0 ? Math.min(20, roundHalfUp(buyValue * 0.0003, 2)) : 0;
-        const sellBrokerage = sellValue > 0 ? Math.min(20, roundHalfUp(sellValue * 0.0003, 2)) : 0;
-        brokerage = buyBrokerage + sellBrokerage;
-        stt = roundToRupee(sellValue * 0.00025); // STT only on sell
-        exchangeCharges = exchange === "NSE"
-          ? roundHalfUp(totalTurnover * 0.0000297, 2)
-          : roundHalfUp(totalTurnover * 0.0000375, 2);
-        stampDuty = buyValue > 0 ? roundToRupee(buyValue * 0.00003) : 0; // Only on buy
-        sebiCharges = roundHalfUp(totalTurnover * 0.000001, 2);
-        ipft = exchange === "NSE"
-          ? roundHalfUp(totalTurnover * 0.000001, 2)
-          : 0;
-        const taxableAmount = brokerage + exchangeCharges + sebiCharges + ipft;
-        gst = roundHalfUp(taxableAmount * 0.18, 2);
-        dpCharges = 0; // No DP charges for intraday
-        totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst;
-      } else {
-        // Groww intraday not supported
-        brokerage = 0;
-        stt = 0;
-        exchangeCharges = 0;
-        stampDuty = 0;
-        sebiCharges = 0;
-        ipft = 0;
-        gst = 0;
-        dpCharges = 0;
-        totalCharges = 0;
-      }
-    }
-    return {
-      brokerage,
-      stt,
-      exchangeCharges,
-      gst,
-      stampDuty,
-      sebiCharges,
-      ipft,
-      totalCharges,
-      dpCharges,
-    };
-  };
+  // Epsilon guard for floating point representation.
+  const eps = 1e-12;
+
+  if (diff > 0.5 + eps) return (floor + 1) / factor;
+  if (diff < 0.5 - eps) return floor / factor;
+
+  // Tie (.5): round to even.
+  return (floor % 2 === 0 ? floor : floor + 1) / factor;
+};
   
   /**
    * Calculates the breakeven exit price for a trade such that net profit is zero or slightly positive.
@@ -158,7 +54,7 @@ export type Charges = {
   
     // Binary search to find exact breakeven price
     while (iterations < maxIterations && (high - low) > 0.01) {
-      const testPrice = parseFloat(((low + high) / 2).toFixed(2));
+      const testPrice = roundHalfEven((low + high) / 2, 2);
       
       // Calculate charges based on position type
       let buyValue: number, sellValue: number;
