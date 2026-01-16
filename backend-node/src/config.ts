@@ -18,13 +18,23 @@ export const config = {
     version: 'v1',
     prefix: '/api',
     corsOrigins: (() => {
-      const parsed = process.env.CORS_ORIGINS
+      const envRaw = process.env.CORS_ORIGINS
         ?.split(',')
-        .map(origin => origin.trim())
+        .map((origin) => origin.trim().replace(/\/$/, ''))
         .filter(Boolean);
-      if (parsed && parsed.length > 0) {
+
+      // Supports `regex:<pattern>` entries in env.
+      const parsed: Array<string | RegExp> = (envRaw ?? []).map((entry) => {
+        if (entry.toLowerCase().startsWith('regex:')) {
+          return new RegExp(entry.slice('regex:'.length));
+        }
+        return entry;
+      });
+
+      if (parsed.length > 0) {
         return parsed;
       }
+
       return [
         'http://localhost:8080',
         'http://127.0.0.1:8080',

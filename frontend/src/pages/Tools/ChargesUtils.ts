@@ -64,8 +64,10 @@ export type Charges = {
     if (tradeType === 'equity-delivery') {
       if (broker === 'Groww') {
         // Groww equity delivery logic
-        const buyBrokerage = Math.min(Math.max(buyValue * 0.001, 5), 20);
-        const sellBrokerage = Math.min(Math.max(sellValue * 0.001, 5), 20);
+        const buyBrokerage =
+          buyValue > 0 ? Math.min(Math.max(roundHalfUp(buyValue * 0.001, 2), 5), 20) : 0;
+        const sellBrokerage =
+          sellValue > 0 ? Math.min(Math.max(roundHalfUp(sellValue * 0.001, 2), 5), 20) : 0;
         brokerage = buyBrokerage + sellBrokerage;
       } else if (broker === 'Dhan') {
         brokerage = 0;

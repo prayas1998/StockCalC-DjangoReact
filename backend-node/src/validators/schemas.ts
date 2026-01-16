@@ -2,8 +2,9 @@ import { z } from 'zod';
 
 // Calculation request validation
 export const calculationRequestSchema = z.object({
-  platform: z.string().min(1, 'Platform is required').default('groww'),
-  exchange: z.string().min(1, 'Exchange is required').default('NSE'),
+  // Django parity: calculation view normalizes platform/exchange casing.
+  platform: z.string().min(1, 'Platform is required').default('groww').transform((v) => v.toLowerCase()),
+  exchange: z.string().min(1, 'Exchange is required').default('NSE').transform((v) => v.toUpperCase()),
   tradeType: z.string().min(1, 'Trade type is required').default('equity-delivery'),
   transactions: z.array(z.object({
     quantity: z.string().min(1, 'Quantity is required'),

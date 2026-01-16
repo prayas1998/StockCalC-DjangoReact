@@ -1,11 +1,7 @@
 import { Context } from 'hono';
-import { requireAuth } from '../middleware/auth.js';
 import { calculationRequestSchema } from '../validators/schemas.js';
-import { CalculationRequest, CalculationResponse } from '../types/index.js';
 import { EquityDeliveryCalculator } from '../calculations/equityDelivery.js';
 import { EquityIntradayCalculator } from '../calculations/equityIntraday.js';
-import { BreakevenCalculator } from '../calculations/breakevenCalculator.js';
-import { DecimalUtils } from '../calculations/index.js';
 
 export const calcRoutes = [
   {
@@ -32,12 +28,8 @@ export const calcRoutes = [
         } else if (tradeType === 'equity-intraday') {
           calculator = new EquityIntradayCalculator(platform, exchange, tradeType);
         } else {
-          return c.json({
-            error: true,
-            error_id: `calc_${Date.now()}`,
-            category: 'validation' as const,
-            message: `Trade type '${tradeType}' is not supported`
-          }, 400);
+          // Django parity: unsupported trade type returns a 400 with an `error` string.
+          return c.json({ error: `Unsupported trade type: ${tradeType}` }, 400);
         }
         
         // Calculate charges
@@ -46,33 +38,13 @@ export const calcRoutes = [
           validatedData.positionType || 'long'
         );
         
-        // Check for errors
-        if (result && typeof result === 'object' && 'error' in result) {
-          return c.json({
-            error: true,
-            error_id: `calc_${Date.now()}`,
-            category: 'validation' as const,
-            message: result.error
-          }, 400);
-        }
-        
+        // Django parity: even "soft" calculator errors are returned as a JSON body (200 OK).
         return c.json(result, 200);
         
       } catch (error) {
-        if (error instanceof Error && error.message === 'Request body read timeout') {
-          return c.json({
-            error: true,
-            error_id: `calc_${Date.now()}`,
-            category: 'validation' as const,
-            message: 'Request body read timed out'
-          }, 408);
-        }
-        return c.json({
-          error: true,
-          error_id: `calc_${Date.now()}`,
-          category: 'validation' as const,
-          message: 'Invalid calculation request data'
-        }, 400);
+        const detail = error instanceof Error ? error.message : 'Unknown error';
+        // Django parity: invalid input returns a 400 with `error` and `detail`.
+        return c.json({ error: 'Invalid input data', detail }, 400);
       }
     }
   }

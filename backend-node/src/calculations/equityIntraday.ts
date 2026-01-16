@@ -1,5 +1,6 @@
 import { BaseTradeCalculator, DecimalUtils } from './index.js';
 import Decimal from 'decimal.js';
+import { BreakevenCalculator } from './breakevenCalculator.js';
 
 export class EquityIntradayCalculator extends BaseTradeCalculator {
   calculate_transaction_charges(transactions: any[], positionType: string = 'long') {
@@ -49,20 +50,28 @@ export class EquityIntradayCalculator extends BaseTradeCalculator {
       total_buy_value = total_buy_value.add(buy_value);
       total_sell_value = total_sell_value.add(sell_value);
 
+      const buyValueString = positionType === 'short'
+        ? DecimalUtils.multiplyToPythonString(transaction.quantity, transaction.sellPrice, buy_value)
+        : DecimalUtils.multiplyToPythonString(transaction.quantity, transaction.buyPrice, buy_value);
+
+      const sellValueString = positionType === 'short'
+        ? DecimalUtils.multiplyToPythonString(transaction.quantity, transaction.buyPrice, sell_value)
+        : DecimalUtils.multiplyToPythonString(transaction.quantity, transaction.sellPrice, sell_value);
+
       transactions_data.push({
-        quantity: quantity.toString(),
-        buyValue: buy_value.toString(),
-        sellValue: sell_value.toString(),
+        quantity: DecimalUtils.toPythonStringFromInput(transaction.quantity, quantity),
+        buyValue: buyValueString,
+        sellValue: sellValueString,
         averageBuyPrice: cumulative_quantity.greaterThan(DecimalUtils.zero()) && cumulative_buy_value.greaterThan(DecimalUtils.zero())
-          ? DecimalUtils.quantize(cumulative_buy_value.div(cumulative_quantity), 2).toString()
+          ? DecimalUtils.quantizeToString(cumulative_buy_value.div(cumulative_quantity), 2)
           : '0.00',
-        charges: transaction_brokerage.toDecimalPlaces(2).toString()
+        charges: DecimalUtils.quantizeToString(transaction_brokerage, 2)
       });
     }
 
     // Calculate government charges on TOTAL/NET position
     const total_turnover = total_buy_value.add(total_sell_value);
-    const stt = this.govtCharges.calculate_stt(total_turnover, total_sell_value); // STT only on sell for intraday
+    const stt = this.govtCharges.calculate_stt(total_sell_value); // STT only on sell for intraday
     const exchange_charges = this.govtCharges.calculate_exchange_charges(total_turnover);
     const stamp_duty = this.govtCharges.calculate_stamp_duty(total_buy_value);
     const sebi_fee = this.govtCharges.calculate_sebi_fee(total_turnover);
@@ -84,71 +93,71 @@ export class EquityIntradayCalculator extends BaseTradeCalculator {
     const gross_pnl = total_sell_value.sub(total_buy_value);
     const net_pnl = gross_pnl.sub(total_charges);
     
-    // Calculate breakeven price
-    const breakeven_price = this.calculate_breakeven_price(
-      cumulative_quantity, 
-      cumulative_buy_value, 
-      total_sell_value, 
-      total_charges, 
-      positionType, 
-      transactions
-    );
+    // Django-parity breakeven
+    const breakeven_price = this.calculate_breakeven_price(positionType, transactions, cumulative_quantity, cumulative_buy_value, total_sell_value);
 
     return {
       summary: {
-        totalQuantity: DecimalUtils.quantize(cumulative_quantity, 0).toString(),
-        totalBuyValue: DecimalUtils.quantize(total_buy_value, 2).toString(),
-        totalSellValue: DecimalUtils.quantize(total_sell_value, 2).toString(),
+        totalQuantity: DecimalUtils.quantizeToString(cumulative_quantity, 0),
+        totalBuyValue: DecimalUtils.quantizeToString(total_buy_value, 2),
+        totalSellValue: DecimalUtils.quantizeToString(total_sell_value, 2),
         averageBuyPrice: cumulative_quantity.greaterThan(DecimalUtils.zero()) && cumulative_buy_value.greaterThan(DecimalUtils.zero())
-          ? DecimalUtils.quantize(cumulative_buy_value.div(cumulative_quantity), 2).toString()
+          ? DecimalUtils.quantizeToString(cumulative_buy_value.div(cumulative_quantity), 2)
           : '0.00',
-        turnover: DecimalUtils.quantize(total_turnover, 2).toString(),
-        grossPnL: DecimalUtils.quantize(gross_pnl, 2).toString(),
-        netPnL: DecimalUtils.quantize(net_pnl, 2).toString(),
-        breakevenPrice: DecimalUtils.quantize(breakeven_price, 2).toString()
+        turnover: DecimalUtils.quantizeToString(total_turnover, 2),
+        grossPnL: DecimalUtils.quantizeToString(gross_pnl, 2),
+        netPnL: DecimalUtils.quantizeToString(net_pnl, 2),
+        breakevenPrice: DecimalUtils.quantizeToString(breakeven_price, 2)
       },
       charges: {
-        brokerage: DecimalUtils.quantize(total_brokerage, 2).toString(),
-        stt: DecimalUtils.quantize(stt, 2).toString(),
-        exchangeCharges: DecimalUtils.quantize(exchange_charges, 2).toString(),
-        stampDuty: DecimalUtils.quantize(stamp_duty, 2).toString(),
-        sebiFee: DecimalUtils.quantize(sebi_fee, 2).toString(),
-        ipft: DecimalUtils.quantize(ipft, 2).toString(),
-        gst: DecimalUtils.quantize(gst, 2).toString(),
+        brokerage: DecimalUtils.quantizeToString(total_brokerage, 2),
+        stt: DecimalUtils.quantizeToString(stt, 2),
+        exchangeCharges: DecimalUtils.quantizeToString(exchange_charges, 2),
+        stampDuty: DecimalUtils.quantizeToString(stamp_duty, 2),
+        sebiFee: DecimalUtils.quantizeToString(sebi_fee, 2),
+        ipft: DecimalUtils.quantizeToString(ipft, 2),
+        gst: DecimalUtils.quantizeToString(gst, 2),
         dpCharges: '0.00', // No DP charges for intraday
-        totalCharges: DecimalUtils.quantize(total_charges, 2).toString()
+        totalCharges: DecimalUtils.quantizeToString(total_charges, 2)
       },
       transactions: transactions_data
     };
   }
 
   private calculate_breakeven_price(
-    quantity: Decimal, 
-    buy_value: Decimal, 
-    sell_value: Decimal, 
-    total_charges: Decimal, 
     position_type: string,
-    transactions: any[]
+    transactions: any[],
+    quantity: Decimal,
+    cumulative_buy_value: Decimal,
+    total_sell_value: Decimal
   ): Decimal {
     if (quantity.lessThanOrEqualTo(DecimalUtils.zero())) {
       return DecimalUtils.zero();
     }
 
-    // Calculate entry price per share based on position type
     let entry_price: Decimal;
-    
     if (position_type === 'long') {
-      // For long positions, entry is buy
-      entry_price = buy_value.greaterThan(DecimalUtils.zero()) ? buy_value.div(quantity) : DecimalUtils.zero();
+      entry_price = cumulative_buy_value.greaterThan(DecimalUtils.zero())
+        ? cumulative_buy_value.div(quantity)
+        : DecimalUtils.zero();
     } else {
-      // For short positions, entry is buyPrice from frontend (sell action)
+      // Django: for short, entry is the `buyPrice` field from the frontend payload.
       if (transactions && transactions.length > 0) {
         entry_price = DecimalUtils.parse(transactions[0].buyPrice);
       } else {
-        entry_price = sell_value.greaterThan(DecimalUtils.zero()) ? sell_value.div(quantity) : DecimalUtils.zero();
+        entry_price = total_sell_value.greaterThan(DecimalUtils.zero())
+          ? total_sell_value.div(quantity)
+          : DecimalUtils.zero();
       }
     }
 
-    return entry_price.add(total_charges.div(quantity));
+    return BreakevenCalculator.calculate_breakeven_price(
+      quantity,
+      entry_price,
+      this.broker,
+      this.exchange,
+      this.tradeType,
+      position_type
+    );
   }
 }
