@@ -10,7 +10,7 @@
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
-    "test": "echo 'Tests not configured yet'"
+    "test": "npm run build && node --test tests/*.test.js"
   },
   "keywords": [
     "stock",

@@ -31,6 +31,9 @@ export class NetPLCalculatorService {
       return null;
     }
 
+    // Delivery trades are treated as long only (Django parity).
+    const effectivePositionType = tradeType === 'equity-delivery' ? 'long' : positionType;
+
     // Always calculate breakeven price independently
     const breakevenPrice = calculateBreakevenPrice(
       quantity,
@@ -38,7 +41,7 @@ export class NetPLCalculatorService {
       exchange,
       broker,
       tradeType,
-      positionType
+      effectivePositionType
     );
 
     // If exit price is not provided, show breakeven calculation only
