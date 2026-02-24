@@ -12,6 +12,7 @@ export interface User {
 export interface UserProfileResponse extends User {}
 
 export interface ProfileUpdateRequest {
+  username?: string;
   email?: string;
   first_name?: string;
   last_name?: string;

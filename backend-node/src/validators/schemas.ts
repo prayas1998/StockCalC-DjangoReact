@@ -30,6 +30,7 @@ export const calculationRequestSchema = z.object({
 
 // Profile update validation
 export const profileUpdateSchema = z.object({
+  username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/, 'Username must be 3-30 chars using lowercase letters, numbers, or underscores').optional(),
   email: z.string().email('Invalid email format').optional(),
   first_name: z.string().min(1, 'First name must be at least 1 character').optional(),
   last_name: z.string().min(1, 'Last name must be at least 1 character').optional()

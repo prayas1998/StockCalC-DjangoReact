@@ -2,7 +2,7 @@ import { Context } from 'hono';
 import { requireAuth, getAccessToken } from '../middleware/auth.js';
 import { tradeJournalCreateSchema, tagCreateSchema } from '../validators/schemas.js';
 import { PaginatedResponse } from '../types/index.js';
-import { withUserScope } from '../services/supabase.js';
+import { supabaseClient, withUserScope } from '../services/supabase.js';
 
 const CLOSED_STATUSES = ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] as const;
 const VALID_STATUSES = ['OPEN', 'CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL', 'CANCELLED'] as const;
@@ -10,7 +10,6 @@ const VALID_STATUSES = ['OPEN', 'CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANU
 const TRADE_SELECT_WITH_TAGS = `
   *,
   journal_tradejournaltags(
-    tag_id,
     journal_tradetags(id, name, color, user_id, created_at)
   )
 `;
@@ -278,15 +277,15 @@ function toCreateUpdateTradeResponse(trade: any, tagIds: number[]): any {
 async function fetchTradeTagIds(accessToken: string, tradeId: number): Promise<number[]> {
   const { data, error } = await withUserScope(accessToken, 'journal_tradejournaltags')
     .from()
-    .select('tag_id')
-    .eq('trade_id', tradeId);
+    .select('tag')
+    .eq('trade', tradeId);
 
   if (error) {
     throw error;
   }
 
   return (data || [])
-    .map((relation: any) => Number(relation.tag_id))
+    .map((relation: any) => Number(relation.tag))
     .filter((tagId: number) => Number.isFinite(tagId));
 }
 
@@ -294,7 +293,7 @@ async function replaceTradeTags(accessToken: string, tradeId: number, tagIds: nu
   const deleteResult = await withUserScope(accessToken, 'journal_tradejournaltags')
     .from()
     .delete()
-    .eq('trade_id', tradeId);
+    .eq('trade', tradeId);
 
   if (deleteResult.error) {
     throw deleteResult.error;
@@ -305,8 +304,8 @@ async function replaceTradeTags(accessToken: string, tradeId: number, tagIds: nu
   }
 
   const rows = tagIds.map((tagId) => ({
-    trade_id: tradeId,
-    tag_id: tagId
+    trade: tradeId,
+    tag: tagId
   }));
 
   const insertResult = await withUserScope(accessToken, 'journal_tradejournaltags')
@@ -329,8 +328,8 @@ async function getTradeIdsMatchingAllTags(accessToken: string, tagFilterValues: 
 
   const { data, error } = await withUserScope(accessToken, 'journal_tradejournaltags')
     .from()
-    .select('trade_id, tag_id')
-    .in('tag_id', numericTagIds);
+    .select('trade, tag')
+    .in('tag', numericTagIds);
 
   if (error) {
     throw error;
@@ -338,8 +337,8 @@ async function getTradeIdsMatchingAllTags(accessToken: string, tagFilterValues: 
 
   const tradeToTags = new Map<string, Set<number>>();
   for (const relation of data || []) {
-    const tradeId = String(relation.trade_id);
-    const tagId = Number(relation.tag_id);
+    const tradeId = String(relation.trade);
+    const tagId = Number(relation.tag);
     const tagSet = tradeToTags.get(tradeId) || new Set<number>();
     tagSet.add(tagId);
     tradeToTags.set(tradeId, tagSet);
@@ -625,14 +624,14 @@ async function buildTagAnalyticsResponse(c: Context, userId: string, tagName: st
 
   const { data: relations, error: relationError } = await withUserScope(accessToken, 'journal_tradejournaltags')
     .from()
-    .select('trade_id')
-    .eq('tag_id', tag.id);
+    .select('trade')
+    .eq('tag', tag.id);
 
   if (relationError) {
     throw relationError;
   }
 
-  const tradeIds = (relations || []).map((relation: any) => relation.trade_id);
+  const tradeIds = (relations || []).map((relation: any) => relation.trade);
   let tradesWithTag: any[] = [];
 
   if (tradeIds.length > 0) {
@@ -682,8 +681,8 @@ export const journalRoutes = [
         const tagFilters = parseMultiValueParams(url, 'tags');
         const companyFilters = parseMultiValueParams(url, 'companies');
 
-        let query = withUserScope(accessToken, 'journal_tradejournal')
-          .from()
+        let query = supabaseClient
+          .from('journal_tradejournal')
           .select(TRADE_SELECT_WITH_TAGS, { count: 'exact' })
           .eq('user_id', user.id)
           .order('entry_date', { ascending: false })
@@ -792,8 +791,8 @@ export const journalRoutes = [
       try {
         const accessToken = getAccessToken(c);
 
-        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .from()
+        const { data: trade, error } = await supabaseClient
+          .from('journal_tradejournal')
           .select(TRADE_SELECT_WITH_TAGS)
           .eq('id', id)
           .eq('user_id', user.id)
@@ -996,8 +995,8 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const { data: tags, error } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
+        const { data: tags, error } = await supabaseClient
+          .from('journal_tradetags')
           .select('*')
           .eq('user_id', user.id)
           .order('name');
@@ -1083,8 +1082,8 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
+        const { data: tag, error } = await supabaseClient
+          .from('journal_tradetags')
           .select('*')
           .eq('id', id)
           .eq('user_id', user.id)
@@ -1221,8 +1220,8 @@ export const journalRoutes = [
       try {
         const accessToken = getAccessToken(c);
 
-        const { data: tags, error: tagsError } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
+        const { data: tags, error: tagsError } = await supabaseClient
+          .from('journal_tradetags')
           .select('*')
           .eq('user_id', user.id);
 
@@ -1235,10 +1234,10 @@ export const journalRoutes = [
         }
 
         const tagIds = tags.map((tag: any) => tag.id);
-        const { data: relations, error: relationError } = await withUserScope(accessToken, 'journal_tradejournaltags')
-          .from()
-          .select('tag_id')
-          .in('tag_id', tagIds);
+        const { data: relations, error: relationError } = await supabaseClient
+          .from('journal_tradejournaltags')
+          .select('tag')
+          .in('tag', tagIds);
 
         if (relationError) {
           throw relationError;
@@ -1246,7 +1245,7 @@ export const journalRoutes = [
 
         const counts: Record<string, number> = {};
         for (const relation of relations || []) {
-          const tagId = String(relation.tag_id);
+          const tagId = String(relation.tag);
           counts[tagId] = (counts[tagId] || 0) + 1;
         }
 
@@ -1279,8 +1278,8 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const { data: trades, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .from()
+        const { data: trades, error } = await supabaseClient
+          .from('journal_tradejournal')
           .select(TRADE_SELECT_WITH_TAGS)
           .eq('user_id', user.id);
 
@@ -1350,8 +1349,8 @@ export const journalRoutes = [
         const tagFilters = parseMultiValueParams(url, 'tags');
         const companyFilters = parseMultiValueParams(url, 'companies');
 
-        const { data: trades, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .from()
+        const { data: trades, error } = await supabaseClient
+          .from('journal_tradejournal')
           .select(TRADE_SELECT_WITH_TAGS)
           .eq('user_id', user.id)
           .order('entry_date', { ascending: false });
@@ -1468,8 +1467,8 @@ export const journalRoutes = [
         const queryLower = query.toLowerCase();
         const suggestions: Array<{ id: string; text: string; type: 'company' | 'tag'; score: number }> = [];
 
-        const { data: trades, error: tradeError } = await withUserScope(accessToken, 'journal_tradejournal')
-          .from()
+        const { data: trades, error: tradeError } = await supabaseClient
+          .from('journal_tradejournal')
           .select('company_name')
           .eq('user_id', user.id)
           .ilike('company_name', `%${query}%`)
@@ -1504,8 +1503,8 @@ export const journalRoutes = [
           });
         }
 
-        const { data: tags, error: tagError } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
+        const { data: tags, error: tagError } = await supabaseClient
+          .from('journal_tradetags')
           .select('id, name')
           .eq('user_id', user.id)
           .ilike('name', `%${query}%`)

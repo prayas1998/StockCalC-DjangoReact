@@ -1,13 +1,8 @@
 import { Context } from 'hono';
 import { requireAuth } from '../middleware/auth.js';
 import { profileUpdateSchema, changePasswordSchema } from '../validators/schemas.js';
-import { ProfileUpdateRequest, ChangePasswordRequest } from '../types/index.js';
-
-// Extend the type to include username for frontend compatibility
-interface ExtendedProfileUpdateRequest extends ProfileUpdateRequest {
-  username?: string;
-}
-import { supabaseClient, supabaseAdmin } from '../services/supabase.js';
+import { ProfileUpdateRequest } from '../types/index.js';
+import { supabaseAdmin } from '../services/supabase.js';
 
 export const profileRoutes = [
   {
@@ -59,19 +54,46 @@ export const profileRoutes = [
       const body = await c.req.json();
       
       try {
-        const validatedData = profileUpdateSchema.parse(body) as ExtendedProfileUpdateRequest;
-        
-        // Update user metadata in Supabase
+        const validatedData = profileUpdateSchema.parse(body) as ProfileUpdateRequest;
+        const updatedFields = Object.keys(validatedData).filter((key) => {
+          const value = validatedData[key as keyof ProfileUpdateRequest];
+          return value !== undefined;
+        });
+
+        if (updatedFields.length === 0) {
+          return c.json({
+            error: true,
+            error_id: `prof_${Date.now()}`,
+            category: 'validation' as const,
+            message: 'No profile fields provided for update'
+          }, 400);
+        }
+
+        const userMetadata: Record<string, string> = {};
+        if (validatedData.first_name !== undefined) {
+          userMetadata.first_name = validatedData.first_name;
+        }
+        if (validatedData.last_name !== undefined) {
+          userMetadata.last_name = validatedData.last_name;
+        }
+        if (validatedData.username !== undefined) {
+          userMetadata.username = validatedData.username;
+        }
+
+        const updatePayload: {
+          email?: string;
+          user_metadata?: Record<string, string>;
+        } = {};
+        if (validatedData.email !== undefined) {
+          updatePayload.email = validatedData.email;
+        }
+        if (Object.keys(userMetadata).length > 0) {
+          updatePayload.user_metadata = userMetadata;
+        }
+
         const { data: updatedUser, error } = await supabaseAdmin.auth.admin.updateUserById(
           user.id,
-          {
-            email: validatedData.email,
-            user_metadata: {
-              first_name: validatedData.first_name,
-              last_name: validatedData.last_name,
-              username: validatedData.username
-            }
-          }
+          updatePayload
         );
         
         if (error) {
@@ -102,7 +124,11 @@ export const profileRoutes = [
           last_login: updatedUser.user.last_sign_in_at || updatedUser.user.created_at
         };
         
-        return c.json(profile, 200);
+        return c.json({
+          message: 'Profile updated successfully',
+          updated_fields: updatedFields,
+          profile
+        }, 200);
       } catch (error) {
         return c.json({
           error: true,
@@ -171,6 +197,7 @@ export const profileRoutes = [
         }
         
         return c.json({
+          success: true,
           message: 'Account deleted successfully',
           user_id: user.id
         }, 200);

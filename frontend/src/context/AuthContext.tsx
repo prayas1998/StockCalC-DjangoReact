@@ -4,16 +4,17 @@ import { supabase } from '../lib/supabase';
 import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { setAuthToken, removeAuthToken } from '../lib/tokenStorage';
+import { isValidUsername, normalizeUsername, resolveIdentifierToEmail, usernameToInternalEmail } from '../lib/authIdentity';
 
 interface AuthContextProps {
   session: Session | null;
   user: User | null;
-  signUp: (email: string, password: string, firstName: string, lastName?: string) => Promise<{ error: AuthError | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
+  signUp: (username: string, password: string) => Promise<{ error: AuthError | null }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: AuthError | null }>;
   signOut: () => Promise<void>;
   loading: boolean;
   refreshSession: () => Promise<Session | null>;
-  updateUserProfile: (updates: { email?: string; first_name?: string; last_name?: string }, showToast?: boolean) => Promise<{ error: AuthError | null }>;
+  updateUserProfile: (updates: { email?: string; first_name?: string; last_name?: string; username?: string }, showToast?: boolean) => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -133,15 +134,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const signUp = async (email: string, password: string, firstName: string, lastName?: string) => {
+  const signUp = async (username: string, password: string) => {
     try {
+      const normalizedUsername = normalizeUsername(username);
+      if (!isValidUsername(normalizedUsername)) {
+        const validationError = { message: 'Username must be 3-30 characters using lowercase letters, numbers, or underscores.' } as AuthError;
+        throw validationError;
+      }
+
       const { error } = await supabase.auth.signUp({
-        email,
+        email: usernameToInternalEmail(normalizedUsername),
         password,
         options: {
           data: {
-            first_name: firstName,
-            last_name: lastName || '',
+            username: normalizedUsername,
           },
         },
       });
@@ -150,19 +156,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       toast({
         title: 'Account created successfully',
-        description: 'Please check your email to verify your account before signing in.',
+        description: 'You can now sign in with your username and password.',
       });
       
       return { error: null };
     } catch (error) {
       const authError = error as AuthError;
       
-      // Check for duplicate email error
+      // Check for duplicate username conflicts surfaced as email conflicts.
       if (authError.message && authError.message.toLowerCase().includes("already")) {
         toast({
           variant: 'destructive',
-          title: 'Email already registered',
-          description: 'This email is already registered. Please sign in instead.',
+          title: 'Username already taken',
+          description: 'Please choose a different username.',
         });
       } else {
         toast({
@@ -175,8 +181,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (identifier: string, password: string) => {
     try {
+      const email = resolveIdentifierToEmail(identifier);
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -223,15 +230,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateUserProfile = async (updates: { email?: string; first_name?: string; last_name?: string }, showToast: boolean = true) => {
+  const updateUserProfile = async (updates: { email?: string; first_name?: string; last_name?: string; username?: string }, showToast: boolean = true) => {
     try {
-      const { error } = await supabase.auth.updateUser({
-        email: updates.email,
-        data: {
-          first_name: updates.first_name,
-          last_name: updates.last_name,
-        },
-      });
+      const metadataUpdates: Record<string, string> = {};
+
+      if (updates.first_name !== undefined) {
+        metadataUpdates.first_name = updates.first_name;
+      }
+      if (updates.last_name !== undefined) {
+        metadataUpdates.last_name = updates.last_name;
+      }
+      if (updates.username !== undefined) {
+        metadataUpdates.username = normalizeUsername(updates.username);
+      }
+
+      const updatePayload: {
+        email?: string;
+        data?: Record<string, string>;
+      } = {};
+
+      if (updates.email !== undefined) {
+        updatePayload.email = updates.email;
+      }
+      if (Object.keys(metadataUpdates).length > 0) {
+        updatePayload.data = metadataUpdates;
+      }
+
+      const { error } = await supabase.auth.updateUser(updatePayload);
 
       if (error) throw error;
       

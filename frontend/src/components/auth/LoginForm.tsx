@@ -14,9 +14,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/context/AuthContext";
 import { Loader2 } from "lucide-react";
+import { isLikelyEmail, isValidUsername } from "@/lib/authIdentity";
 
 const loginSchema = z.object({
-  email: z.string().email("Invalid email address"),
+  identifier: z.string()
+    .min(1, "Username is required")
+    .refine((value) => {
+      const trimmed = value.trim();
+      return isLikelyEmail(trimmed) || isValidUsername(trimmed);
+    }, "Enter a valid username or email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
@@ -34,7 +40,7 @@ const LoginForm = ({ switchMode, onSuccess }: LoginFormProps) => {
   const form = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      email: "",
+      identifier: "",
       password: "",
     },
   });
@@ -42,7 +48,7 @@ const LoginForm = ({ switchMode, onSuccess }: LoginFormProps) => {
   const onSubmit = async (data: LoginValues) => {
     setIsLoading(true);
     try {
-      const { error } = await signIn(data.email, data.password);
+      const { error } = await signIn(data.identifier, data.password);
       if (!error) {
         onSuccess();
       }
@@ -56,12 +62,12 @@ const LoginForm = ({ switchMode, onSuccess }: LoginFormProps) => {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
         <FormField
           control={form.control}
-          name="email"
+          name="identifier"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>Username</FormLabel>
               <FormControl>
-                <Input placeholder="you@example.com" {...field} />
+                <Input placeholder="your_username or existing email" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
