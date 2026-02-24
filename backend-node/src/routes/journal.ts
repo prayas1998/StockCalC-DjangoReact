@@ -1,118 +1,148 @@
 import { Context } from 'hono';
 import { requireAuth, getAccessToken } from '../middleware/auth.js';
-import { tradeJournalCreateSchema, paginationSchema, journalFilterSchema, tagCreateSchema } from '../validators/schemas.js';
-import { TradeJournalCreate, PaginatedResponse } from '../types/index.js';
-import { supabaseClient, withUserScope } from '../services/supabase.js';
-import { TradeType, Broker, Exchange } from '../types/database.js';
+import { tradeJournalCreateSchema, tagCreateSchema } from '../validators/schemas.js';
+import { PaginatedResponse } from '../types/index.js';
+import { withUserScope } from '../services/supabase.js';
 
-// Helper function to calculate P&L for a trade (mirrors Django calculate_pnl exactly)
-async function calculatePnl(trade: any): Promise<number | null> {
-  if (trade.status !== 'CLOSED_TARGET' && trade.status !== 'CLOSED_STOPLOSS' && trade.status !== 'CLOSED_MANUAL') {
-    return null;
-  }
-  
-  // Get exit price
-  const exitPrice = getExitPrice(trade);
-  if (exitPrice === null) {
-    return null;
-  }
-  
-  try {
-    // Import calculator classes
-    const { EquityDeliveryCalculator } = await import('../calculations/equityDelivery.js');
-    const { EquityIntradayCalculator } = await import('../calculations/equityIntraday.js');
-    
-    // Map journal trade type to calculator trade type (exact match to Django)
-    const tradeTypeMapping: Record<string, string> = {
-      'EQUITY_DELIVERY': 'equity-delivery',
-      'EQUITY_INTRADAY': 'equity-intraday',
-    };
-    
-    const calculatorTradeType = tradeTypeMapping[trade.trade_type];
-    if (!calculatorTradeType) {
-      return null;
-    }
-    
-    // Prepare transaction data for calculator (exact match to Django)
-    let entryPrice: number;
-    let transactionData: any[];
-    
-    if (trade.direction === 'SHORT') {
-      // For short trades: Entry price is stored in sell_price, Exit price is stored in buy_price
-      entryPrice = trade.sell_price; // Entry price for short trades
-      transactionData = [{
-        quantity: String(trade.quantity),
-        buyPrice: String(entryPrice),   // Entry price (sell action) - same as main calculator
-        sellPrice: String(exitPrice)    // Exit price (buy action) - same as main calculator
-      }];
-    } else {
-      // Long trades: Entry = buy_price, Exit = exit_price
-      entryPrice = trade.buy_price; // Entry price for long trades
-      transactionData = [{
-        quantity: String(trade.quantity),
-        buyPrice: String(entryPrice),   // Entry price (buy to open)
-        sellPrice: String(exitPrice)    // Exit price (sell to close)
-      }];
-    }
-    
-    // Get appropriate calculator (same logic as calculate_charges view)
-    const platform = trade.broker.toLowerCase();
-    const exchange = trade.exchange.toUpperCase();
-    const positionType = trade.direction === 'SHORT' ? 'short' : 'long';
-    
-    let calculator;
-    if (calculatorTradeType === 'equity-delivery') {
-      calculator = new EquityDeliveryCalculator(platform, exchange, calculatorTradeType);
-    } else if (calculatorTradeType === 'equity-intraday') {
-      calculator = new EquityIntradayCalculator(platform, exchange, calculatorTradeType);
-    } else {
-      return null;
-    }
-    
-    // Calculate charges using same logic as view (exact match to Django)
-    const result = calculator.calculate_transaction_charges(transactionData, positionType);
-    
-    // Check for errors (intraday calculator returns error dict for unsupported brokers)
-    if (result && typeof result === 'object' && 'error' in result) {
-      return null;
-    }
-    
-    // Extract net P&L from result (exact match to Django)
-    if (result && typeof result === 'object' && 'summary' in result && 'netPnL' in result.summary) {
-      return Number(result.summary.netPnL);
-    }
-    
-    return null;
-  } catch (error) {
-    console.warn(`P&L calculation failed for trade ${trade.id}:`, error);
-    return null;
-  }
+const CLOSED_STATUSES = ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] as const;
+const VALID_STATUSES = ['OPEN', 'CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL', 'CANCELLED'] as const;
+
+const TRADE_SELECT_WITH_TAGS = `
+  *,
+  journal_tradejournaltags(
+    tag_id,
+    journal_tradetags(id, name, color, user_id, created_at)
+  )
+`;
+
+function toNumberOrNull(value: unknown): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
 }
 
-// Helper function to get exit price (mirroring Django get_exit_price)
+function roundTo(value: number, decimals: number): number {
+  return Number(value.toFixed(decimals));
+}
+
+function isClosedStatus(status: string): boolean {
+  return CLOSED_STATUSES.includes(status as (typeof CLOSED_STATUSES)[number]);
+}
+
+function getTradeTags(trade: any): any[] {
+  const tagsFromRelations = Array.isArray(trade.journal_tradejournaltags)
+    ? trade.journal_tradejournaltags
+        .map((relation: any) => {
+          const rawTag = Array.isArray(relation.journal_tradetags)
+            ? relation.journal_tradetags[0]
+            : relation.journal_tradetags;
+          if (!rawTag) return null;
+          return {
+            id: rawTag.id,
+            name: rawTag.name,
+            color: rawTag.color,
+            user_id: rawTag.user_id ?? null,
+            created_at: rawTag.created_at ?? null
+          };
+        })
+        .filter(Boolean)
+    : [];
+
+  if (tagsFromRelations.length > 0) {
+    const seen = new Set<number>();
+    return tagsFromRelations.filter((tag: any) => {
+      if (seen.has(tag.id)) return false;
+      seen.add(tag.id);
+      return true;
+    });
+  }
+
+  if (Array.isArray(trade.tags)) {
+    return trade.tags;
+  }
+
+  return [];
+}
+
 function getExitPrice(trade: any): number | null {
   if (trade.status === 'OPEN' || trade.status === 'CANCELLED') {
     return null;
   }
-  
-  if (trade.status === 'CLOSED_TARGET' && trade.target_price) {
-    return trade.target_price;
-  } else if (trade.status === 'CLOSED_STOPLOSS' && trade.stop_loss) {
-    return trade.stop_loss;
-  } else if (trade.status === 'CLOSED_MANUAL' && trade.sell_price) {
-    return trade.sell_price;
+
+  if (trade.status === 'CLOSED_TARGET') {
+    return toNumberOrNull(trade.target_price);
   }
-  
+  if (trade.status === 'CLOSED_STOPLOSS') {
+    return toNumberOrNull(trade.stop_loss);
+  }
+  if (trade.status === 'CLOSED_MANUAL') {
+    if (trade.direction === 'SHORT') {
+      return toNumberOrNull(trade.buy_price);
+    }
+    return toNumberOrNull(trade.sell_price);
+  }
+
   return null;
 }
 
-// Helper function to calculate max drawdown and drawdown series
-function calculateDrawdown(tradePnls: number[]): { maxDrawdown: number; drawdownSeries: any[] } {
+function getMissingFieldsForPnl(trade: any): string[] {
+  const missing: string[] = [];
+
+  if (trade.status === 'CLOSED_TARGET' && !trade.target_price) {
+    missing.push('target_price');
+  }
+  if (trade.status === 'CLOSED_STOPLOSS' && !trade.stop_loss) {
+    missing.push('stop_loss');
+  }
+  if (trade.status === 'CLOSED_MANUAL') {
+    if (trade.direction === 'SHORT') {
+      if (!trade.buy_price) missing.push('buy_price');
+    } else if (!trade.sell_price) {
+      missing.push('sell_price');
+    }
+  }
+
+  if (isClosedStatus(trade.status) && !trade.exit_date) {
+    missing.push('exit_date');
+  }
+
+  return missing;
+}
+
+function isPreciseCalculationAvailable(trade: any): boolean {
+  if (trade.trade_type === 'EQUITY_INTRADAY') {
+    return trade.broker === 'Dhan';
+  }
+  return (
+    (trade.trade_type === 'EQUITY_DELIVERY' || trade.trade_type === 'EQUITY_INTRADAY') &&
+    (trade.broker === 'Dhan' || trade.broker === 'Groww')
+  );
+}
+
+function calculateRiskRewardRatio(trade: any): number | null {
+  const stopLoss = toNumberOrNull(trade.stop_loss);
+  const targetPrice = toNumberOrNull(trade.target_price);
+  if (stopLoss === null || targetPrice === null) return null;
+
+  const entryPrice = trade.direction === 'SHORT'
+    ? toNumberOrNull(trade.sell_price)
+    : toNumberOrNull(trade.buy_price);
+
+  if (entryPrice === null) return null;
+
+  const risk = Math.abs(entryPrice - stopLoss);
+  const reward = Math.abs(targetPrice - entryPrice);
+  if (risk <= 0) return null;
+
+  return roundTo(reward / risk, 2);
+}
+
+function calculateDrawdown(tradePnls: number[]): { maxDrawdown: number; drawdownSeries: Array<{ cumulative_pnl: number; drawdown: number }> } {
   let cumulativePnl = 0;
   let peak = 0;
   let maxDrawdown = 0;
-  const drawdownSeries: any[] = [];
-  
+  const drawdownSeries: Array<{ cumulative_pnl: number; drawdown: number }> = [];
+
   for (const pnl of tradePnls) {
     cumulativePnl += pnl;
     if (cumulativePnl > peak) {
@@ -124,173 +154,515 @@ function calculateDrawdown(tradePnls: number[]): { maxDrawdown: number; drawdown
     }
     drawdownSeries.push({
       cumulative_pnl: cumulativePnl,
-      drawdown: drawdown
+      drawdown
     });
   }
-  
+
   return { maxDrawdown, drawdownSeries };
 }
 
-// Helper function to calculate stock performance
-async function calculateStockPerformance(closedTrades: any[]): Promise<{ bestPerformingStocks: any[]; worstPerformingStocks: any[] }> {
-  const stockPerformance: Record<string, { totalPnl: number; tradeCount: number }> = {};
-  
-  for (const trade of closedTrades) {
-    const pnl = await calculatePnl(trade);
-    if (pnl !== null) {
-      const company = trade.company_name;
-      if (!stockPerformance[company]) {
-        stockPerformance[company] = { totalPnl: 0, tradeCount: 0 };
-      }
-      stockPerformance[company].totalPnl += pnl;
-      stockPerformance[company].tradeCount += 1;
-    }
+async function calculatePnl(trade: any): Promise<number | null> {
+  if (!isClosedStatus(trade.status)) {
+    return null;
   }
-  
-  const stockList = Object.entries(stockPerformance).map(([companyName, data]) => ({
-    company_name: companyName,
-    total_pnl: Number(data.totalPnl.toFixed(2)),
-    trade_count: data.tradeCount
-  }));
-  
-  // Best performers (profitable stocks only)
-  const profitableStocks = stockList.filter(stock => stock.total_pnl > 0);
-  const bestPerformingStocks = profitableStocks
-    .sort((a, b) => b.total_pnl - a.total_pnl)
-    .slice(0, 5);
-  
-  // Worst performers (all stocks)
-  const worstPerformingStocks = stockList
-    .sort((a, b) => a.total_pnl - b.total_pnl)
-    .slice(0, 5);
-  
-  return { bestPerformingStocks, worstPerformingStocks };
+
+  const exitPrice = getExitPrice(trade);
+  if (exitPrice === null) {
+    return null;
+  }
+
+  try {
+    const { EquityDeliveryCalculator } = await import('../calculations/equityDelivery.js');
+    const { EquityIntradayCalculator } = await import('../calculations/equityIntraday.js');
+
+    const tradeTypeMapping: Record<string, string> = {
+      EQUITY_DELIVERY: 'equity-delivery',
+      EQUITY_INTRADAY: 'equity-intraday'
+    };
+
+    const calculatorTradeType = tradeTypeMapping[trade.trade_type];
+    if (!calculatorTradeType) {
+      return null;
+    }
+
+    let entryPrice: number | null;
+    let transactionData: any[];
+
+    if (trade.direction === 'SHORT') {
+      entryPrice = toNumberOrNull(trade.sell_price);
+      if (entryPrice === null) return null;
+
+      transactionData = [{
+        quantity: String(trade.quantity),
+        buyPrice: String(entryPrice),
+        sellPrice: String(exitPrice)
+      }];
+    } else {
+      entryPrice = toNumberOrNull(trade.buy_price);
+      if (entryPrice === null) return null;
+
+      transactionData = [{
+        quantity: String(trade.quantity),
+        buyPrice: String(entryPrice),
+        sellPrice: String(exitPrice)
+      }];
+    }
+
+    const platform = String(trade.broker || '').toLowerCase();
+    const exchange = String(trade.exchange || '').toUpperCase();
+    const positionType = trade.direction === 'SHORT' ? 'short' : 'long';
+
+    let calculator;
+    if (calculatorTradeType === 'equity-delivery') {
+      calculator = new EquityDeliveryCalculator(platform, exchange, calculatorTradeType);
+    } else if (calculatorTradeType === 'equity-intraday') {
+      calculator = new EquityIntradayCalculator(platform, exchange, calculatorTradeType);
+    } else {
+      return null;
+    }
+
+    const result = calculator.calculate_transaction_charges(transactionData, positionType);
+    if (result && typeof result === 'object' && 'error' in result) {
+      return null;
+    }
+
+    if (result && typeof result === 'object' && 'summary' in result && result.summary && 'netPnL' in result.summary) {
+      return Number((result.summary as any).netPnL);
+    }
+
+    return null;
+  } catch (error) {
+    console.warn(`P&L calculation failed for trade ${trade.id}:`, error);
+    return null;
+  }
 }
 
-// Helper function to calculate monthly performance
-async function calculateMonthlyPerformance(closedTrades: any[]): Promise<any[]> {
-  const monthlyPerformance: Record<string, { totalPnl: number; tradeCount: number }> = {};
-  
+function toTradeBasePayload(trade: any): any {
+  const { journal_tradejournaltags, ...rest } = trade;
+  return {
+    ...rest,
+    tags: getTradeTags(trade)
+  };
+}
+
+async function decorateTradeForList(trade: any): Promise<any> {
+  const base = toTradeBasePayload(trade);
+  const pnl = await calculatePnl(trade);
+
+  return {
+    ...base,
+    pnl,
+    risk_reward_ratio: calculateRiskRewardRatio(trade),
+    is_profitable: pnl !== null && pnl > 0,
+    is_precise_calculation: isPreciseCalculationAvailable(trade),
+    missing_fields_for_pnl: getMissingFieldsForPnl(trade)
+  };
+}
+
+async function decorateTradeForDetail(trade: any): Promise<any> {
+  const listPayload = await decorateTradeForList(trade);
+  return {
+    ...listPayload,
+    unrealized_pnl: null
+  };
+}
+
+function toCreateUpdateTradeResponse(trade: any, tagIds: number[]): any {
+  const { user_id, created_at, updated_at, ...rest } = trade;
+  return {
+    ...rest,
+    tags: tagIds
+  };
+}
+
+async function fetchTradeTagIds(accessToken: string, tradeId: number): Promise<number[]> {
+  const { data, error } = await withUserScope(accessToken, 'journal_tradejournaltags')
+    .from()
+    .select('tag_id')
+    .eq('trade_id', tradeId);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data || [])
+    .map((relation: any) => Number(relation.tag_id))
+    .filter((tagId: number) => Number.isFinite(tagId));
+}
+
+async function replaceTradeTags(accessToken: string, tradeId: number, tagIds: number[]): Promise<void> {
+  const deleteResult = await withUserScope(accessToken, 'journal_tradejournaltags')
+    .from()
+    .delete()
+    .eq('trade_id', tradeId);
+
+  if (deleteResult.error) {
+    throw deleteResult.error;
+  }
+
+  if (tagIds.length === 0) {
+    return;
+  }
+
+  const rows = tagIds.map((tagId) => ({
+    trade_id: tradeId,
+    tag_id: tagId
+  }));
+
+  const insertResult = await withUserScope(accessToken, 'journal_tradejournaltags')
+    .from()
+    .insert(rows);
+
+  if (insertResult.error) {
+    throw insertResult.error;
+  }
+}
+
+async function getTradeIdsMatchingAllTags(accessToken: string, tagFilterValues: string[]): Promise<string[]> {
+  const numericTagIds = tagFilterValues
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
+
+  if (numericTagIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await withUserScope(accessToken, 'journal_tradejournaltags')
+    .from()
+    .select('trade_id, tag_id')
+    .in('tag_id', numericTagIds);
+
+  if (error) {
+    throw error;
+  }
+
+  const tradeToTags = new Map<string, Set<number>>();
+  for (const relation of data || []) {
+    const tradeId = String(relation.trade_id);
+    const tagId = Number(relation.tag_id);
+    const tagSet = tradeToTags.get(tradeId) || new Set<number>();
+    tagSet.add(tagId);
+    tradeToTags.set(tradeId, tagSet);
+  }
+
+  return Array.from(tradeToTags.entries())
+    .filter(([, tagSet]) => numericTagIds.every((tagId) => tagSet.has(tagId)))
+    .map(([tradeId]) => tradeId);
+}
+
+async function calculateStockPerformance(closedTrades: any[]): Promise<{ best_performing_stocks: any[]; worst_performing_stocks: any[] }> {
+  const stockPerformance: Record<string, { total_pnl: number; trade_count: number }> = {};
+
   for (const trade of closedTrades) {
     const pnl = await calculatePnl(trade);
-    if (pnl !== null && trade.exit_date) {
-      const exitDate = new Date(trade.exit_date);
-      const monthKey = `${exitDate.getFullYear()}-${String(exitDate.getMonth() + 1).padStart(2, '0')}`;
-      
-      if (!monthlyPerformance[monthKey]) {
-        monthlyPerformance[monthKey] = { totalPnl: 0, tradeCount: 0 };
-      }
-      monthlyPerformance[monthKey].totalPnl += pnl;
-      monthlyPerformance[monthKey].tradeCount += 1;
+    if (pnl === null) continue;
+
+    const company = String(trade.company_name);
+    if (!stockPerformance[company]) {
+      stockPerformance[company] = { total_pnl: 0, trade_count: 0 };
     }
+    stockPerformance[company].total_pnl += pnl;
+    stockPerformance[company].trade_count += 1;
   }
-  
-  return Object.entries(monthlyPerformance)
+
+  const stocks = Object.entries(stockPerformance).map(([company_name, data]) => ({
+    company_name,
+    total_pnl: data.total_pnl,
+    trade_count: data.trade_count
+  }));
+
+  const best = stocks
+    .filter((stock) => stock.total_pnl > 0)
+    .sort((a, b) => b.total_pnl - a.total_pnl)
+    .slice(0, 5);
+
+  const worst = stocks
+    .sort((a, b) => a.total_pnl - b.total_pnl)
+    .slice(0, 5);
+
+  return {
+    best_performing_stocks: best,
+    worst_performing_stocks: worst
+  };
+}
+
+async function calculateMonthlyPerformance(closedTrades: any[]): Promise<any[]> {
+  const monthly: Record<string, { total_pnl: number; trade_count: number }> = {};
+
+  for (const trade of closedTrades) {
+    const pnl = await calculatePnl(trade);
+    if (pnl === null || !trade.exit_date) continue;
+
+    const exitDate = new Date(trade.exit_date);
+    const monthKey = `${exitDate.getFullYear()}-${String(exitDate.getMonth() + 1).padStart(2, '0')}`;
+
+    if (!monthly[monthKey]) {
+      monthly[monthKey] = { total_pnl: 0, trade_count: 0 };
+    }
+
+    monthly[monthKey].total_pnl += pnl;
+    monthly[monthKey].trade_count += 1;
+  }
+
+  return Object.entries(monthly)
     .map(([month, data]) => ({
       month,
-      total_pnl: Number(data.totalPnl.toFixed(2)),
-      trade_count: data.tradeCount
+      total_pnl: data.total_pnl,
+      trade_count: data.trade_count
     }))
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
-// Helper function to calculate tag performance
-async function calculateTagPerformance(closedTrades: any[], userId: string): Promise<any[]> {
+async function calculateTagPerformance(closedTrades: any[]): Promise<any[]> {
   const tagPerformance: Record<string, any> = {};
-  
+
   for (const trade of closedTrades) {
-    const pnl = await calculatePnl(trade);
-    if (trade.journal_tradejournaltags) {
-      for (const tagRelation of trade.journal_tradejournaltags) {
-        const tag = tagRelation.journal_tradetags;
-        if (!tag) continue;
-        
-        const tagId = tag.id;
-        if (!tagPerformance[tagId]) {
-          tagPerformance[tagId] = {
-            tag_name: tag.name,
-            tag_color: tag.color,
-            total_pnl: 0,
-            trade_count: 0,
-            profitable_trades: 0,
-            losing_trades: 0
-          };
-        }
-        
-        if (pnl !== null) {
-          tagPerformance[tagId].trade_count += 1;
-          tagPerformance[tagId].total_pnl += pnl;
-          if (pnl > 0) {
-            tagPerformance[tagId].profitable_trades += 1;
-          } else {
-            tagPerformance[tagId].losing_trades += 1;
-          }
+    const tradePnl = await calculatePnl(trade);
+    const tags = getTradeTags(trade);
+
+    for (const tag of tags) {
+      const tagKey = String(tag.id);
+      if (!tagPerformance[tagKey]) {
+        tagPerformance[tagKey] = {
+          tag_name: tag.name,
+          tag_color: tag.color,
+          total_pnl: 0,
+          trade_count: 0,
+          profitable_trades: 0,
+          losing_trades: 0
+        };
+      }
+
+      if (tradePnl !== null) {
+        tagPerformance[tagKey].trade_count += 1;
+        tagPerformance[tagKey].total_pnl += tradePnl;
+        if (tradePnl > 0) {
+          tagPerformance[tagKey].profitable_trades += 1;
+        } else {
+          tagPerformance[tagKey].losing_trades += 1;
         }
       }
     }
   }
-  
-  // Calculate win rates and sort by total P&L
+
   return Object.values(tagPerformance)
-    .map(tag => ({
+    .map((tag: any) => ({
       ...tag,
-      total_pnl: Number(tag.total_pnl.toFixed(2)),
-      win_rate: tag.trade_count > 0 ? Number(((tag.profitable_trades / tag.trade_count) * 100).toFixed(2)) : 0
+      total_pnl: roundTo(tag.total_pnl, 2),
+      win_rate: tag.trade_count > 0 ? roundTo(tag.profitable_trades / tag.trade_count, 4) : 0
     }))
     .sort((a, b) => b.total_pnl - a.total_pnl);
 }
 
-// Helper function to calculate trade type distribution
 function calculateTradeTypeDistribution(trades: any[]): any[] {
   const distribution: Record<string, number> = {};
-  
   for (const trade of trades) {
-    const tradeType = trade.trade_type;
+    const tradeType = String(trade.trade_type);
     distribution[tradeType] = (distribution[tradeType] || 0) + 1;
   }
-  
-  return Object.entries(distribution).map(([trade_type, count]) => ({
-    trade_type,
-    count
-  }));
+  return Object.entries(distribution).map(([trade_type, count]) => ({ trade_type, count }));
 }
 
-// Helper function to calculate status distribution
 function calculateStatusDistribution(trades: any[]): any[] {
   const distribution: Record<string, number> = {};
-  
   for (const trade of trades) {
-    const status = trade.status;
+    const status = String(trade.status);
     distribution[status] = (distribution[status] || 0) + 1;
   }
-  
-  return Object.entries(distribution).map(([status, count]) => ({
-    status,
-    count
-  }));
+  return Object.entries(distribution).map(([status, count]) => ({ status, count }));
 }
 
-// Helper function to calculate average risk/reward ratio
 function calculateAvgRiskReward(trades: any[]): number {
-  const riskRewardRatios: number[] = [];
-  
-  for (const trade of trades) {
-    if (trade.stop_loss && trade.target_price && trade.buy_price) {
-      let riskReward = 0;
-      if (trade.direction === 'LONG') {
-        const risk = Math.abs(trade.buy_price - trade.stop_loss);
-        const reward = Math.abs(trade.target_price - trade.buy_price);
-        riskReward = risk > 0 ? reward / risk : 0;
-      } else {
-        const risk = Math.abs(trade.stop_loss - trade.buy_price);
-        const reward = Math.abs(trade.buy_price - trade.target_price);
-        riskReward = risk > 0 ? reward / risk : 0;
-      }
-      riskRewardRatios.push(riskReward);
+  const ratios = trades
+    .map((trade) => calculateRiskRewardRatio(trade))
+    .filter((ratio): ratio is number => ratio !== null);
+
+  if (ratios.length === 0) return 0;
+  const total = ratios.reduce((sum, ratio) => sum + ratio, 0);
+  return total / ratios.length;
+}
+
+async function calculatePnlMetrics(closedTrades: any[]): Promise<{ total_pnl: number; avg_pnl_per_trade: number; profitable_trades: number; losing_trades: number; trade_pnls: number[] }> {
+  let totalPnl = 0;
+  let profitableTrades = 0;
+  let losingTrades = 0;
+  const tradePnls: number[] = [];
+
+  for (const trade of closedTrades) {
+    const pnl = await calculatePnl(trade);
+    if (pnl === null) continue;
+
+    totalPnl += pnl;
+    tradePnls.push(pnl);
+    if (pnl > 0) {
+      profitableTrades += 1;
+    } else {
+      losingTrades += 1;
     }
   }
-  
-  return riskRewardRatios.length > 0 ? riskRewardRatios.reduce((sum, ratio) => sum + ratio, 0) / riskRewardRatios.length : 0;
+
+  const avgPnl = tradePnls.length > 0 ? totalPnl / tradePnls.length : 0;
+
+  return {
+    total_pnl: roundTo(totalPnl, 2),
+    avg_pnl_per_trade: roundTo(avgPnl, 2),
+    profitable_trades: profitableTrades,
+    losing_trades: losingTrades,
+    trade_pnls: tradePnls
+  };
+}
+
+function calculatePerformanceMetrics(tradePnls: number[]): { win_rate: number; profit_factor: number; max_drawdown: number; largest_win: number; largest_loss: number; avg_win: number; avg_loss: number; expectancy: number } {
+  if (tradePnls.length === 0) {
+    return {
+      win_rate: 0,
+      profit_factor: 0,
+      max_drawdown: 0,
+      largest_win: 0,
+      largest_loss: 0,
+      avg_win: 0,
+      avg_loss: 0,
+      expectancy: 0
+    };
+  }
+
+  const profitableCount = tradePnls.filter((pnl) => pnl > 0).length;
+  const winRate = profitableCount / tradePnls.length;
+  const totalProfits = tradePnls.filter((pnl) => pnl > 0).reduce((sum, pnl) => sum + pnl, 0);
+  const totalLosses = Math.abs(tradePnls.filter((pnl) => pnl < 0).reduce((sum, pnl) => sum + pnl, 0));
+  const profitFactor = totalLosses > 0 ? totalProfits / totalLosses : 0;
+
+  const largestWin = Math.max(...tradePnls);
+  const largestLoss = Math.min(...tradePnls);
+  const avgWin = profitableCount > 0 ? totalProfits / profitableCount : 0;
+  const losingCount = tradePnls.length - profitableCount;
+  const avgLoss = losingCount > 0 ? totalLosses / losingCount : 0;
+  const expectancy = (winRate * avgWin) - ((1 - winRate) * avgLoss);
+
+  const { maxDrawdown } = calculateDrawdown(tradePnls);
+
+  return {
+    win_rate: roundTo(winRate, 4),
+    profit_factor: roundTo(profitFactor, 2),
+    max_drawdown: roundTo(maxDrawdown, 2),
+    largest_win: roundTo(largestWin, 2),
+    largest_loss: roundTo(largestLoss, 2),
+    avg_win: roundTo(avgWin, 2),
+    avg_loss: roundTo(avgLoss, 2),
+    expectancy: roundTo(expectancy, 2)
+  };
+}
+
+async function calculateDrawdownSeries(trades: any[]): Promise<Array<{ cumulative_pnl: number; drawdown: number }>> {
+  const sortedClosedTrades = [...trades]
+    .filter((trade) => isClosedStatus(trade.status) && !!trade.exit_date)
+    .sort((a, b) => new Date(a.exit_date).getTime() - new Date(b.exit_date).getTime());
+
+  let cumulativePnl = 0;
+  let peak = 0;
+  const drawdownSeries: Array<{ cumulative_pnl: number; drawdown: number }> = [];
+
+  for (const trade of sortedClosedTrades) {
+    const pnl = await calculatePnl(trade);
+    if (pnl === null) continue;
+
+    cumulativePnl += pnl;
+    if (cumulativePnl > peak) {
+      peak = cumulativePnl;
+    }
+
+    drawdownSeries.push({
+      cumulative_pnl: cumulativePnl,
+      drawdown: peak - cumulativePnl
+    });
+  }
+
+  return drawdownSeries;
+}
+
+function getPagination(url: URL): { page: number; pageSize: number; from: number; to: number } {
+  const rawPage = Number.parseInt(url.searchParams.get('page') || '1', 10);
+  const rawPageSize = Number.parseInt(url.searchParams.get('page_size') || '20', 10);
+  const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
+  const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? rawPageSize : 20;
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  return { page, pageSize, from, to };
+}
+
+function parseMultiValueParams(url: URL, key: string): string[] {
+  return url.searchParams
+    .getAll(key)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function buildPageUrl(c: Context, targetPage: number): string {
+  const pageUrl = new URL(c.req.url);
+  pageUrl.searchParams.set('page', String(targetPage));
+  return pageUrl.toString();
+}
+
+async function buildTagAnalyticsResponse(c: Context, userId: string, tagName: string): Promise<Response> {
+  const accessToken = getAccessToken(c);
+
+  const { data: tag, error: tagError } = await withUserScope(accessToken, 'journal_tradetags')
+    .from()
+    .select('id, name, color')
+    .eq('user_id', userId)
+    .eq('name', tagName)
+    .maybeSingle();
+
+  if (tagError) {
+    throw tagError;
+  }
+
+  if (!tag) {
+    return c.json({ error: `Tag "${tagName}" not found` }, 404);
+  }
+
+  const { data: relations, error: relationError } = await withUserScope(accessToken, 'journal_tradejournaltags')
+    .from()
+    .select('trade_id')
+    .eq('tag_id', tag.id);
+
+  if (relationError) {
+    throw relationError;
+  }
+
+  const tradeIds = (relations || []).map((relation: any) => relation.trade_id);
+  let tradesWithTag: any[] = [];
+
+  if (tradeIds.length > 0) {
+    const tradeQuery = await withUserScope(accessToken, 'journal_tradejournal')
+      .from()
+      .select(TRADE_SELECT_WITH_TAGS)
+      .eq('user_id', userId)
+      .in('id', tradeIds);
+
+    if (tradeQuery.error) {
+      throw tradeQuery.error;
+    }
+
+    tradesWithTag = tradeQuery.data || [];
+  }
+
+  const closedTrades = tradesWithTag.filter((trade) => isClosedStatus(trade.status));
+  const pnlMetrics = await calculatePnlMetrics(closedTrades);
+  const performance = calculatePerformanceMetrics(pnlMetrics.trade_pnls);
+
+  return c.json({
+    tag_name: tag.name,
+    tag_color: tag.color,
+    total_trades_with_tag: tradesWithTag.length,
+    open_trades_with_tag: tradesWithTag.filter((trade) => trade.status === 'OPEN').length,
+    closed_trades_with_tag: closedTrades.length,
+    calculable_trades: pnlMetrics.trade_pnls.length,
+    ...pnlMetrics,
+    ...performance
+  }, 200);
 }
 
 export const journalRoutes = [
@@ -299,75 +671,38 @@ export const journalRoutes = [
     path: '/api/journal/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+
       try {
-        // Parse query parameters
+        const accessToken = getAccessToken(c);
         const url = new URL(c.req.url);
-        const page = parseInt(url.searchParams.get('page') || '1');
-        const pageSize = parseInt(url.searchParams.get('page_size') || '20');
-        const search = url.searchParams.get('search') || '';
-        const statusFilters = url.searchParams.getAll('status').flatMap(value => value.split(',')).filter(Boolean);
-        const tradeTypeFilters = url.searchParams.getAll('trade_type').flatMap(value => value.split(',')).filter(Boolean);
-        const brokerFilters = url.searchParams.getAll('broker').flatMap(value => value.split(',')).filter(Boolean);
-        const tagFilters = url.searchParams.getAll('tags').flatMap(value => value.split(',')).filter(Boolean);
-        const companyFilters = url.searchParams.getAll('companies').flatMap(value => value.split(',')).filter(Boolean);
-        
-        // Calculate range
-        const from = (page - 1) * pageSize;
-        const to = from + pageSize - 1;
-        
-        // Build query
-        let query = supabaseClient
-          .from('journal_tradejournal')
-          .select(`
-            *,
-            journal_tradejournaltags(
-              journal_tradetags(id, name, color)
-            )
-          `, { count: 'exact' })
+        const { page, pageSize, from, to } = getPagination(url);
+
+        const statusFilters = parseMultiValueParams(url, 'status');
+        const tradeTypeFilters = parseMultiValueParams(url, 'trade_type');
+        const tagFilters = parseMultiValueParams(url, 'tags');
+        const companyFilters = parseMultiValueParams(url, 'companies');
+
+        let query = withUserScope(accessToken, 'journal_tradejournal')
+          .from()
+          .select(TRADE_SELECT_WITH_TAGS, { count: 'exact' })
           .eq('user_id', user.id)
-          .range(from, to)
-          .order('entry_date', { ascending: false });
-        
-        // Apply filters
-        if (search) {
-          query = query.ilike('company_name', `%${search}%`);
-        }
+          .order('entry_date', { ascending: false })
+          .range(from, to);
+
         if (statusFilters.length > 0) {
           query = query.in('status', statusFilters);
         }
+
         if (tradeTypeFilters.length > 0) {
           query = query.in('trade_type', tradeTypeFilters);
         }
-        if (brokerFilters.length > 0) {
-          query = query.in('broker', brokerFilters);
-        }
+
         if (companyFilters.length > 0) {
           query = query.in('company_name', companyFilters);
         }
 
         if (tagFilters.length > 0) {
-          const { data: tagRelations, error: tagError } = await supabaseClient
-            .from('journal_tradejournaltags')
-            .select('trade, tag')
-            .in('tag', tagFilters);
-
-          if (tagError) {
-            throw tagError;
-          }
-
-          const tradeToTags = new Map<string, Set<string>>();
-          for (const relation of tagRelations || []) {
-            const tradeId = String(relation.trade);
-            const tagId = String(relation.tag);
-            const tagSet = tradeToTags.get(tradeId) || new Set<string>();
-            tagSet.add(tagId);
-            tradeToTags.set(tradeId, tagSet);
-          }
-
-          const matchingTradeIds = Array.from(tradeToTags.entries())
-            .filter(([, tagSet]) => tagFilters.every(tagId => tagSet.has(String(tagId))))
-            .map(([tradeId]) => tradeId);
+          const matchingTradeIds = await getTradeIdsMatchingAllTags(accessToken, tagFilters);
 
           if (matchingTradeIds.length === 0) {
             return c.json({
@@ -380,27 +715,22 @@ export const journalRoutes = [
 
           query = query.in('id', matchingTradeIds);
         }
-        
+
         const { data: trades, error, count } = await query;
-        
+
         if (error) {
           throw error;
         }
-        
-        // Format response
-        const buildPageUrl = (targetPage: number) => {
-          const pageUrl = new URL(c.req.url);
-          pageUrl.searchParams.set('page', String(targetPage));
-          return pageUrl.toString();
-        };
+
+        const results = await Promise.all((trades || []).map((trade: any) => decorateTradeForList(trade)));
 
         const response: PaginatedResponse<any> = {
           count: count || 0,
-          next: count && from + pageSize < count ? buildPageUrl(page + 1) : null,
-          previous: page > 1 ? buildPageUrl(page - 1) : null,
-          results: trades || []
+          next: count && from + pageSize < count ? buildPageUrl(c, page + 1) : null,
+          previous: page > 1 ? buildPageUrl(c, page - 1) : null,
+          results
         };
-        
+
         return c.json(response, 200);
       } catch (error) {
         console.error('Journal fetch error:', error);
@@ -419,40 +749,28 @@ export const journalRoutes = [
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const body = await c.req.json();
-      
+
       try {
-        const validatedData = tradeJournalCreateSchema.parse(body);
-        
-        // Create journal entry with user scoping (strip tags field as it doesn't exist in journal_tradejournal table)
-        const { tags, ...journalData } = validatedData;
         const accessToken = getAccessToken(c);
-        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal').insert({
-          ...journalData,
-          user_id: user.id
-        }).select().single();
-        
+        const validatedData = tradeJournalCreateSchema.parse(body);
+
+        const { tags = [], ...journalData } = validatedData;
+
+        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .insert({
+            ...journalData,
+            user_id: user.id
+          })
+          .select()
+          .single();
+
         if (error) {
           throw error;
         }
-        
-        // Handle tags if provided (after journal entry is created)
-        if (tags && tags.length > 0) {
-          // Create tag relationships
-          const tagRelations = tags.map(tagId => ({
-            trade_journal_id: trade.id,
-            tag_id: tagId
-          }));
-          
-          const { error: tagError } = await supabaseClient
-            .from('journal_tradejournaltags')
-            .insert(tagRelations);
-          
-          if (tagError) {
-            console.warn('Tag assignment failed:', tagError);
-          }
-        }
-        
-        return c.json(trade, 201);
+
+        await replaceTradeTags(accessToken, trade.id, tags);
+
+        return c.json(toCreateUpdateTradeResponse(trade, tags), 201);
       } catch (error) {
         console.error('Journal creation error:', error);
         return c.json({
@@ -470,33 +788,32 @@ export const journalRoutes = [
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
-      
+
       try {
-        const { data: trade, error } = await supabaseClient
-          .from('journal_tradejournal')
-          .select(`
-            *,
-            journal_tradejournaltags(
-              journal_tradetags(id, name, color)
-            )
-          `)
+        const accessToken = getAccessToken(c);
+
+        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
+          .select(TRADE_SELECT_WITH_TAGS)
           .eq('id', id)
           .eq('user_id', user.id)
-          .single();
-        
+          .maybeSingle();
+
         if (error) {
-          if (error.code === 'PGRST116') {
-            return c.json({
-              error: true,
-              error_id: `journal_${Date.now()}`,
-              category: 'not_found' as const,
-              message: 'Trade journal entry not found'
-            }, 404);
-          }
           throw error;
         }
-        
-        return c.json(trade, 200);
+
+        if (!trade) {
+          return c.json({
+            error: true,
+            error_id: `journal_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Trade journal entry not found'
+          }, 404);
+        }
+
+        const payload = await decorateTradeForDetail(trade);
+        return c.json(payload, 200);
       } catch (error) {
         console.error('Journal fetch error:', error);
         return c.json({
@@ -515,31 +832,42 @@ export const journalRoutes = [
       const user = requireAuth(c);
       const id = c.req.param('id');
       const body = await c.req.json();
-      
+
       try {
-        // Validate update data
-        const validatedData = tradeJournalCreateSchema.partial().parse(body);
-        
         const accessToken = getAccessToken(c);
+        const validatedData = tradeJournalCreateSchema.partial().parse(body);
+        const { tags, ...journalData } = validatedData;
+
         const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .update(validatedData)
+          .from()
+          .update(journalData)
           .eq('id', id)
+          .eq('user_id', user.id)
           .select()
-          .single();
-        
+          .maybeSingle();
+
         if (error) {
-          if (error.code === 'PGRST116') {
-            return c.json({
-              error: true,
-              error_id: `journal_${Date.now()}`,
-              category: 'not_found' as const,
-              message: 'Trade journal entry not found'
-            }, 404);
-          }
           throw error;
         }
-        
-        return c.json(trade, 200);
+
+        if (!trade) {
+          return c.json({
+            error: true,
+            error_id: `journal_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Trade journal entry not found'
+          }, 404);
+        }
+
+        if (tags !== undefined) {
+          await replaceTradeTags(accessToken, trade.id, tags);
+        }
+
+        const outputTagIds = tags !== undefined
+          ? tags
+          : await fetchTradeTagIds(accessToken, trade.id);
+
+        return c.json(toCreateUpdateTradeResponse(trade, outputTagIds), 200);
       } catch (error) {
         console.error('Journal update error:', error);
         return c.json({
@@ -557,26 +885,41 @@ export const journalRoutes = [
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
-      
+
       try {
         const accessToken = getAccessToken(c);
+
+        const { data: existing, error: existingError } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
+          .select('id')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existingError) {
+          throw existingError;
+        }
+
+        if (!existing) {
+          return c.json({
+            error: true,
+            error_id: `journal_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Trade journal entry not found'
+          }, 404);
+        }
+
         const { error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
           .delete()
-          .eq('id', id);
-        
+          .eq('id', id)
+          .eq('user_id', user.id);
+
         if (error) {
-          if (error.code === 'PGRST116') {
-            return c.json({
-              error: true,
-              error_id: `journal_${Date.now()}`,
-              category: 'not_found' as const,
-              message: 'Trade journal entry not found'
-            }, 404);
-          }
           throw error;
         }
-        
-        return c.json({ message: 'Trade journal entry deleted successfully' }, 200);
+
+        return new Response(null, { status: 204 });
       } catch (error) {
         console.error('Journal deletion error:', error);
         return c.json({
@@ -589,22 +932,80 @@ export const journalRoutes = [
     }
   },
   {
+    method: 'PATCH' as const,
+    path: '/api/journal/:id/update_status/',
+    handler: async (c: Context) => {
+      const user = requireAuth(c);
+      const id = c.req.param('id');
+      const body = await c.req.json();
+
+      try {
+        const statusValue = body?.status;
+        if (!statusValue) {
+          return c.json({ error: 'Status is required' }, 400);
+        }
+
+        if (!VALID_STATUSES.includes(statusValue)) {
+          return c.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, 400);
+        }
+
+        const accessToken = getAccessToken(c);
+
+        const { data: updatedTrade, error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
+          .update({
+            status: statusValue,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .select(TRADE_SELECT_WITH_TAGS)
+          .maybeSingle();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!updatedTrade) {
+          return c.json({
+            error: true,
+            error_id: `journal_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Trade journal entry not found'
+          }, 404);
+        }
+
+        const payload = await decorateTradeForDetail(updatedTrade);
+        return c.json(payload, 200);
+      } catch (error) {
+        console.error('Journal status update error:', error);
+        return c.json({
+          error: true,
+          error_id: `journal_${Date.now()}`,
+          category: 'server_error' as const,
+          message: 'Failed to update trade status'
+        }, 500);
+      }
+    }
+  },
+  {
     method: 'GET' as const,
     path: '/api/tags/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+
       try {
-        const { data: tags, error } = await supabaseClient
-          .from('journal_tradetags')
+        const accessToken = getAccessToken(c);
+        const { data: tags, error } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
           .select('*')
           .eq('user_id', user.id)
           .order('name');
-        
+
         if (error) {
           throw error;
         }
-        
+
         return c.json(tags || [], 200);
       } catch (error) {
         console.error('Tags fetch error:', error);
@@ -623,18 +1024,22 @@ export const journalRoutes = [
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const body = await c.req.json();
-      
+
       try {
+        const accessToken = getAccessToken(c);
         const validatedData = tagCreateSchema.parse(body);
-        
-        // Check if tag name already exists for this user
-        const { data: existing, error: checkError } = await supabaseClient
-          .from('journal_tradetags')
+
+        const { data: existing, error: existingError } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
           .select('id')
           .eq('user_id', user.id)
           .eq('name', validatedData.name)
-          .single();
-        
+          .maybeSingle();
+
+        if (existingError) {
+          throw existingError;
+        }
+
         if (existing) {
           return c.json({
             error: true,
@@ -643,17 +1048,20 @@ export const journalRoutes = [
             message: 'Tag with this name already exists'
           }, 400);
         }
-        
-        const accessToken = getAccessToken(c);
-        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags').insert({
-          ...validatedData,
-          user_id: user.id
-        }).select().single();
-        
+
+        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
+          .insert({
+            ...validatedData,
+            user_id: user.id
+          })
+          .select()
+          .single();
+
         if (error) {
           throw error;
         }
-        
+
         return c.json(tag, 201);
       } catch (error) {
         console.error('Tag creation error:', error);
@@ -668,122 +1076,41 @@ export const journalRoutes = [
   },
   {
     method: 'GET' as const,
-    path: '/api/journal/analytics/',
+    path: '/api/tags/:id/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+      const id = c.req.param('id');
+
       try {
-        // Get all user trades with tags for analytics
-        const { data: trades, error } = await supabaseClient
-          .from('journal_tradejournal')
-          .select(`
-            *,
-            journal_tradejournaltags(
-              journal_tradetags(id, name, color)
-            )
-          `)
+        const accessToken = getAccessToken(c);
+        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
+          .select('*')
+          .eq('id', id)
           .eq('user_id', user.id)
-          .order('entry_date', { ascending: false });
-        
+          .maybeSingle();
+
         if (error) {
           throw error;
         }
-        
-        // Filter closed trades for P&L calculations
-        const closedStatuses = ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'];
-        const closedTrades = trades?.filter(t => closedStatuses.includes(t.status)) || [];
-        const openTrades = trades?.filter(t => t.status === 'OPEN') || [];
-        
-        // Calculate P&L for closed trades
-        const tradePnls: number[] = [];
-        const profitableTrades: any[] = [];
-        const losingTrades: any[] = [];
-        
-        for (const trade of closedTrades) {
-          const pnl = await calculatePnl(trade);
-          if (pnl !== null) {
-            tradePnls.push(pnl);
-            if (pnl > 0) {
-              profitableTrades.push({ ...trade, pnl });
-            } else {
-              losingTrades.push({ ...trade, pnl });
-            }
-          }
+
+        if (!tag) {
+          return c.json({
+            error: true,
+            error_id: `tag_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Tag not found'
+          }, 404);
         }
-        
-        // Basic metrics
-        const totalTrades = trades?.length || 0;
-        const totalPnl = tradePnls.reduce((sum, pnl) => sum + pnl, 0);
-        const avgPnl = tradePnls.length > 0 ? totalPnl / tradePnls.length : 0;
-        const winRate = tradePnls.length > 0 ? profitableTrades.length / tradePnls.length : 0;
-        
-        // Profit factor and expectancy (with zero guards)
-        const totalWins = profitableTrades.reduce((sum, t) => sum + t.pnl, 0);
-        const totalLosses = Math.abs(losingTrades.reduce((sum, t) => sum + t.pnl, 0));
-        const profitFactor = totalLosses > 0 ? totalWins / totalLosses : 0;
-        
-        let expectancy = 0;
-        if (profitableTrades.length > 0 && losingTrades.length > 0) {
-          expectancy = (winRate * (totalWins / profitableTrades.length)) - ((1 - winRate) * (totalLosses / losingTrades.length));
-        }
-        
-        // Performance metrics
-        const largestWin = profitableTrades.length > 0 ? Math.max(...profitableTrades.map(t => t.pnl)) : 0;
-        const largestLoss = losingTrades.length > 0 ? Math.min(...losingTrades.map(t => t.pnl)) : 0;
-        const avgWin = profitableTrades.length > 0 ? totalWins / profitableTrades.length : 0;
-        const avgLoss = losingTrades.length > 0 ? totalLosses / losingTrades.length : 0;
-        
-        // Calculate max drawdown and drawdown series
-        const { maxDrawdown, drawdownSeries } = calculateDrawdown(tradePnls);
-        
-        // Calculate stock performance
-        const { bestPerformingStocks, worstPerformingStocks } = await calculateStockPerformance(closedTrades);
-        
-        // Calculate monthly performance
-        const monthlyPerformance = await calculateMonthlyPerformance(closedTrades);
-        
-        // Calculate tag performance
-        const tagPerformance = await calculateTagPerformance(closedTrades, user.id);
-        
-        // Calculate distributions
-        const tradeTypeDistribution = calculateTradeTypeDistribution(trades);
-        const statusDistribution = calculateStatusDistribution(trades);
-        
-        // Calculate risk/reward metrics
-        const avgRiskReward = calculateAvgRiskReward(trades);
-        
-        return c.json({
-          total_trades: totalTrades,
-          open_trades: openTrades.length,
-          closed_trades: closedTrades.length,
-          win_rate: Number((winRate * 100).toFixed(2)),
-          total_pnl: Number(totalPnl.toFixed(2)),
-          avg_pnl_per_trade: Number(avgPnl.toFixed(2)),
-          profit_factor: Number(profitFactor.toFixed(2)),
-          max_drawdown: Number(maxDrawdown.toFixed(2)),
-          largest_win: Number(largestWin.toFixed(2)),
-          largest_loss: Number(largestLoss.toFixed(2)),
-          avg_win: Number(avgWin.toFixed(2)),
-          avg_loss: Number(avgLoss.toFixed(2)),
-          expectancy: Number(expectancy.toFixed(2)),
-          avg_risk_reward: Number(avgRiskReward.toFixed(2)),
-          profitable_trades: profitableTrades.length,
-          losing_trades: losingTrades.length,
-          best_performing_stocks: bestPerformingStocks,
-          worst_performing_stocks: worstPerformingStocks,
-          monthly_performance: monthlyPerformance,
-          drawdown_series: drawdownSeries,
-          trade_type_distribution: tradeTypeDistribution,
-          status_distribution: statusDistribution,
-          tag_performance: tagPerformance
-        }, 200);
+
+        return c.json(tag, 200);
       } catch (error) {
-        console.error('Analytics error:', error);
+        console.error('Tag fetch error:', error);
         return c.json({
           error: true,
-          error_id: `analytics_${Date.now()}`,
+          error_id: `tag_${Date.now()}`,
           category: 'server_error' as const,
-          message: 'Failed to calculate analytics'
+          message: 'Failed to fetch tag'
         }, 500);
       }
     }
@@ -795,29 +1122,32 @@ export const journalRoutes = [
       const user = requireAuth(c);
       const id = c.req.param('id');
       const body = await c.req.json();
-      
+
       try {
-        const validatedData = tagCreateSchema.partial().parse(body);
-        
         const accessToken = getAccessToken(c);
+        const validatedData = tagCreateSchema.partial().parse(body);
+
         const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
           .update(validatedData)
           .eq('id', id)
+          .eq('user_id', user.id)
           .select()
-          .single();
-        
+          .maybeSingle();
+
         if (error) {
-          if (error.code === 'PGRST116') {
-            return c.json({
-              error: true,
-              error_id: `tag_${Date.now()}`,
-              category: 'not_found' as const,
-              message: 'Tag not found'
-            }, 404);
-          }
           throw error;
         }
-        
+
+        if (!tag) {
+          return c.json({
+            error: true,
+            error_id: `tag_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Tag not found'
+          }, 404);
+        }
+
         return c.json(tag, 200);
       } catch (error) {
         console.error('Tag update error:', error);
@@ -836,26 +1166,41 @@ export const journalRoutes = [
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
-      
+
       try {
         const accessToken = getAccessToken(c);
+
+        const { data: existing, error: existingError } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
+          .select('id')
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (existingError) {
+          throw existingError;
+        }
+
+        if (!existing) {
+          return c.json({
+            error: true,
+            error_id: `tag_${Date.now()}`,
+            category: 'not_found' as const,
+            message: 'Tag not found'
+          }, 404);
+        }
+
         const { error } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
           .delete()
-          .eq('id', id);
-        
+          .eq('id', id)
+          .eq('user_id', user.id);
+
         if (error) {
-          if (error.code === 'PGRST116') {
-            return c.json({
-              error: true,
-              error_id: `tag_${Date.now()}`,
-              category: 'not_found' as const,
-              message: 'Tag not found'
-            }, 404);
-          }
           throw error;
         }
-        
-        return c.json({ message: 'Tag deleted successfully' }, 200);
+
+        return new Response(null, { status: 204 });
       } catch (error) {
         console.error('Tag deletion error:', error);
         return c.json({
@@ -872,39 +1217,49 @@ export const journalRoutes = [
     path: '/api/tags/popular/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+
       try {
-        // Get tags with usage count
-        const { data: tags, error } = await supabaseClient
-          .rpc('get_popular_tags', { user_uuid: user.id });
-        
-        if (error) {
-          console.warn('Popular tags RPC failed, using fallback:', error);
-          
-          // Fallback: Get tags and count usage manually
-          const { data: allTags } = await supabaseClient
-            .from('journal_tradetags')
-            .select('*')
-            .eq('user_id', user.id);
-            
-          const { data: tagRelations } = await supabaseClient
-            .from('journal_tradejournaltags')
-            .select('tag_id');
-            
-          const tagCounts = tagRelations?.reduce((acc, relation) => {
-            acc[relation.tag_id] = (acc[relation.tag_id] || 0) + 1;
-            return acc;
-          }, {} as Record<string, number>) || {};
-          
-          const tagsWithCounts = allTags?.map(tag => ({
-            ...tag,
-            usage_count: tagCounts[tag.id] || 0
-          })).sort((a, b) => b.usage_count - a.usage_count) || [];
-          
-          return c.json(tagsWithCounts, 200);
+        const accessToken = getAccessToken(c);
+
+        const { data: tags, error: tagsError } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
+          .select('*')
+          .eq('user_id', user.id);
+
+        if (tagsError) {
+          throw tagsError;
         }
-        
-        return c.json(tags || [], 200);
+
+        if (!tags || tags.length === 0) {
+          return c.json([], 200);
+        }
+
+        const tagIds = tags.map((tag: any) => tag.id);
+        const { data: relations, error: relationError } = await withUserScope(accessToken, 'journal_tradejournaltags')
+          .from()
+          .select('tag_id')
+          .in('tag_id', tagIds);
+
+        if (relationError) {
+          throw relationError;
+        }
+
+        const counts: Record<string, number> = {};
+        for (const relation of relations || []) {
+          const tagId = String(relation.tag_id);
+          counts[tagId] = (counts[tagId] || 0) + 1;
+        }
+
+        const sorted = [...tags]
+          .sort((a: any, b: any) => {
+            const countA = counts[String(a.id)] || 0;
+            const countB = counts[String(b.id)] || 0;
+            if (countB !== countA) return countB - countA;
+            return String(a.name).localeCompare(String(b.name));
+          })
+          .slice(0, 10);
+
+        return c.json(sorted, 200);
       } catch (error) {
         console.error('Popular tags error:', error);
         return c.json({
@@ -918,17 +1273,70 @@ export const journalRoutes = [
   },
   {
     method: 'GET' as const,
+    path: '/api/journal/analytics/',
+    handler: async (c: Context) => {
+      const user = requireAuth(c);
+
+      try {
+        const accessToken = getAccessToken(c);
+        const { data: trades, error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
+          .select(TRADE_SELECT_WITH_TAGS)
+          .eq('user_id', user.id);
+
+        if (error) {
+          throw error;
+        }
+
+        const allTrades = trades || [];
+        const closedTrades = allTrades.filter((trade: any) => isClosedStatus(trade.status));
+        const openTrades = allTrades.filter((trade: any) => trade.status === 'OPEN');
+
+        const pnlMetrics = await calculatePnlMetrics(closedTrades);
+        const performanceMetrics = calculatePerformanceMetrics(pnlMetrics.trade_pnls);
+        const stockPerformance = await calculateStockPerformance(closedTrades);
+        const monthlyPerformance = await calculateMonthlyPerformance(closedTrades);
+        const tagPerformance = await calculateTagPerformance(closedTrades);
+        const drawdownSeries = await calculateDrawdownSeries(allTrades);
+
+        return c.json({
+          total_trades: allTrades.length,
+          open_trades: openTrades.length,
+          closed_trades: closedTrades.length,
+          ...pnlMetrics,
+          ...performanceMetrics,
+          avg_risk_reward: roundTo(calculateAvgRiskReward(allTrades), 2),
+          ...stockPerformance,
+          monthly_performance: monthlyPerformance,
+          drawdown_series: drawdownSeries,
+          trade_type_distribution: calculateTradeTypeDistribution(allTrades),
+          status_distribution: calculateStatusDistribution(allTrades),
+          tag_performance: tagPerformance
+        }, 200);
+      } catch (error) {
+        console.error('Analytics error:', error);
+        return c.json({
+          error: true,
+          error_id: `analytics_${Date.now()}`,
+          category: 'server_error' as const,
+          message: 'Failed to calculate analytics'
+        }, 500);
+      }
+    }
+  },
+  {
+    method: 'GET' as const,
     path: '/api/journal/search/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+
       try {
+        const accessToken = getAccessToken(c);
         const url = new URL(c.req.url);
-        const query = url.searchParams.get('query') || url.searchParams.get('q') || '';
-        const page = parseInt(url.searchParams.get('page') || '1');
-        const pageSize = parseInt(url.searchParams.get('page_size') || '20');
-        
-        if (!query.trim()) {
+        const query = (url.searchParams.get('query') || url.searchParams.get('q') || '').trim();
+        const { page, pageSize, from, to } = getPagination(url);
+
+        if (!query) {
           return c.json({
             error: true,
             error_id: `search_${Date.now()}`,
@@ -936,98 +1344,101 @@ export const journalRoutes = [
             message: 'Search query is required'
           }, 400);
         }
-        
-        const from = (page - 1) * pageSize;
-        const to = from + pageSize - 1;
-        const queryLower = query.toLowerCase();
-        
-        // Get all trades first (since we need to calculate relevance scores)
-        const { data: allTrades, error: fetchError } = await supabaseClient
-          .from('journal_tradejournal')
-          .select(`
-            *,
-            journal_tradejournaltags(
-              journal_tradetags(id, name, color)
-            )
-          `)
+
+        const statusFilters = parseMultiValueParams(url, 'status');
+        const tradeTypeFilters = parseMultiValueParams(url, 'trade_type');
+        const tagFilters = parseMultiValueParams(url, 'tags');
+        const companyFilters = parseMultiValueParams(url, 'companies');
+
+        const { data: trades, error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
+          .select(TRADE_SELECT_WITH_TAGS)
           .eq('user_id', user.id)
           .order('entry_date', { ascending: false });
-        
-        if (fetchError) {
-          throw fetchError;
+
+        if (error) {
+          throw error;
         }
-        
-        // Calculate relevance scores with 3-tier scoring (matching Django)
-        const tradesWithScores = (allTrades || []).map(trade => {
-          let maxScore = 0;
-          
-          // Company name scoring
-          const companyName = trade.company_name?.toLowerCase() || '';
-          if (companyName === queryLower) {
-            maxScore = Math.max(maxScore, 100); // Exact match
-          } else if (companyName.startsWith(queryLower)) {
-            maxScore = Math.max(maxScore, 50); // Prefix match
-          } else if (companyName.includes(queryLower)) {
-            maxScore = Math.max(maxScore, 10); // Contains match
-          }
-          
-          // Tags scoring
-          if (trade.journal_tradejournaltags) {
-            for (const tagRelation of trade.journal_tradejournaltags) {
-              const tag = tagRelation.journal_tradetags;
-              if (tag?.name) {
-                const tagName = tag.name.toLowerCase();
-                if (tagName === queryLower) {
-                  maxScore = Math.max(maxScore, 100); // Exact match
-                } else if (tagName.startsWith(queryLower)) {
-                  maxScore = Math.max(maxScore, 50); // Prefix match
-                } else if (tagName.includes(queryLower)) {
-                  maxScore = Math.max(maxScore, 10); // Contains match
-                }
+
+        const queryLower = query.toLowerCase();
+        let filteredTrades = trades || [];
+
+        if (statusFilters.length > 0) {
+          filteredTrades = filteredTrades.filter((trade: any) => statusFilters.includes(String(trade.status)));
+        }
+
+        if (tradeTypeFilters.length > 0) {
+          filteredTrades = filteredTrades.filter((trade: any) => tradeTypeFilters.includes(String(trade.trade_type)));
+        }
+
+        if (companyFilters.length > 0) {
+          filteredTrades = filteredTrades.filter((trade: any) => companyFilters.includes(String(trade.company_name)));
+        }
+
+        if (tagFilters.length > 0) {
+          const requiredTags = new Set(tagFilters.map((value) => String(Number(value))));
+          filteredTrades = filteredTrades.filter((trade: any) => {
+            const tradeTagIds = new Set(getTradeTags(trade).map((tag: any) => String(tag.id)));
+            for (const requiredTag of requiredTags) {
+              if (!tradeTagIds.has(requiredTag)) return false;
+            }
+            return true;
+          });
+        }
+
+        const scoredTrades = filteredTrades
+          .map((trade: any) => {
+            let relevanceScore = 0;
+
+            const companyName = String(trade.company_name || '').toLowerCase();
+            if (companyName === queryLower) {
+              relevanceScore = Math.max(relevanceScore, 100);
+            } else if (companyName.startsWith(queryLower)) {
+              relevanceScore = Math.max(relevanceScore, 50);
+            } else if (companyName.includes(queryLower)) {
+              relevanceScore = Math.max(relevanceScore, 10);
+            }
+
+            const notes = String(trade.personal_notes || '').toLowerCase();
+            if (notes.includes(queryLower)) {
+              relevanceScore = Math.max(relevanceScore, 10);
+            }
+
+            for (const tag of getTradeTags(trade)) {
+              const tagName = String(tag.name || '').toLowerCase();
+              if (tagName === queryLower) {
+                relevanceScore = Math.max(relevanceScore, 100);
+              } else if (tagName.startsWith(queryLower)) {
+                relevanceScore = Math.max(relevanceScore, 50);
+              } else if (tagName.includes(queryLower)) {
+                relevanceScore = Math.max(relevanceScore, 10);
               }
             }
-          }
-          
-          // Personal notes scoring
-          const notes = trade.personal_notes?.toLowerCase() || '';
-          if (notes.includes(queryLower)) {
-            maxScore = Math.max(maxScore, 10); // Contains match
-          }
-          
-          return { ...trade, relevance_score: maxScore };
-        });
-        
-        // Filter trades that have any match
-        const matchedTrades = tradesWithScores.filter(trade => trade.relevance_score > 0);
-        
-        // Sort by relevance score first, then by date
-        matchedTrades.sort((a, b) => {
-          if (b.relevance_score !== a.relevance_score) {
-            return b.relevance_score - a.relevance_score;
-          }
-          // If scores are equal, sort by date (newest first)
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        });
-        
-        // Apply pagination
-        const totalCount = matchedTrades.length;
-        const paginatedTrades = matchedTrades.slice(from, to + 1);
-        
-        const buildPageUrl = (targetPage: number) => {
-          const pageUrl = new URL(c.req.url);
-          pageUrl.searchParams.set('page', String(targetPage));
-          return pageUrl.toString();
-        };
 
-        const response = {
+            return {
+              ...trade,
+              relevance_score: relevanceScore
+            };
+          })
+          .filter((trade: any) => trade.relevance_score > 0)
+          .sort((a: any, b: any) => {
+            if (b.relevance_score !== a.relevance_score) {
+              return b.relevance_score - a.relevance_score;
+            }
+            return new Date(b.entry_date).getTime() - new Date(a.entry_date).getTime();
+          });
+
+        const totalCount = scoredTrades.length;
+        const pageTrades = scoredTrades.slice(from, to + 1);
+        const results = await Promise.all(pageTrades.map((trade: any) => decorateTradeForDetail(trade)));
+
+        return c.json({
           query,
           count: totalCount,
-          next: totalCount > to ? buildPageUrl(page + 1) : null,
-          previous: page > 1 ? buildPageUrl(page - 1) : null,
-          results: paginatedTrades
-        };
-        
-        return c.json(response, 200);
+          next: totalCount > to + 1 ? buildPageUrl(c, page + 1) : null,
+          previous: page > 1 ? buildPageUrl(c, page - 1) : null,
+          results
+        }, 200);
       } catch (error) {
         console.error('Journal search error:', error);
         return c.json({
@@ -1044,120 +1455,97 @@ export const journalRoutes = [
     path: '/api/journal/suggestions/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+
       try {
+        const accessToken = getAccessToken(c);
         const url = new URL(c.req.url);
-        const query = url.searchParams.get('query') || url.searchParams.get('q') || '';
-        const limit = parseInt(url.searchParams.get('limit') || '10');
-        
+        const query = (url.searchParams.get('query') || url.searchParams.get('q') || '').trim();
+
         if (query.length < 2) {
           return c.json([], 200);
         }
-        
+
         const queryLower = query.toLowerCase();
-        const suggestions: any[] = [];
-        
-        // Get company name suggestions with 3-tier scoring
-        const { data: trades, error: tradeError } = await supabaseClient
-          .from('journal_tradejournal')
+        const suggestions: Array<{ id: string; text: string; type: 'company' | 'tag'; score: number }> = [];
+
+        const { data: trades, error: tradeError } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
           .select('company_name')
           .eq('user_id', user.id)
           .ilike('company_name', `%${query}%`)
-          .limit(50); // Get more to calculate unique names
-        
+          .limit(100);
+
         if (tradeError) {
           throw tradeError;
         }
-        
-        // Process company names with scoring
-        const companyScores: Record<string, { score: number; tradeCount: number }> = {};
+
+        const companies = new Map<string, number>();
         for (const trade of trades || []) {
-          const name = trade.company_name;
+          const name = String(trade.company_name || '');
           if (!name) continue;
-          
-          if (!companyScores[name]) {
-            companyScores[name] = { score: 0, tradeCount: 0 };
-          }
-          companyScores[name].tradeCount += 1;
-          
+          if (companies.has(name)) continue;
+
           const nameLower = name.toLowerCase();
-          // 3-tier scoring
           if (nameLower === queryLower) {
-            companyScores[name].score = Math.max(companyScores[name].score, 100); // Exact match
+            companies.set(name, 100);
           } else if (nameLower.startsWith(queryLower)) {
-            companyScores[name].score = Math.max(companyScores[name].score, 50); // Prefix match
+            companies.set(name, 50);
           } else {
-            companyScores[name].score = Math.max(companyScores[name].score, 10); // Contains match
+            companies.set(name, 10);
           }
         }
-        
-        // Add company suggestions
-        Object.entries(companyScores).forEach(([name, data]) => {
+
+        for (const [name, score] of companies.entries()) {
           suggestions.push({
             id: `company-${name}`,
             text: name,
             type: 'company',
-            score: data.score,
-            trade_count: data.tradeCount
+            score
           });
-        });
-        
-        // Get tag suggestions with 3-tier scoring
-        const { data: tags, error: tagError } = await supabaseClient
-          .from('journal_tradetags')
-          .select('*')
+        }
+
+        const { data: tags, error: tagError } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
+          .select('id, name')
           .eq('user_id', user.id)
           .ilike('name', `%${query}%`)
           .limit(20);
-        
+
         if (tagError) {
           throw tagError;
         }
-        
+
+        const tradingPatterns = [
+          /\d+\s*(ma|ema|rsi|sma)/i,
+          /(breakout|support|resistance)/i
+        ];
+
         for (const tag of tags || []) {
-          const nameLower = tag.name.toLowerCase();
-          let score = 0;
-          
-          // 3-tier scoring
+          const name = String(tag.name || '');
+          const nameLower = name.toLowerCase();
+          let score = 10;
+
           if (nameLower === queryLower) {
-            score = 100; // Exact match
+            score = 100;
           } else if (nameLower.startsWith(queryLower)) {
-            score = 50; // Prefix match
-          } else {
-            score = 10; // Contains match
+            score = 50;
           }
-          
-          // Trading term boost (+25 points) - matching Django
-          const tradingPatterns = [
-            /\d+\s*(ma|ema|rsi|sma)/i,
-            /(breakout|support|resistance)/i
-          ];
-          if (tradingPatterns.some(pattern => pattern.test(queryLower))) {
+
+          if (tradingPatterns.some((pattern) => pattern.test(queryLower))) {
             score += 25;
           }
-          
+
           suggestions.push({
             id: `tag-${tag.id}`,
-            text: tag.name,
+            text: name,
             type: 'tag',
-            score,
-            color: tag.color
+            score
           });
         }
-        
-        // Sort by score and return top suggestions
-        suggestions.sort((a, b) => {
-          if (b.score !== a.score) {
-            return b.score - a.score;
-          }
-          // If scores equal, prioritize companies over tags
-          if (a.type !== b.type) {
-            return a.type === 'company' ? -1 : 1;
-          }
-          return a.text.localeCompare(b.text);
-        });
-        
-        return c.json(suggestions.slice(0, limit), 200);
+
+        suggestions.sort((a, b) => b.score - a.score);
+
+        return c.json(suggestions.slice(0, 10), 200);
       } catch (error) {
         console.error('Suggestions error:', error);
         return c.json({
@@ -1171,71 +1559,41 @@ export const journalRoutes = [
   },
   {
     method: 'GET' as const,
+    path: '/api/journal/tag_analytics/',
+    handler: async (c: Context) => {
+      const user = requireAuth(c);
+
+      try {
+        const tagName = (new URL(c.req.url)).searchParams.get('tag_name');
+        if (!tagName) {
+          return c.json({ error: 'tag_name parameter is required' }, 400);
+        }
+
+        return await buildTagAnalyticsResponse(c, user.id, tagName);
+      } catch (error) {
+        console.error('Tag analytics error:', error);
+        return c.json({
+          error: true,
+          error_id: `tag_analytics_${Date.now()}`,
+          category: 'server_error' as const,
+          message: 'Failed to calculate tag analytics'
+        }, 500);
+      }
+    }
+  },
+  {
+    method: 'GET' as const,
     path: '/api/journal/tag-analytics/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
-      
+
       try {
-        // Get all trades with their tags
-        const { data: trades, error } = await supabaseClient
-          .from('journal_tradejournal')
-          .select(`
-            pnl,
-            status,
-            journal_tradejournaltags(
-              journal_tradetags(id, name, color)
-            )
-          `)
-          .eq('user_id', user.id);
-        
-        if (error) {
-          throw error;
+        const tagName = (new URL(c.req.url)).searchParams.get('tag_name');
+        if (!tagName) {
+          return c.json({ error: 'tag_name parameter is required' }, 400);
         }
-        
-        // Calculate analytics per tag
-        const tagAnalytics = new Map<string, any>();
-        
-        trades?.forEach(trade => {
-          if (trade.journal_tradejournaltags) {
-            trade.journal_tradejournaltags.forEach((tagRelation: any) => {
-              const tag = tagRelation.journal_tradetags;
-              if (!tag) return;
-              
-              const tagId = tag.id;
-              const existing = tagAnalytics.get(tagId) || {
-                ...tag,
-                total_trades: 0,
-                winning_trades: 0,
-                losing_trades: 0,
-                total_pnl: 0,
-                avg_pnl: 0,
-                win_rate: 0
-              };
-              
-              existing.total_trades++;
-              
-              const pnl = trade.pnl || 0;
-              existing.total_pnl += pnl;
-              
-              if (pnl > 0) {
-                existing.winning_trades++;
-              } else if (pnl < 0) {
-                existing.losing_trades++;
-              }
-              
-              tagAnalytics.set(tagId, existing);
-            });
-          }
-        });
-        
-        // Calculate derived metrics
-        const results = Array.from(tagAnalytics.values()).map(tag => ({
-          ...tag,
-          avg_pnl: tag.total_trades > 0 ? tag.total_pnl / tag.total_trades : 0,
-          win_rate: tag.total_trades > 0 ? (tag.winning_trades / tag.total_trades) * 100 : 0
-        })).sort((a, b) => b.total_pnl - a.total_pnl);
-        
-        return c.json(results, 200);
+
+        return await buildTagAnalyticsResponse(c, user.id, tagName);
       } catch (error) {
         console.error('Tag analytics error:', error);
         return c.json({
