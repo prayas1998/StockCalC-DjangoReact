@@ -598,6 +598,67 @@ function parseMultiValueParams(url: URL, key: string): string[] {
     .filter(Boolean);
 }
 
+function normalizeTagName(value: string): string {
+  return value.trim();
+}
+
+function normalizeTagNameKey(value: string): string {
+  return normalizeTagName(value).toLowerCase();
+}
+
+function normalizeTagPayload(body: unknown): Record<string, unknown> {
+  const payload = body && typeof body === 'object' && !Array.isArray(body)
+    ? { ...(body as Record<string, unknown>) }
+    : {};
+
+  if (typeof payload.name === 'string') {
+    payload.name = normalizeTagName(payload.name);
+  }
+
+  return payload;
+}
+
+function getSafeErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object' && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim().length > 0) {
+      return message;
+    }
+  }
+
+  return fallback;
+}
+
+async function findCaseInsensitiveTagForUser(
+  accessToken: string,
+  userId: string,
+  tagName: string,
+  excludeTagId?: string
+): Promise<{ id: number; name: string; color?: string } | null> {
+  const { data: tags, error } = await withUserScope(accessToken, 'journal_tradetags')
+    .from()
+    .select('id, name, color')
+    .eq('user_id', userId);
+
+  if (error) {
+    throw error;
+  }
+
+  const targetKey = normalizeTagNameKey(tagName);
+  if (!targetKey) return null;
+
+  return (tags || []).find((tag: any) => {
+    if (excludeTagId && String(tag.id) === excludeTagId) {
+      return false;
+    }
+    return normalizeTagNameKey(String(tag.name || '')) === targetKey;
+  }) || null;
+}
+
 function buildPageUrl(c: Context, targetPage: number): string {
   const pageUrl = new URL(c.req.url);
   pageUrl.searchParams.set('page', String(targetPage));
@@ -607,16 +668,7 @@ function buildPageUrl(c: Context, targetPage: number): string {
 async function buildTagAnalyticsResponse(c: Context, userId: string, tagName: string): Promise<Response> {
   const accessToken = getAccessToken(c);
 
-  const { data: tag, error: tagError } = await withUserScope(accessToken, 'journal_tradetags')
-    .from()
-    .select('id, name, color')
-    .eq('user_id', userId)
-    .eq('name', tagName)
-    .maybeSingle();
-
-  if (tagError) {
-    throw tagError;
-  }
+  const tag = await findCaseInsensitiveTagForUser(accessToken, userId, tagName);
 
   if (!tag) {
     return c.json({ error: `Tag "${tagName}" not found` }, 404);
@@ -1026,18 +1078,10 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const validatedData = tagCreateSchema.parse(body);
+        const normalizedBody = normalizeTagPayload(body);
+        const validatedData = tagCreateSchema.parse(normalizedBody);
 
-        const { data: existing, error: existingError } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('name', validatedData.name)
-          .maybeSingle();
-
-        if (existingError) {
-          throw existingError;
-        }
+        const existing = await findCaseInsensitiveTagForUser(accessToken, user.id, validatedData.name);
 
         if (existing) {
           return c.json({
@@ -1068,7 +1112,7 @@ export const journalRoutes = [
           error: true,
           error_id: `tags_${Date.now()}`,
           category: 'validation' as const,
-          message: error instanceof Error ? error.message : 'Invalid tag data'
+          message: getSafeErrorMessage(error, 'Invalid tag data')
         }, 400);
       }
     }
@@ -1124,7 +1168,20 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const validatedData = tagCreateSchema.partial().parse(body);
+        const normalizedBody = normalizeTagPayload(body);
+        const validatedData = tagCreateSchema.partial().parse(normalizedBody);
+
+        if (validatedData.name !== undefined) {
+          const existing = await findCaseInsensitiveTagForUser(accessToken, user.id, validatedData.name, id);
+          if (existing) {
+            return c.json({
+              error: true,
+              error_id: `tag_${Date.now()}`,
+              category: 'validation' as const,
+              message: 'Tag with this name already exists'
+            }, 400);
+          }
+        }
 
         const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
           .from()
@@ -1154,7 +1211,7 @@ export const journalRoutes = [
           error: true,
           error_id: `tag_${Date.now()}`,
           category: 'validation' as const,
-          message: error instanceof Error ? error.message : 'Invalid tag data'
+          message: getSafeErrorMessage(error, 'Invalid tag data')
         }, 400);
       }
     }

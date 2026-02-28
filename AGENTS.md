@@ -41,7 +41,6 @@
   - Use rate limiting for sensitive endpoints if needed.
 
   ## Testing and commands
-  - Do not run tests unless explicitly requested.
   - Do not run database migrations unless explicitly requested.
   - If migrations are required, describe the commands in chat only.
 
