@@ -18,7 +18,7 @@ import { isLikelyEmail, isValidUsername } from "@/lib/authIdentity";
 
 const loginSchema = z.object({
   identifier: z.string()
-    .min(1, "Username is required")
+    .min(1, "Username or email is required")
     .refine((value) => {
       const trimmed = value.trim();
       return isLikelyEmail(trimmed) || isValidUsername(trimmed);
@@ -65,7 +65,7 @@ const LoginForm = ({ switchMode, onSuccess }: LoginFormProps) => {
           name="identifier"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Username</FormLabel>
+              <FormLabel>Username or Email</FormLabel>
               <FormControl>
                 <Input placeholder="your_username or existing email" {...field} />
               </FormControl>

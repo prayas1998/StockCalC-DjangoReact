@@ -184,7 +184,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = async (identifier: string, password: string) => {
     try {
       const email = resolveIdentifierToEmail(identifier);
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
@@ -197,9 +197,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       
       return { error: null };
+      
     } catch (error) {
       const authError = error as AuthError;
-      
+
       toast({
         variant: 'destructive',
         title: 'Login failed',

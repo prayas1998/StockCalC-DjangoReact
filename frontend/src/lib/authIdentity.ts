@@ -14,7 +14,6 @@ export const usernameToInternalEmail = (username: string): string =>
   `${normalizeUsername(username)}@${INTERNAL_EMAIL_DOMAIN}`;
 
 export const resolveIdentifierToEmail = (identifier: string): string => {
-  const normalized = identifier.trim().toLowerCase();
-  return isLikelyEmail(normalized) ? normalized : usernameToInternalEmail(normalized);
+  const trimmed = identifier.trim();
+  return isLikelyEmail(trimmed) ? trimmed : usernameToInternalEmail(trimmed);
 };
-
