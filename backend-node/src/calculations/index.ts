@@ -149,8 +149,8 @@ export class BaseBroker {
 
 export class GrowwCalculator extends BaseBroker {
   calculate_brokerage(buyValue: Decimal, sellValue: Decimal): Decimal {
-    // Django: Groww brokerage only for delivery, 0.1% per leg, min ₹5 max ₹20.
-    if (this.tradeType !== 'equity-delivery') {
+    // Groww brokerage: 0.1% per leg, min ₹5 max ₹20.
+    if (this.tradeType !== 'equity-delivery' && this.tradeType !== 'equity-intraday') {
       return DecimalUtils.zero();
     }
 

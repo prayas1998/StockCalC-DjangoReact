@@ -53,17 +53,13 @@ const fromPaise = (value: number): number => {
 const isIntradayShortTrade = ({
   tradeType,
   positionType,
-  broker,
+  broker: _broker,
 }: {
   tradeType: TradeType;
   positionType: PositionType;
   broker: BrokerType;
 }): boolean => {
-  return (
-    tradeType === "equity-intraday" &&
-    broker === "Dhan" &&
-    positionType === "short"
-  );
+  return tradeType === "equity-intraday" && positionType === "short";
 };
 
 export function computeNetCashflow({

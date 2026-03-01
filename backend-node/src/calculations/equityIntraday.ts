@@ -4,10 +4,6 @@ import { BreakevenCalculator } from './breakevenCalculator.js';
 
 export class EquityIntradayCalculator extends BaseTradeCalculator {
   calculate_transaction_charges(transactions: any[], positionType: string = 'long') {
-    if (this.platform !== 'dhan') {
-      return { error: "Intraday calculations are only implemented for Dhan broker at this time." };
-    }
-
     let cumulative_quantity = DecimalUtils.zero();
     let cumulative_buy_value = DecimalUtils.zero();
     let total_buy_value = DecimalUtils.zero();

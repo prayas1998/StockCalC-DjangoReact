@@ -34,7 +34,6 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
   onBrokerChange,
   onTradeTypeChange,
 }) => {
-  const isDisabled = sharedState.selectedTradeType === "equity-intraday" && sharedState.selectedBroker === "Groww"
   const quantity = Number.parseInt(state.quantity || "0", 10)
   const entryPrice = Number.parseFloat(state.buyPrice || "0")
   const exitPriceInput = Number.parseFloat(state.sellPrice || "0")
@@ -67,7 +66,6 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
     <CalculatorCard
       title="Net P&L Calculator"
       description="Calculate your net profit or loss after all charges based on your entry and exit prices."
-      disabled={isDisabled}
       icon={result?.isProfit ? TrendingUp : TrendingDown}
     >
       {/* Compact Header with Clear Button */}

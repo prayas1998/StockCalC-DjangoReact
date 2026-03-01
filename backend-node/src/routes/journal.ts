@@ -109,9 +109,6 @@ function getMissingFieldsForPnl(trade: any): string[] {
 }
 
 function isPreciseCalculationAvailable(trade: any): boolean {
-  if (trade.trade_type === 'EQUITY_INTRADAY') {
-    return trade.broker === 'Dhan';
-  }
   return (
     (trade.trade_type === 'EQUITY_DELIVERY' || trade.trade_type === 'EQUITY_INTRADAY') &&
     (trade.broker === 'Dhan' || trade.broker === 'Groww')

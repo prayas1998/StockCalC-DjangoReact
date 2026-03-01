@@ -82,7 +82,7 @@ export class ProfitTargetCalculatorService {
   private static calculateBreakevenResult(params: ProfitTargetParams, breakevenPrice: number): ProfitTargetResult {
     const { entryPrice, quantity, exchange, broker, tradeType, positionType } = params;
 
-    const isIntradayShort = tradeType === 'equity-intraday' && broker === 'Dhan' && positionType === 'short';
+    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
     const isLong = !isIntradayShort;
     const entryValue = entryPrice * quantity;
     const exitValue = breakevenPrice * quantity;
@@ -114,8 +114,8 @@ export class ProfitTargetCalculatorService {
       throw new Error('Profit percentage is required');
     }
 
-    // Short position is only supported for intraday Dhan flows.
-    const isIntradayShort = tradeType === 'equity-intraday' && broker === 'Dhan' && positionType === 'short';
+    // Short position is supported for intraday flows.
+    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
     const isLong = !isIntradayShort;
 
     // Cap short profit percentage to 100% (max theoretical gross profit is 100%).

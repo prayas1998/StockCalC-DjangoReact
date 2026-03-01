@@ -34,10 +34,8 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
   onBrokerChange,
   onTradeTypeChange,
 }) => {
-  const isDisabled = sharedState.selectedTradeType === "equity-intraday" && sharedState.selectedBroker === "Groww"
   const isIntradayShort =
     sharedState.selectedTradeType === "equity-intraday" &&
-    sharedState.selectedBroker === "Dhan" &&
     sharedState.positionType === "short"
   const quantity = Number.parseInt(state.quantity || "0", 10)
   const entryPrice = Number.parseFloat(state.buyPrice || "0")
@@ -98,7 +96,6 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
     <CalculatorCard
       title="Profit Target Calculator"
       description="Calculate the required exit price to achieve your target profit percentage after all charges."
-      disabled={isDisabled}
       icon={Target}
     >
       {/* Compact Header with Clear Button */}

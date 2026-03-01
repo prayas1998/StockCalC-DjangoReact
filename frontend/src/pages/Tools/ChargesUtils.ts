@@ -95,6 +95,17 @@ export type Charges = {
         const buyBrokerage = buyValue > 0 ? Math.min(20, roundHalfUp(buyValue * 0.0003, 2)) : 0;
         const sellBrokerage = sellValue > 0 ? Math.min(20, roundHalfUp(sellValue * 0.0003, 2)) : 0;
         brokerage = buyBrokerage + sellBrokerage;
+      } else if (broker === 'Groww') {
+        // Groww intraday logic
+        // Brokerage: 0.1% of turnover per leg with min ₹5 and max ₹20.
+        const buyBrokerage =
+          buyValue > 0 ? Math.min(Math.max(roundHalfUp(buyValue * 0.001, 2), 5), 20) : 0;
+        const sellBrokerage =
+          sellValue > 0 ? Math.min(Math.max(roundHalfUp(sellValue * 0.001, 2), 5), 20) : 0;
+        brokerage = buyBrokerage + sellBrokerage;
+      }
+
+      if (broker === 'Dhan' || broker === 'Groww') {
         stt = roundToRupee(sellValue * 0.00025); // STT only on sell
         exchangeCharges = exchange === "NSE"
           ? roundHalfUp(totalTurnover * 0.0000297, 2)
@@ -108,17 +119,6 @@ export type Charges = {
         gst = roundHalfUp(taxableAmount * 0.18, 2);
         dpCharges = 0; // No DP charges for intraday
         totalCharges = brokerage + stt + exchangeCharges + stampDuty + sebiCharges + ipft + gst;
-      } else {
-        // Groww intraday not supported
-        brokerage = 0;
-        stt = 0;
-        exchangeCharges = 0;
-        stampDuty = 0;
-        sebiCharges = 0;
-        ipft = 0;
-        gst = 0;
-        dpCharges = 0;
-        totalCharges = 0;
       }
     }
     return {
