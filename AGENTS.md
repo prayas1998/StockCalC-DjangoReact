@@ -1,5 +1,12 @@
 # AGENTS Instructions
 
+  ## Current focus (read first)
+  - We are actively migrating the backend from Django (Python) to Node.js + TypeScript (Hono), while keeping the frontend behavior unchanged.
+  - New chats should assume this migration is in progress and prioritize backend parity work unless told otherwise.
+  - Primary objective: achieve endpoint-by-endpoint parity with Django (same status codes, response shapes, validation behavior, and calculation outputs).
+  - Frontend changes are only acceptable when required to preserve compatibility during migration or when explicitly requested.
+  - Supabase remains the source of truth for database and auth during and after migration.
+
   ## Project summary
   - App: TradeSmart stock brokerage calculator and journal.
   - Frontend: React 18 + TypeScript + Vite.
