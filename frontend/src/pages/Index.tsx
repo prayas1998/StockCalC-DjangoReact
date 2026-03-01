@@ -208,6 +208,9 @@ const IndexContent = () => {
             calculationState={calculationState}
             formatCurrency={formatCurrency}
             exchange={exchange}
+            tradeType={tradeType}
+            positionType={positionType}
+            broker={platform}
           />
 
           {/* Features Component */}

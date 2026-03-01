@@ -1,13 +1,19 @@
 import { Card } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import type { CalculationResultsProps } from "@/types/calculator";
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import {
+  computeNetCashflow,
+  deriveBuySellLegCharges,
+} from "@/utils/cashflow";
 
 const CalculationResults = ({
   calculationState,
   formatCurrency,
   exchange,
+  tradeType,
+  positionType,
+  broker,
 }: CalculationResultsProps) => {
   const navigate = useNavigate();
   const grossPnL = Number(calculationState.result?.summary.grossPnL ?? 0);
@@ -15,7 +21,27 @@ const CalculationResults = ({
   const totalCharges = Number(
     calculationState.result?.charges.totalCharges ?? 0
   );
+  const totalBuyValue = Number(
+    calculationState.result?.summary.totalBuyValue ?? 0
+  );
+  const totalSellValue = Number(
+    calculationState.result?.summary.totalSellValue ?? 0
+  );
   const turnover = Number(calculationState.result?.summary.turnover || 0);
+  const { buySideCharges, sellSideCharges } = deriveBuySellLegCharges({
+    buyValue: totalBuyValue,
+    sellValue: totalSellValue,
+    exchange,
+    broker,
+    tradeType,
+    totalCharges,
+  });
+  const { netPayable, netReceivable } = computeNetCashflow({
+    buyValue: totalBuyValue,
+    sellValue: totalSellValue,
+    buySideCharges,
+    sellSideCharges,
+  });
 
   // Determine P&L status
   const getPnLStatus = (value: number) => {
@@ -43,7 +69,7 @@ const CalculationResults = ({
       )}
 
       {/* Main Results - Compact Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Turnover */}
         <Card className="p-3 border-slate-200 dark:border-slate-700">
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
@@ -51,6 +77,29 @@ const CalculationResults = ({
           </div>
           <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             {formatCurrency(turnover)}
+          </div>
+        </Card>
+
+        {/* Net P&L */}
+        <Card className="p-3 border-slate-200 dark:border-slate-700">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              NET P&L
+            </span>
+            <netStatus.icon className="h-3 w-3 text-slate-400" />
+          </div>
+          <div className={`text-lg font-semibold ${netStatus.color}`}>
+            {formatCurrency(netPnL)}
+          </div>
+        </Card>
+
+        {/* Total Charges */}
+        <Card className="p-3 border-slate-200 dark:border-slate-700">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+            CHARGES
+          </div>
+          <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {formatCurrency(totalCharges)}
           </div>
         </Card>
 
@@ -67,26 +116,23 @@ const CalculationResults = ({
           </div>
         </Card>
 
-        {/* Total Charges */}
+        {/* Net Payable */}
         <Card className="p-3 border-slate-200 dark:border-slate-700">
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
-            CHARGES
+            NET PAYABLE
           </div>
           <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-            {formatCurrency(totalCharges)}
+            {formatCurrency(netPayable)}
           </div>
         </Card>
 
-        {/* Net P&L */}
+        {/* Net Receivable */}
         <Card className="p-3 border-slate-200 dark:border-slate-700">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              NET P&L
-            </span>
-            <netStatus.icon className="h-3 w-3 text-slate-400" />
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+            NET RECEIVABLE
           </div>
-          <div className={`text-lg font-semibold ${netStatus.color}`}>
-            {formatCurrency(netPnL)}
+          <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {formatCurrency(netReceivable)}
           </div>
         </Card>
       </div>

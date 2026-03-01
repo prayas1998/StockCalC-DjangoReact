@@ -40,4 +40,7 @@ export interface CalculationResultsProps {
   calculationState: CalculationState;
   formatCurrency: (value: string | number | undefined) => string;
   exchange: string;
+  tradeType: TradeType;
+  positionType: PositionType;
+  broker: BrokerType;
 } 

@@ -11,6 +11,11 @@ import type { ProfitTargetCalculatorHook } from "@/hooks/useProfitTargetCalculat
 import type { SharedCalculatorState } from "@/hooks/useSharedCalculatorState"
 import { Button } from "@/components/ui/button"
 import { Calculator, Target } from "lucide-react"
+import {
+  computeNetCashflow,
+  deriveBuySellLegCharges,
+  deriveDirectionalBuySellValues,
+} from "@/utils/cashflow"
 
 interface ProfitTargetCalculatorPresenterProps extends ProfitTargetCalculatorHook {
   sharedState: SharedCalculatorState
@@ -34,6 +39,32 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
     sharedState.selectedTradeType === "equity-intraday" &&
     sharedState.selectedBroker === "Dhan" &&
     sharedState.positionType === "short"
+  const quantity = Number.parseInt(state.quantity || "0", 10)
+  const entryPrice = Number.parseFloat(state.buyPrice || "0")
+  const tradeEntryValue = Number.isFinite(quantity) && Number.isFinite(entryPrice) ? quantity * entryPrice : 0
+  const tradeExitValue =
+    Number.isFinite(quantity) && result ? quantity * result.sellingPrice : 0
+  const { buyValue, sellValue } = deriveDirectionalBuySellValues({
+    tradeEntryValue,
+    tradeExitValue,
+    tradeType: sharedState.selectedTradeType,
+    positionType: sharedState.positionType,
+    broker: sharedState.selectedBroker,
+  })
+  const { buySideCharges, sellSideCharges } = deriveBuySellLegCharges({
+    buyValue,
+    sellValue,
+    exchange: sharedState.exchange,
+    broker: sharedState.selectedBroker,
+    tradeType: sharedState.selectedTradeType,
+    totalCharges: result?.charges.totalCharges,
+  })
+  const { netPayable, netReceivable } = computeNetCashflow({
+    buyValue,
+    sellValue,
+    buySideCharges,
+    sellSideCharges,
+  })
 
   const shortTargetWarning = (() => {
     if (!result || !isIntradayShort) return null
@@ -179,6 +210,16 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
             {
               label: "Total Charges",
               value: formatCurrency(result.charges.totalCharges),
+              className: "text-slate-600 dark:text-slate-400",
+            },
+            {
+              label: "Net Payable",
+              value: formatCurrency(netPayable),
+              className: "text-slate-600 dark:text-slate-400",
+            },
+            {
+              label: "Net Receivable",
+              value: formatCurrency(netReceivable),
               className: "text-slate-600 dark:text-slate-400",
             },
             {
