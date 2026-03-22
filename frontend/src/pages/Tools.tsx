@@ -25,7 +25,7 @@ const Tools = () => {
   const exchange = "NSE" // Fixed to NSE as in original
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#060a12] dark:via-[#080d18] dark:to-[#060a12]">
       <Header />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -60,9 +60,9 @@ const Tools = () => {
 
           {/* Compact Settings Panel */}
           <div className="max-w-4xl mx-auto">
-            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg overflow-hidden">
+            <div className="bg-white/90 dark:bg-card/90 backdrop-blur-sm rounded-xl border border-slate-200/50 dark:border-border/60 shadow-lg overflow-hidden">
               {/* Compact Settings Header */}
-              <div className="px-4 py-3 bg-gradient-to-r from-slate-50/80 to-white/80 dark:from-slate-800/80 dark:to-slate-700/80 border-b border-slate-200/50 dark:border-slate-700/50">
+              <div className="px-4 py-3 bg-gradient-to-r from-slate-50/80 to-white/80 dark:from-card dark:to-muted/80 border-b border-slate-200/50 dark:border-border/60">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/25">
@@ -98,7 +98,7 @@ const Tools = () => {
           <div className="max-w-6xl mx-auto">
             <div className="grid lg:grid-cols-2 gap-6">
               <div className="group">
-                <div className="transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-200/25 dark:hover:shadow-slate-900/25">
+                <div className="transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-200/25 dark:hover:shadow-[rgba(59,130,246,0.1)]">
                   <ProfitTargetCalculatorContainer
                     sharedState={sharedState}
                     onPositionTypeChange={sharedState.setPositionType}
@@ -109,7 +109,7 @@ const Tools = () => {
               </div>
 
               <div className="group">
-                <div className="transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-200/25 dark:hover:shadow-slate-900/25">
+                <div className="transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-200/25 dark:hover:shadow-[rgba(59,130,246,0.1)]">
                   <NetPLCalculatorContainer
                     sharedState={sharedState}
                     onPositionTypeChange={sharedState.setPositionType}
