@@ -1,6 +1,6 @@
 import { Context } from 'hono';
 import { requireAuth, getAccessToken } from '../middleware/auth.js';
-import { tradeJournalCreateSchema, tagCreateSchema } from '../validators/schemas.js';
+import { tradeJournalCreateSchema, tradeJournalUpdateSchema, tagCreateSchema } from '../validators/schemas.js';
 import { PaginatedResponse } from '../types/index.js';
 import { supabaseClient, withUserScope } from '../services/supabase.js';
 
@@ -883,7 +883,7 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const validatedData = tradeJournalCreateSchema.partial().parse(body);
+        const validatedData = tradeJournalUpdateSchema.parse(body);
         const { tags, ...journalData } = validatedData;
 
         const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
