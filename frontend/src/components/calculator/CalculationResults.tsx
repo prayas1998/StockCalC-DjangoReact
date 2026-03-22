@@ -7,6 +7,9 @@ import {
   deriveBuySellLegCharges,
 } from "@/utils/cashflow";
 
+const formatPct = (value: number, decimals = 2) =>
+  `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}%`;
+
 const CalculationResults = ({
   calculationState,
   formatCurrency,
@@ -42,6 +45,15 @@ const CalculationResults = ({
     buySideCharges,
     sellSideCharges,
   });
+
+  // Percentage metrics (only when results are present)
+  const hasResults = calculationState.result !== null;
+  const netPnLPct = hasResults && totalBuyValue > 0
+    ? (netPnL / totalBuyValue) * 100
+    : null;
+  const chargesPct = hasResults && turnover > 0
+    ? (totalCharges / turnover) * 100
+    : null;
 
   // Determine P&L status
   const getPnLStatus = (value: number) => {
@@ -91,6 +103,11 @@ const CalculationResults = ({
           <div className={`text-lg font-semibold ${netStatus.color}`}>
             {formatCurrency(netPnL)}
           </div>
+          {netPnLPct !== null && (
+            <div className={`text-xs font-medium mt-0.5 ${netStatus.color}`}>
+              {formatPct(netPnLPct)} on invested capital
+            </div>
+          )}
         </Card>
 
         {/* Total Charges */}
@@ -101,6 +118,11 @@ const CalculationResults = ({
           <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             {formatCurrency(totalCharges)}
           </div>
+          {chargesPct !== null && (
+            <div className="text-xs font-medium mt-0.5 text-slate-500 dark:text-slate-400">
+              {formatPct(chargesPct, 3)} of turnover
+            </div>
+          )}
         </Card>
 
         {/* Gross P&L */}
@@ -180,14 +202,7 @@ const CalculationResults = ({
         </div>
       </Card>
 
-      {/* Journal Link - Enhanced */}
-      {/* <div className="text-center py-2">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <span className="text-sm text-slate-600 dark:text-slate-400">
-            Visit <span className="font-medium text-slate-800 dark:text-slate-200">Journal page</span> to save trades
-          </span>
-        </div>
-      </div> */}
+      {/* Journal Link */}
       <div className="text-center py-2">
       <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
         <span className="text-sm text-slate-600 dark:text-slate-400">
