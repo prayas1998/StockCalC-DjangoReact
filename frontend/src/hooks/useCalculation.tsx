@@ -18,8 +18,8 @@ export const useCalculation = () => {
     result: null,
   });
 
-  // Track previous settings to detect changes
-  const [previousSettings, setPreviousSettings] = useState({
+  // Track previous settings to detect changes (ref — no re-render needed)
+  const previousSettingsRef = useRef({
     broker: platform,
     tradeType: tradeType,
     positionType: positionType,
@@ -168,65 +168,41 @@ export const useCalculation = () => {
 
   // Detect settings changes and clear results
   useEffect(() => {
-    const currentSettings = {
-      broker: platform,
-      tradeType: tradeType,
-      positionType: positionType,
-      exchange: exchange
-    };
-
+    const prev = previousSettingsRef.current;
     const changes: string[] = [];
-    
-    if (previousSettings.broker !== currentSettings.broker) {
-      changes.push('Broker');
-    }
-    if (previousSettings.tradeType !== currentSettings.tradeType) {
-      changes.push('Trade type');
-    }
-    if (previousSettings.positionType !== currentSettings.positionType) {
-      changes.push('Position');
-    }
-    if (previousSettings.exchange !== currentSettings.exchange) {
-      changes.push('Exchange');
-    }
+
+    if (prev.broker !== platform) changes.push('Broker');
+    if (prev.tradeType !== tradeType) changes.push('Trade type');
+    if (prev.positionType !== positionType) changes.push('Position');
+    if (prev.exchange !== exchange) changes.push('Exchange');
 
     if (changes.length > 0) {
-      // Settings have changed, clear results
-      setCalculationState({
-        error: null,
-        result: null,
-      });
-      
-      // Only show validation message if user has entered meaningful data
+      setCalculationState({ error: null, result: null });
+
       if (hasValidTransactionData()) {
         setChangedSettings(changes);
       }
-      
-      setPreviousSettings(currentSettings);
-      
-      // Clear any pending calculations
+
+      previousSettingsRef.current = { broker: platform, tradeType, positionType, exchange };
+
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
     }
-  }, [platform, tradeType, positionType, exchange, previousSettings, hasValidTransactionData]);
+  }, [platform, tradeType, positionType, exchange, hasValidTransactionData]);
 
-  // Clear results when inputs change (but don't auto-calculate)
+  // Cancel any pending debounced calculation when inputs become invalid
   useEffect(() => {
     const validation = validateTransactions(transactions);
 
     if (!validation.isValid || transactions.length === 0) {
-      // Clear any pending calculations
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
-      // Reset to default values when inputs are invalid
-      setCalculationState({
-        error: null,
-        result: null,
-      });
+      // Leave existing results visible — they remain valid for the previous inputs.
+      // Results are only cleared on settings changes or a fresh Calculate press.
     }
   }, [exchange, tradeType, transactions, positionType, validateTransactions]);
 

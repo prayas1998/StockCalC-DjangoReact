@@ -31,6 +31,9 @@ export class NetPLCalculatorService {
       return null;
     }
 
+    // Delivery trades are treated as long only (Django parity).
+    const effectivePositionType = tradeType === 'equity-delivery' ? 'long' : positionType;
+
     // Always calculate breakeven price independently
     const breakevenPrice = calculateBreakevenPrice(
       quantity,
@@ -38,7 +41,7 @@ export class NetPLCalculatorService {
       exchange,
       broker,
       tradeType,
-      positionType
+      effectivePositionType
     );
 
     // If exit price is not provided, show breakeven calculation only
@@ -56,7 +59,7 @@ export class NetPLCalculatorService {
   private static calculateBreakevenResult(params: NetPLParams, breakevenPrice: number): NetPLResult {
     const { entryPrice, quantity, exchange, broker, tradeType, positionType } = params;
     
-    const isIntradayShort = tradeType === 'equity-intraday' && broker === 'Dhan' && positionType === 'short';
+    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
     const isLong = !isIntradayShort;
     const entryValue = entryPrice * quantity;
     const exitValue = breakevenPrice * quantity;
@@ -86,7 +89,7 @@ export class NetPLCalculatorService {
     const { entryPrice, quantity, exchange, broker, tradeType, positionType } = params;
 
     // Determine position type
-    const isIntradayShort = tradeType === 'equity-intraday' && broker === 'Dhan' && positionType === 'short';
+    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
     const isLong = !isIntradayShort;
 
     // Calculate the total entry and exit values

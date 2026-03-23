@@ -11,6 +11,11 @@ import type { ProfitTargetCalculatorHook } from "@/hooks/useProfitTargetCalculat
 import type { SharedCalculatorState } from "@/hooks/useSharedCalculatorState"
 import { Button } from "@/components/ui/button"
 import { Calculator, Target } from "lucide-react"
+import {
+  computeNetCashflow,
+  deriveBuySellLegCharges,
+  deriveDirectionalBuySellValues,
+} from "@/utils/cashflow"
 
 interface ProfitTargetCalculatorPresenterProps extends ProfitTargetCalculatorHook {
   sharedState: SharedCalculatorState
@@ -29,13 +34,68 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
   onBrokerChange,
   onTradeTypeChange,
 }) => {
-  const isDisabled = sharedState.selectedTradeType === "equity-intraday" && sharedState.selectedBroker === "Groww"
+  const isIntradayShort =
+    sharedState.selectedTradeType === "equity-intraday" &&
+    sharedState.positionType === "short"
+  const quantity = Number.parseInt(state.quantity || "0", 10)
+  const entryPrice = Number.parseFloat(state.buyPrice || "0")
+  const tradeEntryValue = Number.isFinite(quantity) && Number.isFinite(entryPrice) ? quantity * entryPrice : 0
+  const tradeExitValue =
+    Number.isFinite(quantity) && result ? quantity * result.sellingPrice : 0
+  const { buyValue, sellValue } = deriveDirectionalBuySellValues({
+    tradeEntryValue,
+    tradeExitValue,
+    tradeType: sharedState.selectedTradeType,
+    positionType: sharedState.positionType,
+    broker: sharedState.selectedBroker,
+  })
+  const { buySideCharges, sellSideCharges } = deriveBuySellLegCharges({
+    buyValue,
+    sellValue,
+    exchange: sharedState.exchange,
+    broker: sharedState.selectedBroker,
+    tradeType: sharedState.selectedTradeType,
+    totalCharges: result?.charges.totalCharges,
+  })
+  const { netPayable, netReceivable } = computeNetCashflow({
+    buyValue,
+    sellValue,
+    buySideCharges,
+    sellSideCharges,
+  })
+
+  const shortTargetWarning = (() => {
+    if (!result || !isIntradayShort) return null
+
+    const profitPct = Number.parseFloat(state.profitPercentage)
+    const quantity = Number.parseInt(state.quantity)
+    const entryPrice = Number.parseFloat(state.buyPrice)
+
+    if (!Number.isFinite(profitPct) || !Number.isFinite(quantity) || !Number.isFinite(entryPrice) || profitPct <= 0) {
+      return null
+    }
+
+    const cappedPct = Math.min(profitPct, 100)
+    const targetNetProfit = entryPrice * quantity * (cappedPct / 100)
+
+    const tolerance = 0.01
+    const isAtMinimumPrice = result.sellingPrice <= 0.05 + 1e-9
+
+    if (isAtMinimumPrice && result.netProfit + tolerance < targetNetProfit) {
+      return "Target net profit isn't reachable for short positions after charges. Showing the maximum achievable result at ₹0.05."
+    }
+
+    if (profitPct > 100) {
+      return "Short position profit targets are capped at 100%."
+    }
+
+    return null
+  })()
 
   return (
     <CalculatorCard
       title="Profit Target Calculator"
       description="Calculate the required exit price to achieve your target profit percentage after all charges."
-      disabled={isDisabled}
       icon={Target}
     >
       {/* Compact Header with Clear Button */}
@@ -106,6 +166,7 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
             className="h-11 text-base bg-white/50 dark:bg-slate-800/50 border-slate-300/50 dark:border-slate-600/50 focus:border-emerald-500 dark:focus:border-emerald-400 focus:ring-emerald-500/20 dark:focus:ring-emerald-400/20 transition-all duration-200"
             allowDecimal={true}
             min={0}
+            max={isIntradayShort ? 100 : undefined}
             maxDecimalPlaces={2}
           />
         </div>
@@ -122,6 +183,12 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
           Calculate Target Price
         </Button>
       </div>
+
+      {shortTargetWarning && (
+        <div className="mt-6 p-3 bg-amber-50/70 dark:bg-amber-900/20 border border-amber-200/60 dark:border-amber-700/50 rounded-xl text-sm text-amber-800 dark:text-amber-200">
+          {shortTargetWarning}
+        </div>
+      )}
 
       {result && (
         <ResultsPanel
@@ -140,6 +207,16 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
             {
               label: "Total Charges",
               value: formatCurrency(result.charges.totalCharges),
+              className: "text-slate-600 dark:text-slate-400",
+            },
+            {
+              label: "Net Payable",
+              value: formatCurrency(netPayable),
+              className: "text-slate-600 dark:text-slate-400",
+            },
+            {
+              label: "Net Receivable",
+              value: formatCurrency(netReceivable),
               className: "text-slate-600 dark:text-slate-400",
             },
             {

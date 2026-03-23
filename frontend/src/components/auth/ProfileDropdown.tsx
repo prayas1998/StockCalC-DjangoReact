@@ -26,7 +26,11 @@ const ProfileDropdown = () => {
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
-  const firstName = user?.user_metadata?.first_name || "User";
+  const displayName =
+    user?.user_metadata?.username ||
+    user?.user_metadata?.first_name ||
+    (user?.email ? user.email.split("@")[0] : "User");
+  const accountIdentifier = user?.user_metadata?.username || user?.email || "Signed in";
   
   const handleLogout = () => {
     setShowLogoutConfirm(true);
@@ -58,12 +62,12 @@ const ProfileDropdown = () => {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            {firstName}
+            {displayName}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[240px] max-w-[320px] w-auto">
           <div className="p-2 text-sm font-medium text-muted-foreground break-words">
-            {user?.email}
+            {accountIdentifier}
           </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem 

@@ -298,16 +298,6 @@ export class PositionSizingCalculatorService {
       };
     }
 
-    // Validate broker support for trade type
-    if (tradeType === 'equity-intraday' && broker === 'Groww') {
-      // Groww doesn't support intraday trades
-      return {
-        positionValue: 0,
-        entryCharges: 0,
-        totalInvestedAmount: 0
-      };
-    }
-
     const positionValue = quantity * entryPrice;
     
     // Map position type to buy/sell values for entry calculation

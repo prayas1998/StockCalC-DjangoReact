@@ -70,7 +70,7 @@ export function JournalAnalytics() {
           {Array.from({ length: 4 }).map((_, i) => (
             <Card
               key={i}
-              className="relative overflow-hidden bg-gradient-to-br from-white/90 to-slate-50/90 dark:from-slate-800/90 dark:to-slate-900/90 border border-slate-200/50 dark:border-slate-700/50 shadow-md backdrop-blur-sm"
+              className="relative overflow-hidden bg-gradient-to-br from-white/90 to-slate-50/90 dark:from-card/90 dark:to-background/90 border border-slate-200/50 dark:border-border/50 shadow-md backdrop-blur-sm"
             >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
@@ -91,7 +91,7 @@ export function JournalAnalytics() {
           {Array.from({ length: 2 }).map((_, i) => (
             <Card
               key={i}
-              className="bg-gradient-to-br from-white/90 to-slate-50/90 dark:from-slate-800/90 dark:to-slate-900/90"
+              className="bg-gradient-to-br from-white/90 to-slate-50/90 dark:from-card/90 dark:to-background/90"
             >
               <CardHeader>
                 <Skeleton className="h-6 w-32" />
@@ -164,7 +164,7 @@ export function JournalAnalytics() {
       {/* Overview Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="group relative overflow-hidden bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200/50 dark:border-blue-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-white/60 dark:bg-card/35 backdrop-blur-sm" />
           <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-blue-500/20 to-indigo-500/20 rounded-bl-3xl" />
           <CardContent className="relative p-6">
             <div className="flex items-center justify-between">
@@ -183,7 +183,7 @@ export function JournalAnalytics() {
         </Card>
 
         <Card className="group relative overflow-hidden bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-emerald-200/50 dark:border-emerald-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-white/60 dark:bg-card/35 backdrop-blur-sm" />
           <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-emerald-500/20 to-teal-500/20 rounded-bl-3xl" />
           <CardContent className="relative p-6">
             <div className="flex items-center justify-between">
@@ -214,7 +214,7 @@ export function JournalAnalytics() {
         </Card>
 
         <Card className="group relative overflow-hidden bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200/50 dark:border-purple-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-white/60 dark:bg-card/35 backdrop-blur-sm" />
           <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-purple-500/20 to-pink-500/20 rounded-bl-3xl" />
           <CardContent className="relative p-6">
             <div className="flex items-center justify-between">
@@ -236,7 +236,7 @@ export function JournalAnalytics() {
         </Card>
 
         <Card className="group relative overflow-hidden bg-gradient-to-br from-cyan-50 to-blue-50 dark:from-cyan-900/20 dark:to-blue-900/20 border-cyan-200/50 dark:border-cyan-700/50 shadow-lg backdrop-blur-sm hover:shadow-xl transition-all duration-300">
-          <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-white/60 dark:bg-card/35 backdrop-blur-sm" />
           <div className="absolute top-0 right-0 w-20 h-20 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-bl-3xl" />
           <CardContent className="relative p-6">
             <div className="flex items-center justify-between">
@@ -266,7 +266,7 @@ export function JournalAnalytics() {
 
       {/* Performance Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-card/80 dark:to-background/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-border/50 hover:shadow-xl transition-all duration-300">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-slate-600 to-slate-700 shadow-lg">
@@ -297,7 +297,7 @@ export function JournalAnalytics() {
               <span className="font-bold text-red-600 text-lg">{formatCurrency(Math.abs(avg_loss))}</span>
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t border-slate-200/50 dark:border-slate-700/50">
+            <div className="flex justify-between items-center pt-4 border-t border-slate-200/50 dark:border-border/50">
               <div className="flex items-center gap-2">
                 <Sparkles className="h-4 w-4 text-blue-600" />
                 <span className="text-sm font-medium text-slate-800 dark:text-slate-100">Risk/Reward Ratio</span>
@@ -309,7 +309,7 @@ export function JournalAnalytics() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-card/80 dark:to-background/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-border/50 hover:shadow-xl transition-all duration-300">
           <CardHeader className="pb-4">
             <div className="flex items-center gap-3">
               <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 shadow-lg">
@@ -331,7 +331,7 @@ export function JournalAnalytics() {
                 .map((stock, index) => (
                   <div
                     key={index}
-                    className="flex justify-between items-center p-3 rounded-lg bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors duration-200 border border-slate-200/30 dark:border-slate-600/30"
+                    className="flex justify-between items-center p-3 rounded-lg bg-slate-50/50 dark:bg-muted/50 hover:bg-slate-100/50 dark:hover:bg-muted transition-colors duration-200 border border-slate-200/30 dark:border-border/40"
                   >
                     <div className="flex items-center gap-3">
                       <div className="w-8 h-8 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center text-white font-bold text-sm">
@@ -358,7 +358,7 @@ export function JournalAnalytics() {
 
       {/* Tag Performance */}
       {tag_performance && tag_performance.length > 0 && (
-        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-card/80 dark:to-background/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-border/50 hover:shadow-xl transition-all duration-300">
           <CardHeader className="pb-6">
             <div className="flex items-center gap-3">
               <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-purple-500 to-indigo-500 shadow-lg">
@@ -376,7 +376,7 @@ export function JournalAnalytics() {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            <div className="bg-slate-50/50 dark:bg-slate-700/30 p-4 rounded-xl border border-slate-200/30 dark:border-slate-600/30">
+            <div className="bg-slate-50/50 dark:bg-muted/50 p-4 rounded-xl border border-slate-200/30 dark:border-border/40">
               <div className="flex items-center gap-2 mb-3">
                 <Filter className="h-4 w-4 text-purple-600" />
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Strategy</span>
@@ -419,7 +419,7 @@ export function JournalAnalytics() {
                   </div>
                 ) : tagAnalytics ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                    <div className="text-center p-3 bg-white/50 dark:bg-card/50 rounded-lg">
                       <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total P&L</div>
                       <div
                         className={`text-xl font-bold ${(tagAnalytics.total_pnl as number) >= 0 ? "text-green-600" : "text-red-600"}`}
@@ -427,17 +427,17 @@ export function JournalAnalytics() {
                         {formatCurrency(tagAnalytics.total_pnl as number)}
                       </div>
                     </div>
-                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                    <div className="text-center p-3 bg-white/50 dark:bg-card/50 rounded-lg">
                       <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Win Rate</div>
                       <div className="text-xl font-bold text-blue-600">{tagAnalytics.win_rate as number}%</div>
                     </div>
-                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                    <div className="text-center p-3 bg-white/50 dark:bg-card/50 rounded-lg">
                       <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Total Trades</div>
                       <div className="text-xl font-bold text-slate-800 dark:text-slate-100">
                         {tagAnalytics.trade_count as number}
                       </div>
                     </div>
-                    <div className="text-center p-3 bg-white/50 dark:bg-slate-800/50 rounded-lg">
+                    <div className="text-center p-3 bg-white/50 dark:bg-card/50 rounded-lg">
                       <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">Avg P&L</div>
                       <div
                         className={`text-xl font-bold ${(tagAnalytics.avg_pnl as number) >= 0 ? "text-green-600" : "text-red-600"}`}
@@ -465,7 +465,7 @@ export function JournalAnalytics() {
                 {tag_performance.slice(0, 10).map((tag, index) => (
                   <div
                     key={index}
-                    className="flex justify-between items-center p-4 rounded-lg bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors duration-200 border border-slate-200/30 dark:border-slate-600/30"
+                    className="flex justify-between items-center p-4 rounded-lg bg-slate-50/50 dark:bg-muted/50 hover:bg-slate-100/50 dark:hover:bg-muted transition-colors duration-200 border border-slate-200/30 dark:border-border/40"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-3 h-3 rounded-full ${tag.total_pnl >= 0 ? "bg-green-500" : "bg-red-500"}`} />
@@ -493,7 +493,7 @@ export function JournalAnalytics() {
 
       {/* Monthly Performance */}
       {monthly_performance && monthly_performance.length > 0 && (
-        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-slate-800/80 dark:to-slate-900/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 hover:shadow-xl transition-all duration-300">
+        <Card className="rounded-xl border bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-card/80 dark:to-background/80 text-card-foreground shadow-lg backdrop-blur-sm border-slate-200/50 dark:border-border/50 hover:shadow-xl transition-all duration-300">
           <CardHeader className="pb-6">
             <div className="flex items-center gap-3">
               <div className="inline-flex p-3 rounded-xl bg-gradient-to-r from-orange-500 to-red-500 shadow-lg">
@@ -515,7 +515,7 @@ export function JournalAnalytics() {
               {monthly_performance.slice(-6).map((month, index) => (
                 <div
                   key={index}
-                  className="flex justify-between items-center p-4 rounded-lg bg-slate-50/50 dark:bg-slate-700/30 hover:bg-slate-100/50 dark:hover:bg-slate-700/50 transition-colors duration-200 border border-slate-200/30 dark:border-slate-600/30"
+                  className="flex justify-between items-center p-4 rounded-lg bg-slate-50/50 dark:bg-muted/50 hover:bg-slate-100/50 dark:hover:bg-muted transition-colors duration-200 border border-slate-200/30 dark:border-border/40"
                 >
                   <div className="flex items-center gap-3">
                     <div

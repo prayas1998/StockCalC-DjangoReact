@@ -1,0 +1,74 @@
+import { Context, Next } from 'hono';
+import config from '../config.js';
+import { ApiErrorResponse, RequestContext } from '../types/index.js';
+
+// Rate limiting implementation (simplified in-memory store)
+class RateLimiter {
+  private requests: Map<string, number[]> = new Map();
+  
+  isAllowed(key: string, limit: string, windowMs: number): boolean {
+    const now = Date.now();
+    const requests = this.requests.get(key) || [];
+    
+    // Clean old requests
+    const validRequests = requests.filter(time => now - time < windowMs);
+    this.requests.set(key, validRequests);
+    
+    // Check limit
+    return validRequests.length < parseInt(limit);
+  }
+}
+
+const rateLimiter = new RateLimiter();
+
+export const rateLimitMiddleware = async (c: Context, next: Next) => {
+  // Get client IP (handle forwarded headers)
+  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 
+              c.req.header('x-real-ip') || 
+              'unknown';
+  
+  // Get user ID if available (after auth middleware)
+  const userId = c.get('userId');
+  const isAuthenticated = !!userId;
+  
+  // Create unique key per IP, and per user if authenticated
+  const key = `rate_limit_${isAuthenticated ? `user_${userId}` : `anon_${ip}`}`;
+  const path = c.req.path;
+  
+  // Determine rate limit category
+  let rateLimit = '500/hour'; // default
+  if (path.includes('/auth/')) {
+    rateLimit = isAuthenticated ? config.rateLimiting.auth.user : config.rateLimiting.auth.anon;
+  } else if (path.includes('/calculate/') || path.includes('/journal/') || path.includes('/profile/')) {
+    rateLimit = isAuthenticated ? config.rateLimiting.dataOperations.user : config.rateLimiting.dataOperations.anon;
+  } else {
+    rateLimit = isAuthenticated ? config.rateLimiting.general.user : config.rateLimiting.general.anon;
+  }
+  
+  // Map time units to milliseconds
+  const unitToMs: Record<string, number> = {
+    'sec': 1000,
+    'min': 60 * 1000,
+    'hour': 60 * 60 * 1000,
+    'day': 24 * 60 * 60 * 1000
+  };
+  
+  const [limit, windowUnit] = rateLimit.split('/');
+  const windowMs = unitToMs[windowUnit] || 60 * 1000; // Default to 1 minute if unknown
+  
+  if (!rateLimiter.isAllowed(key, limit, windowMs)) {
+    const retryAfter = Math.ceil(windowMs / 1000);
+    return c.json({
+      error: true,
+      error_id: `rl_${Date.now()}`,
+      category: 'rate_limit',
+      message: `Too many requests. Rate limit: ${limit}`,
+      retry_after: retryAfter,
+      throttle_type: 'RateLimitMiddleware',
+      endpoint_type: 'api',
+      timestamp: Date.now()
+    }, 429);
+  }
+  
+  await next();
+};

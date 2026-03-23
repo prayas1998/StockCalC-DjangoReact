@@ -56,10 +56,6 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
     })
   }, [transactions])
 
-  const getCompanyName = () => {
-    return "this stock"
-  }
-
   // Function to clear all transactions
   const handleClearAll = () => {
     setTransactions([{ id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }])
@@ -71,7 +67,7 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
 
     const summary = calculationState.result.summary as Record<string, string | number>
     // Check all possible variations of the property name
-    const possibleNames = ["breakevenPrice", "breakeven_price", "breakevenPrice", "breakeven_price", "BreakevenPrice"]
+    const possibleNames = ["breakevenPrice", "breakeven_price", "BreakevenPrice"]
 
     for (const name of possibleNames) {
       if (name in summary) {
@@ -91,9 +87,9 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
     // Fallback calculation if breakeven price is not provided
     if (summary.totalBuyValue && summary.totalQuantity && calculationState.result?.charges?.totalCharges) {
       try {
-        const buyValue = Number.parseFloat(summary.totalBuyValue)
-        const charges = Number.parseFloat(calculationState.result.charges.totalCharges || "0")
-        const quantity = Number.parseFloat(summary.totalQuantity)
+        const buyValue = Number(summary.totalBuyValue)
+        const charges = Number(calculationState.result.charges.totalCharges || 0)
+        const quantity = Number(summary.totalQuantity)
 
         if (quantity > 0) {
           const calculatedBreakeven = (buyValue + charges) / quantity

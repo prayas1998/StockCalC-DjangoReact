@@ -11,6 +11,11 @@ import type { NetPLCalculatorHook } from "@/hooks/useNetPLCalculator"
 import type { SharedCalculatorState } from "@/hooks/useSharedCalculatorState"
 import { Button } from "@/components/ui/button"
 import { Calculator, TrendingUp, TrendingDown } from "lucide-react"
+import {
+  computeNetCashflow,
+  deriveBuySellLegCharges,
+  deriveDirectionalBuySellValues,
+} from "@/utils/cashflow"
 
 interface NetPLCalculatorPresenterProps extends NetPLCalculatorHook {
   sharedState: SharedCalculatorState
@@ -29,13 +34,38 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
   onBrokerChange,
   onTradeTypeChange,
 }) => {
-  const isDisabled = sharedState.selectedTradeType === "equity-intraday" && sharedState.selectedBroker === "Groww"
+  const quantity = Number.parseInt(state.quantity || "0", 10)
+  const entryPrice = Number.parseFloat(state.buyPrice || "0")
+  const exitPriceInput = Number.parseFloat(state.sellPrice || "0")
+  const effectiveExitPrice = exitPriceInput > 0 ? exitPriceInput : (result?.breakevenPrice ?? 0)
+  const tradeEntryValue = Number.isFinite(quantity) && Number.isFinite(entryPrice) ? quantity * entryPrice : 0
+  const tradeExitValue = Number.isFinite(quantity) && Number.isFinite(effectiveExitPrice) ? quantity * effectiveExitPrice : 0
+  const { buyValue, sellValue } = deriveDirectionalBuySellValues({
+    tradeEntryValue,
+    tradeExitValue,
+    tradeType: sharedState.selectedTradeType,
+    positionType: sharedState.positionType,
+    broker: sharedState.selectedBroker,
+  })
+  const { buySideCharges, sellSideCharges } = deriveBuySellLegCharges({
+    buyValue,
+    sellValue,
+    exchange: sharedState.exchange,
+    broker: sharedState.selectedBroker,
+    tradeType: sharedState.selectedTradeType,
+    totalCharges: result?.charges.totalCharges,
+  })
+  const { netPayable, netReceivable } = computeNetCashflow({
+    buyValue,
+    sellValue,
+    buySideCharges,
+    sellSideCharges,
+  })
 
   return (
     <CalculatorCard
       title="Net P&L Calculator"
       description="Calculate your net profit or loss after all charges based on your entry and exit prices."
-      disabled={isDisabled}
       icon={result?.isProfit ? TrendingUp : TrendingDown}
     >
       {/* Compact Header with Clear Button */}
@@ -135,6 +165,16 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
             {
               label: "Total Charges",
               value: formatCurrency(result.charges.totalCharges),
+              className: "text-slate-600 dark:text-slate-400",
+            },
+            {
+              label: "Net Payable",
+              value: formatCurrency(netPayable),
+              className: "text-slate-600 dark:text-slate-400",
+            },
+            {
+              label: "Net Receivable",
+              value: formatCurrency(netReceivable),
               className: "text-slate-600 dark:text-slate-400",
             },
             {

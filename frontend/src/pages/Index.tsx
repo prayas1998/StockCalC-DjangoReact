@@ -16,6 +16,7 @@ import Footer from "@/components/layout/Footer";
 
 // Calculator Components
 import TransactionForm from "@/components/calculator/TransactionForm";
+import type { CalculationState } from "@/types/calculator";
 import CalculationResults from "@/components/calculator/CalculationResults";
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector";
 import {
@@ -43,15 +44,6 @@ const useThemeManager = () => {
       document.documentElement.classList.remove("dark");
     }
   }, [darkMode]);
-
-  // First-run initialization
-  useEffect(() => {
-    const savedMode = localStorage.getItem("darkMode");
-    if (savedMode === null) {
-      // Only set default if no existing preference
-      document.documentElement.classList.remove("dark");
-    }
-  }, []); // Empty array = runs only once
 
   return { darkMode, setDarkMode };
 };
@@ -83,12 +75,12 @@ const IndexContent = () => {
   } = useCalculatorContext();
 
   // Calculation state will be received from TransactionForm
-  const [calculationState, setCalculationState] = useState({
+  const [calculationState, setCalculationState] = useState<CalculationState>({
     error: null,
     result: null,
   });
 
-  const handleCalculationStateChange = useCallback((newState) => {
+  const handleCalculationStateChange = useCallback((newState: CalculationState) => {
     setCalculationState(newState);
   }, []);
 
@@ -208,6 +200,9 @@ const IndexContent = () => {
             calculationState={calculationState}
             formatCurrency={formatCurrency}
             exchange={exchange}
+            tradeType={tradeType}
+            positionType={positionType}
+            broker={platform}
           />
 
           {/* Features Component */}

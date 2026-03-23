@@ -1,6 +1,28 @@
 import { calculateCharges, Charges } from '@/pages/Tools/ChargesUtils';
 import { calculateBreakevenPrice } from '@/pages/Tools/BreakEven';
 
+// Django parity: midpoint quantize uses Decimal's default ROUND_HALF_EVEN.
+const roundHalfEven = (value: number, decimals: number): number => {
+  const factor = Math.pow(10, decimals);
+  const scaled = value * factor;
+  const floor = Math.floor(scaled);
+  const diff = scaled - floor;
+
+  // Epsilon guard for floating point representation.
+  const eps = 1e-12;
+
+  if (diff > 0.5 + eps) return (floor + 1) / factor;
+  if (diff < 0.5 - eps) return floor / factor;
+
+  // Tie (.5): round to even.
+  return (floor % 2 === 0 ? floor : floor + 1) / factor;
+};
+
+const PRICE_TOLERANCE = 0.01; // 1 paisa
+const MAX_ITERATIONS = 100;
+const MAX_BOUND_EXPANSIONS = 50;
+const MIN_STOCK_PRICE = 0.05;
+
 export interface ProfitTargetParams {
   entryPrice: number;
   quantity: number;
@@ -21,7 +43,9 @@ export interface ProfitTargetResult {
 
 export class ProfitTargetCalculatorService {
   /**
-   * Calculate the required exit price to achieve target profit percentage
+   * Calculate the required exit price to achieve target profit percentage.
+   * Profit percentage is interpreted as net profit percentage (after all charges),
+   * consistent with Net P&L calculator.
    */
   static calculateTargetPrice(params: ProfitTargetParams): ProfitTargetResult | null {
     const { entryPrice, quantity, profitPercentage, exchange, broker, tradeType, positionType } = params;
@@ -30,6 +54,9 @@ export class ProfitTargetCalculatorService {
       return null;
     }
 
+    // Delivery trades are treated as long only (Django parity).
+    const effectivePositionType = tradeType === 'equity-delivery' ? 'long' : positionType;
+
     // Always calculate breakeven price independently
     const breakevenPrice = calculateBreakevenPrice(
       quantity,
@@ -37,7 +64,7 @@ export class ProfitTargetCalculatorService {
       exchange,
       broker,
       tradeType,
-      positionType
+      effectivePositionType
     );
 
     // If profit percentage is not provided, show breakeven calculation only
@@ -54,12 +81,12 @@ export class ProfitTargetCalculatorService {
    */
   private static calculateBreakevenResult(params: ProfitTargetParams, breakevenPrice: number): ProfitTargetResult {
     const { entryPrice, quantity, exchange, broker, tradeType, positionType } = params;
-    
-    const isIntradayShort = tradeType === 'equity-intraday' && broker === 'Dhan' && positionType === 'short';
+
+    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
     const isLong = !isIntradayShort;
     const entryValue = entryPrice * quantity;
     const exitValue = breakevenPrice * quantity;
-    
+
     const charges = calculateCharges(
       isLong ? entryValue : exitValue,
       isLong ? exitValue : entryValue,
@@ -82,30 +109,31 @@ export class ProfitTargetCalculatorService {
    */
   private static calculateWithProfitTarget(params: ProfitTargetParams, breakevenPrice: number): ProfitTargetResult {
     const { entryPrice, quantity, profitPercentage, exchange, broker, tradeType, positionType } = params;
-    
-    if (!profitPercentage) {
+
+    if (profitPercentage === undefined) {
       throw new Error('Profit percentage is required');
     }
 
-    // Determine position type
-    const isIntradayShort = tradeType === 'equity-intraday' && broker === 'Dhan' && positionType === 'short';
+    // Short position is supported for intraday flows.
+    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
     const isLong = !isIntradayShort;
 
-    // Calculate the total entry value
-    const entryValue = entryPrice * quantity;
-    // Target gross profit amount
-    const desiredGrossProfit = entryValue * (profitPercentage / 100);
+    // Cap short profit percentage to 100% (max theoretical gross profit is 100%).
+    const cappedProfitPercentage = isIntradayShort ? Math.min(profitPercentage, 100) : profitPercentage;
 
-    // Find optimal exit price using binary search
+    const entryValue = entryPrice * quantity;
+    const targetNetProfit = entryValue * (cappedProfitPercentage / 100);
+
     const exitPrice = this.findOptimalExitPrice({
       entryPrice,
       quantity,
       entryValue,
-      desiredGrossProfit,
+      targetNetProfit,
       exchange,
       broker,
       tradeType,
-      isLong
+      isLong,
+      breakevenPrice
     });
 
     // Final calculation with the found exit price
@@ -117,7 +145,7 @@ export class ProfitTargetCalculatorService {
       broker,
       tradeType
     );
-    
+
     const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
     const netProfit = grossProfit - charges.totalCharges;
 
@@ -131,32 +159,26 @@ export class ProfitTargetCalculatorService {
   }
 
   /**
-   * Binary search algorithm to find optimal exit price
+   * Binary search algorithm to find exit price meeting the net profit target.
+   *
+   * For long positions, the target is always reachable by increasing price.
+   * For short positions, net profit is maximized at the minimum stock price;
+   * if the target exceeds the max achievable, we return the minimum price.
    */
   private static findOptimalExitPrice(params: {
     entryPrice: number;
     quantity: number;
     entryValue: number;
-    desiredGrossProfit: number;
+    targetNetProfit: number;
     exchange: string;
     broker: 'Dhan' | 'Groww';
     tradeType: 'equity-delivery' | 'equity-intraday';
     isLong: boolean;
+    breakevenPrice: number;
   }): number {
-    const { entryPrice, quantity, entryValue, desiredGrossProfit, exchange, broker, tradeType, isLong } = params;
-    
-    // Initial guess for exit price
-    let exitPrice = entryPrice * (isLong ? (1 + (desiredGrossProfit / entryValue)) : (1 - (desiredGrossProfit / entryValue)));
-    
-    // Binary search bounds
-    let low = isLong ? entryPrice : 0.01;
-    let high = isLong ? entryPrice * 2 : entryPrice;
-    
-    const MAX_ITERATIONS = 20;
-    let iterations = 0;
-    const targetNetProfit = desiredGrossProfit;
+    const { entryPrice, quantity, entryValue, targetNetProfit, exchange, broker, tradeType, isLong, breakevenPrice } = params;
 
-    while (iterations < MAX_ITERATIONS) {
+    const netProfitAt = (exitPrice: number): number => {
       const exitValue = exitPrice * quantity;
       const charges = calculateCharges(
         isLong ? entryValue : exitValue,
@@ -165,38 +187,79 @@ export class ProfitTargetCalculatorService {
         broker,
         tradeType
       );
-      
-      const netProfit = isLong
-        ? exitValue - entryValue - charges.totalCharges
-        : entryValue - exitValue - charges.totalCharges;
 
-      // Check if we're close enough to the target
-      if (Math.abs(netProfit - targetNetProfit) <= 0.01) {
+      const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
+      return grossProfit - charges.totalCharges;
+    };
+
+    let low: number;
+    let high: number;
+
+    if (isLong) {
+      // Price must be >= breakeven for positive net profit.
+      low = Math.max(breakevenPrice, entryPrice);
+
+      // Start with a bound that is always >= low.
+      high = Math.max(low * 2, entryPrice * 2);
+
+      // Expand until netProfit(high) >= targetNetProfit.
+      let expansions = 0;
+      while (expansions < MAX_BOUND_EXPANSIONS && netProfitAt(high) < targetNetProfit) {
+        const nextHigh = high * 2;
+        if (!Number.isFinite(nextHigh)) break;
+        high = nextHigh;
+        expansions += 1;
+      }
+    } else {
+      low = MIN_STOCK_PRICE;
+      high = Math.max(low, Math.min(breakevenPrice, entryPrice));
+
+      if (high <= low) {
+        return parseFloat(roundHalfEven(low, 2).toFixed(2));
+      }
+
+      const maxNetProfit = netProfitAt(low);
+      if (targetNetProfit > maxNetProfit) {
+        return parseFloat(roundHalfEven(low, 2).toFixed(2));
+      }
+    }
+
+    let iterations = 0;
+
+    while (iterations < MAX_ITERATIONS && (high - low) > PRICE_TOLERANCE) {
+      const mid = parseFloat(roundHalfEven((low + high) / 2, 2).toFixed(2));
+
+      // Prevent stagnation when rounding collapses the midpoint.
+      if (mid === low || mid === high) {
         break;
       }
 
-      // Adjust search bounds
-      if (netProfit < targetNetProfit) {
-        if (isLong) {
-          low = exitPrice;
-          exitPrice = (exitPrice + high) / 2;
+      const netProfit = netProfitAt(mid);
+      const withinTolerance = Math.abs(netProfit - targetNetProfit) <= PRICE_TOLERANCE;
+
+      if (isLong) {
+        if (netProfit < targetNetProfit) {
+          low = mid;
         } else {
-          high = exitPrice;
-          exitPrice = (low + exitPrice) / 2;
+          high = mid;
         }
       } else {
-        if (isLong) {
-          high = exitPrice;
-          exitPrice = (low + exitPrice) / 2;
+        // Short: lower buy-back price => higher profit
+        if (netProfit < targetNetProfit) {
+          high = mid;
         } else {
-          low = exitPrice;
-          exitPrice = (exitPrice + low) / 2;
+          low = mid;
         }
       }
 
-      iterations++;
+      if (withinTolerance) {
+        break;
+      }
+
+      iterations += 1;
     }
 
-    return exitPrice;
+    const resultPrice = isLong ? high : low;
+    return parseFloat(resultPrice.toFixed(2));
   }
 }

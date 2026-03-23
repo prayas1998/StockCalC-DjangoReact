@@ -28,25 +28,34 @@
   }
 
   .dark {
-    --background: 240 10% 3.9%;
-    --foreground: 0 0% 98%;
-    --card: 240 10% 3.9%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 3.9%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* Three distinct depth levels instead of one flat dark */
+    --background: 224 22% 5%;       /* Deep navy-black — the canvas */
+    --foreground: 210 35% 92%;      /* Soft cool white — easier on eyes than pure white */
+
+    --card: 222 20% 9%;             /* Elevated surface — clearly distinct from background */
+    --card-foreground: 210 35% 92%;
+
+    --popover: 222 20% 12%;         /* Floating layer — one step above card */
+    --popover-foreground: 210 35% 92%;
+
+    --primary: 214 88% 60%;         /* Electric blue — sharp, precise */
+    --primary-foreground: 222 30% 10%;
+
+    --secondary: 220 16% 15%;       /* Mid-surface — for secondary buttons, badges */
+    --secondary-foreground: 210 28% 82%;
+
+    --muted: 220 15% 12%;           /* Recessed surface */
+    --muted-foreground: 215 14% 50%; /* Clearly receded text */
+
+    --accent: 214 22% 17%;          /* Hover/selection surface */
+    --accent-foreground: 210 38% 88%;
+
+    --destructive: 0 68% 42%;       /* Brighter red — visible on dark */
+    --destructive-foreground: 0 0% 96%;
+
+    --border: 220 20% 16%;          /* Visible but subtle — not invisible like before */
+    --input: 222 18% 11%;           /* Input fields sit between bg and card */
+    --ring: 214 88% 60%;            /* Match primary for focus rings */
   }
 }
 
@@ -59,10 +68,27 @@
   }
 }
 
+/* Dark mode atmospheric background: subtle dot grid + top radial glow */
+.dark body {
+  background-image:
+    radial-gradient(ellipse 80% 45% at 50% 0%, rgba(59, 130, 246, 0.055) 0%, transparent 65%),
+    radial-gradient(circle, rgba(96, 145, 210, 0.13) 1px, transparent 1px);
+  background-size: 100% 100%, 28px 28px;
+}
+
 .glass {
-  @apply bg-white/80 dark:bg-black/50 backdrop-blur-lg border border-white/20 dark:border-white/10 shadow-lg;
+  @apply bg-white/80 dark:bg-slate-900/70 backdrop-blur-lg border border-white/20 dark:border-white/[0.05] shadow-lg;
 }
 
 .section-padding {
   @apply py-20 px-4 sm:px-6 lg:px-8;
+}
+
+/* Subtle glow on interactive cards in dark mode */
+.dark .hover-glow {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.dark .hover-glow:hover {
+  border-color: rgba(96, 165, 250, 0.25);
+  box-shadow: 0 0 0 1px rgba(96, 165, 250, 0.08), 0 8px 32px rgba(59, 130, 246, 0.08);
 }

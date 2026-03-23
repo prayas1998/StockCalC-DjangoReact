@@ -2,11 +2,12 @@ import { ChevronRight, BarChart3 } from "lucide-react"
 
 const Hero = () => {
   return (
-    <section className="relative py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center">
-      {/* Subtle background elements */}
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-purple-500/5" />
-      <div className="absolute top-10 left-10 w-32 h-32 bg-blue-400/10 rounded-full blur-2xl" />
-      <div className="absolute bottom-10 right-10 w-40 h-40 bg-indigo-400/10 rounded-full blur-2xl" />
+    <section className="relative py-16 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-[#060a12] dark:via-[#080d18] dark:to-[#060a12] flex items-center overflow-hidden">
+      {/* Background atmosphere */}
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-purple-500/5 dark:from-blue-600/[0.04] dark:via-indigo-600/[0.03] dark:to-purple-600/[0.04]" />
+      <div className="absolute top-10 left-10 w-32 h-32 bg-blue-400/10 dark:bg-blue-400/20 rounded-full blur-2xl" />
+      <div className="absolute bottom-10 right-10 w-40 h-40 bg-indigo-400/10 dark:bg-indigo-400/15 rounded-full blur-2xl" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-32 dark:bg-blue-500/[0.04] rounded-full blur-3xl hidden dark:block" />
 
       <div className="relative max-w-7xl mx-auto text-center z-10">
         {/* Compact Badge */}
