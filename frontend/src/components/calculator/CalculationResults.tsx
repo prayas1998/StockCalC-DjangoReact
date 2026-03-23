@@ -48,8 +48,8 @@ const CalculationResults = ({
 
   // Percentage metrics (only when results are present)
   const hasResults = calculationState.result !== null;
-  const netPnLPct = hasResults && totalBuyValue > 0
-    ? (netPnL / totalBuyValue) * 100
+  const netPnLPct = hasResults && netPayable > 0
+    ? (netPnL / netPayable) * 100
     : null;
   const chargesPct = hasResults && turnover > 0
     ? (totalCharges / turnover) * 100
