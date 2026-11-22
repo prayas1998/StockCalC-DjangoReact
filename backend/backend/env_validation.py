@@ -188,19 +188,19 @@ class EnvironmentValidator:
         try:
             parsed = urlparse(value)
             if not parsed.scheme or not parsed.netloc:
-                self.errors.append(f"Invalid URL format for '{var_name}': '{value}'")
+                self.errors.append(f"Invalid URL format for '{var_name}'")
                 return None
                 
             if schemes and parsed.scheme not in schemes:
                 self.errors.append(
-                    f"Invalid URL scheme for '{var_name}': '{parsed.scheme}'. "
+                    f"Invalid URL scheme for '{var_name}'. "
                     f"Allowed schemes: {', '.join(schemes)}"
                 )
                 return None
                 
             return value
-        except Exception as e:
-            error_msg = f"Error parsing URL for '{var_name}': {str(e)}"
+        except Exception:
+            error_msg = f"Error parsing URL for '{var_name}'"
             if description:
                 error_msg += f" ({description})"
             self.errors.append(error_msg)
