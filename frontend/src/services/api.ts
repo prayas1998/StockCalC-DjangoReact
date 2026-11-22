@@ -18,13 +18,14 @@ export interface CalculationResponse {
     totalCharges: string;
     brokerage: string;
     stt: string;
-    exchangeCharges: string;
+    exchangeCharges: string | null;
+    exchangeAndIpft?: string | null;
     stampDuty: string;
     sebiFee: string;
-    ipft: string;
+    ipft: string | null;
     gst: string;
     dpCharges: string;
-    [key: string]: string;
+    [key: string]: string | null | undefined;
   };
   summary: {
     totalQuantity: string;
@@ -35,7 +36,14 @@ export interface CalculationResponse {
     grossPnL: string;
     netPnL: string;
     breakevenPrice: string;
-    [key: string]: string; // Allow for any additional properties
+    breakevenMode?: "remaining" | "full" | "unavailable";
+    matchedQuantity?: string;
+    openQuantity?: string;
+    openSide?: "buy" | "sell" | "";
+    openCashFlow?: string;
+    netPayable?: string;
+    netReceivable?: string;
+    [key: string]: string | undefined;
   };
 }
 

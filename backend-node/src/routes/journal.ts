@@ -109,8 +109,13 @@ function getMissingFieldsForPnl(trade: any): string[] {
   return missing;
 }
 
+function isUnsupportedDeliveryShort(trade: any): boolean {
+  return trade.trade_type === 'EQUITY_DELIVERY' && trade.direction === 'SHORT';
+}
+
 function isPreciseCalculationAvailable(trade: any): boolean {
   return (
+    !isUnsupportedDeliveryShort(trade) &&
     (trade.trade_type === 'EQUITY_DELIVERY' || trade.trade_type === 'EQUITY_INTRADAY') &&
     (trade.broker === 'Dhan' || trade.broker === 'Groww')
   );
@@ -159,7 +164,7 @@ function calculateDrawdown(tradePnls: number[]): { maxDrawdown: number; drawdown
 }
 
 async function calculatePnl(trade: any): Promise<number | null> {
-  if (!isClosedStatus(trade.status)) {
+  if (!isClosedStatus(trade.status) || isUnsupportedDeliveryShort(trade)) {
     return null;
   }
 
@@ -209,11 +214,17 @@ async function calculatePnl(trade: any): Promise<number | null> {
     const exchange = String(trade.exchange || '').toUpperCase();
     const positionType = trade.direction === 'SHORT' ? 'short' : 'long';
 
+    // Each journal record has one fee estimate. Trades spanning a tariff change use the later leg's schedule.
+    const entryDate = trade.entry_date;
+    const exitDate = trade.exit_date;
+    const tradeDate = typeof entryDate === 'string' && typeof exitDate === 'string'
+      ? (entryDate > exitDate ? entryDate : exitDate)
+      : undefined;
     let calculator;
     if (calculatorTradeType === 'equity-delivery') {
-      calculator = new EquityDeliveryCalculator(platform, exchange, calculatorTradeType);
+      calculator = new EquityDeliveryCalculator(platform, exchange, calculatorTradeType, { tradeDate });
     } else if (calculatorTradeType === 'equity-intraday') {
-      calculator = new EquityIntradayCalculator(platform, exchange, calculatorTradeType);
+      calculator = new EquityIntradayCalculator(platform, exchange, calculatorTradeType, { tradeDate });
     } else {
       return null;
     }

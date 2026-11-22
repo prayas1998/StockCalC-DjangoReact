@@ -1,5 +1,8 @@
-import { Transaction } from '@/types/calculator';
-import { PositionType, TradeType } from '@/context/CalculatorContext';
+import type { Transaction } from '@/types/calculator';
+import type { PositionType, TradeType } from '@/context/CalculatorContext';
+
+export const positionTypeForTrade = (tradeType: TradeType, positionType: PositionType): PositionType =>
+  tradeType === 'equity-delivery' ? 'long' : positionType;
 
 /**
  * Formats transactions for API calls, handling the special case of intraday short positions

@@ -81,7 +81,11 @@ export const TradeCard = memo<TradeCardProps>(({ trade, onEdit, onDelete }) => {
                 <div className="font-semibold text-muted-foreground text-right">
                   --
                 </div>
-              ) : trade.pnl !== undefined && (
+              ) : trade.pnl == null ? (
+                <div className="text-sm font-medium text-muted-foreground text-right">
+                  P&amp;L unavailable
+                </div>
+              ) : (
                 <div className={`font-semibold text-right ${isProfit ? 'text-green-600' : 'text-red-600'}`}>
                   <div>{formatCurrency(trade.pnl)}</div>
                   {pnlPercentage !== null && (
