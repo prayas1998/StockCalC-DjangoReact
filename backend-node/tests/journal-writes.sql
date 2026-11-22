@@ -47,22 +47,127 @@ create table public.journal_tradejournaltags (
   tag_id bigint not null references public.journal_tradetags
 );
 
-grant select, insert, update, delete on all tables in schema public to authenticated;
-grant usage on all sequences in schema public to authenticated;
-alter table public.journal_tradejournal enable row level security;
-alter table public.journal_tradetags enable row level security;
-alter table public.journal_tradejournaltags enable row level security;
-create policy trade_owner on public.journal_tradejournal to authenticated
-  using (user_id = auth.uid());
-create policy tag_owner on public.journal_tradetags to authenticated
-  using (user_id = auth.uid());
-create policy relation_owner on public.journal_tradejournaltags to authenticated
-  using (
-    exists (select 1 from public.journal_tradejournal where id = trade_id and user_id = auth.uid())
-    and exists (select 1 from public.journal_tradetags where id = tag_id and user_id = auth.uid())
-  );
+-- Model the deployed starting ACL: broad API-role grants and no RLS.
+grant all privileges on all tables in schema public to anon, authenticated;
+grant all privileges on all sequences in schema public to anon, authenticated;
+
+do $$
+begin
+  if exists (
+    select 1
+    from (values
+      ('public.journal_tradejournal'::regclass),
+      ('public.journal_tradetags'::regclass),
+      ('public.journal_tradejournaltags'::regclass)
+    ) as journal(table_id)
+    cross join (values
+      ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER'), ('MAINTAIN')
+    ) as privilege(name)
+    where (select relrowsecurity from pg_catalog.pg_class where oid = table_id)
+       or not pg_catalog.has_table_privilege('anon', table_id, privilege.name)
+       or not pg_catalog.has_table_privilege('authenticated', table_id, privilege.name)
+  ) then
+    raise exception 'The fixture must start with broad API table grants and RLS disabled';
+  end if;
+end
+$$;
 
 \ir ../supabase/migrations/202611220001_journal_writes.sql
+
+\if :{?journal_fixture_account_lifecycle}
+do $$
+begin
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'service_role') then
+    create role service_role;
+  end if;
+  if not exists (select 1 from pg_catalog.pg_roles where rolname = 'fixture_auth_admin') then
+    create role fixture_auth_admin;
+  end if;
+end
+$$;
+create table auth.users (
+  id uuid primary key,
+  email text unique,
+  raw_user_meta_data jsonb
+);
+insert into auth.users values
+  ('00000000-0000-4000-8000-000000000001', 'journal-owner-one@example.invalid', '{}'),
+  ('00000000-0000-4000-8000-000000000002', 'journal-owner-two@example.invalid', '{}'),
+  ('00000000-0000-4000-a000-000000000001', 'alice@users.tradesmart.local', '{}'),
+  ('00000000-0000-4000-a000-000000000002', 'bob@example.com', '{}');
+grant usage on schema auth to fixture_auth_admin;
+grant select, update, delete on auth.users to fixture_auth_admin;
+
+\ir ../supabase/migrations/202611220002_account_lifecycle.sql
+set role authenticated;
+set request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
+insert into public.journal_tradetags (id, name, color, user_id, created_at)
+values (-9001, 'Pre-policy tag', '#aabbcc', auth.uid(), statement_timestamp());
+insert into public.journal_tradejournal (
+  id, user_id, company_name, trade_type, quantity, buy_price, sell_price,
+  stop_loss, target_price, entry_date, exit_date, status, personal_notes,
+  direction, broker, exchange, created_at, updated_at
+) values (
+  -9001, auth.uid(), 'Pre-policy trade', 'EQUITY_INTRADAY', 1, 100, null,
+  null, 120, '2026-01-01', null, 'OPEN', '', 'LONG', 'Dhan', 'NSE',
+  statement_timestamp(), statement_timestamp()
+);
+insert into public.journal_tradejournaltags (trade_id, tag_id)
+values (-9001, -9001);
+reset role;
+\endif
+
+\ir ../supabase/migrations/202611220003_journal_owner_policies.sql
+
+do $$
+begin
+  if exists (
+    select 1
+    from (values
+      ('public.journal_tradejournal'::regclass, 'public.journal_tradejournal_id_seq'::regclass),
+      ('public.journal_tradetags'::regclass, 'public.journal_tradetags_id_seq'::regclass),
+      ('public.journal_tradejournaltags'::regclass, 'public.journal_tradejournaltags_id_seq'::regclass)
+    ) as journal(table_id, sequence_id)
+    cross join (values
+      ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'), ('TRUNCATE'), ('REFERENCES'), ('TRIGGER'), ('MAINTAIN')
+    ) as privilege(name)
+    where not (select relrowsecurity from pg_catalog.pg_class where oid = table_id)
+      or pg_catalog.has_table_privilege('anon', table_id, privilege.name)
+      or (privilege.name in ('SELECT', 'INSERT', 'UPDATE', 'DELETE')
+          and not pg_catalog.has_table_privilege('authenticated', table_id, privilege.name))
+      or (privilege.name in ('TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN')
+          and pg_catalog.has_table_privilege('authenticated', table_id, privilege.name))
+      or pg_catalog.has_sequence_privilege('anon', sequence_id, 'USAGE')
+      or pg_catalog.has_sequence_privilege('anon', sequence_id, 'SELECT')
+      or pg_catalog.has_sequence_privilege('anon', sequence_id, 'UPDATE')
+      or pg_catalog.has_sequence_privilege('authenticated', sequence_id, 'SELECT')
+      or pg_catalog.has_sequence_privilege('authenticated', sequence_id, 'UPDATE')
+      or not pg_catalog.has_sequence_privilege('authenticated', sequence_id, 'USAGE')
+  ) then
+    raise exception 'Owner migration left an unsafe effective API-role privilege or disabled RLS';
+  end if;
+end
+$$;
+
+\if :{?journal_fixture_account_lifecycle}
+do $$
+begin
+  if not exists (
+    select 1 from public.journal_tradejournal trade
+    join public.journal_tradejournaltags link on link.trade_id = trade.id
+    join public.journal_tradetags tag on tag.id = link.tag_id
+    where trade.company_name = 'Pre-policy trade'
+      and trade.user_id = '00000000-0000-4000-8000-000000000001'
+      and tag.name = 'Pre-policy tag'
+      and tag.user_id = trade.user_id
+  ) then
+    raise exception 'Owner migration changed or removed preexisting journal rows';
+  end if;
+end
+$$;
+delete from public.journal_tradejournal where company_name = 'Pre-policy trade';
+delete from public.journal_tradetags where name = 'Pre-policy tag';
+\endif
 
 -- Inject a relation-write failure after the trade and previous relation have been modified.
 create function public.fixture_fail_relation() returns trigger language plpgsql as $$
@@ -96,6 +201,7 @@ declare
   result jsonb;
   trade_id bigint;
   tagless_trade_id bigint;
+  foreign_trade_id bigint;
   duplicate_relation_id bigint;
   invalid_case record;
 begin
@@ -125,6 +231,73 @@ begin
      or not exists (select 1 from public.journal_tradejournal where id = trade_id and user_id = auth.uid()) then
     raise exception 'Create lost tag order or accepted the wrong owner';
   end if;
+
+  begin
+    update public.journal_tradejournal
+    set user_id = '00000000-0000-4000-8000-000000000002'
+    where id = trade_id;
+    raise exception 'Accepted a trade owner change';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.journal_tradetags
+    set user_id = '00000000-0000-4000-8000-000000000002'
+    where id = 1;
+    raise exception 'Accepted a tag owner change';
+  exception when insufficient_privilege then null;
+  end;
+  if not exists (select 1 from public.journal_tradejournal where id = trade_id and user_id = auth.uid())
+     or not exists (select 1 from public.journal_tradetags where id = 1 and user_id = auth.uid()) then
+    raise exception 'A rejected owner change altered the row';
+  end if;
+
+  -- Build a foreign parent pair, then exercise both ends of the join policy.
+  perform set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000002', true);
+  result := public.journal_save_trade(null, trade_data, array[3]::bigint[]);
+  foreign_trade_id := (result->>'id')::bigint;
+  perform set_config('request.jwt.claim.sub', '00000000-0000-4000-8000-000000000001', true);
+
+  if exists (select 1 from public.journal_tradejournal where id = foreign_trade_id) then
+    raise exception 'A protected read exposed another owner''s trade';
+  end if;
+  begin
+    insert into public.journal_tradejournaltags (trade_id, tag_id) values (trade_id, 3);
+    raise exception 'Accepted an owner''s trade linked to a foreign tag';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.journal_tradejournaltags (trade_id, tag_id) values (foreign_trade_id, 1);
+    raise exception 'Accepted a foreign trade linked to an owner''s tag';
+  exception when insufficient_privilege then null;
+  end;
+
+  insert into public.journal_tradejournaltags (trade_id, tag_id)
+  values (tagless_trade_id, 1) returning id into duplicate_relation_id;
+  if not exists (
+    select 1 from public.journal_tradejournaltags owned_link
+    where owned_link.id = duplicate_relation_id
+      and owned_link.trade_id = tagless_trade_id and owned_link.tag_id = 1
+  ) then
+    raise exception 'An owner could not read a valid owned trade-tag link';
+  end if;
+  begin
+    update public.journal_tradejournaltags set tag_id = 3 where id = duplicate_relation_id;
+    raise exception 'Accepted reassignment of an owned link to a foreign tag';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.journal_tradejournaltags set trade_id = foreign_trade_id where id = duplicate_relation_id;
+    raise exception 'Accepted reassignment of an owned link to a foreign trade';
+  exception when insufficient_privilege then null;
+  end;
+  if not exists (
+    select 1 from public.journal_tradejournaltags owned_link
+    where owned_link.id = duplicate_relation_id
+      and owned_link.trade_id = tagless_trade_id and owned_link.tag_id = 1
+  ) then
+    raise exception 'Rejected join reassignment changed the owned link';
+  end if;
+  delete from public.journal_tradejournaltags where id = duplicate_relation_id;
 
   insert into public.journal_tradejournaltags (trade_id, tag_id)
   values (trade_id, 2) returning id into duplicate_relation_id;
@@ -251,7 +424,7 @@ begin
 
   result := public.journal_save_trade(trade_id, '{}', null);
   if (result->>'buy_price')::numeric <> 105 or result->'tags' <> '[2,1]'::jsonb
-     or (select count(*) from public.journal_tradejournal) <> 2 then
+     or (select count(*) from public.journal_tradejournal where user_id = auth.uid()) <> 2 then
     raise exception 'A rejected write left a trade or relation partially modified';
   end if;
 
@@ -273,11 +446,80 @@ begin
   if public.journal_save_trade(trade_id, '{"buy_price":115}', array[3]::bigint[]) is not null then
     raise exception 'Another owner could edit the trade';
   end if;
-  if exists (select 1 from public.journal_tradejournal)
+  if exists (select 1 from public.journal_tradejournal owned_trade where owned_trade.id = trade_id)
      or exists (select 1 from public.journal_trades_with_tags(array[1]::bigint[]))
      or (select count(*) from public.journal_tradetags) <> 1 then
-    raise exception 'RLS exposed another owner''s rows';
+    raise exception 'RLS exposed rows outside the current owner';
   end if;
+  if (select count(*) from public.journal_tradejournal) <> 1
+     or not exists (
+       select 1 from public.journal_tradejournal owned_trade
+       where owned_trade.id = foreign_trade_id and owned_trade.user_id = auth.uid()
+     )
+     or (select count(*) from public.journal_tradetags) <> 1
+     or not exists (select 1 from public.journal_tradetags owned_tag where owned_tag.id = 3) then
+    raise exception 'RLS did not expose exactly the second owner''s rows';
+  end if;
+end;
+$$;
+
+-- Direct table CRUD and link operations remain available to the row owner.
+set request.jwt.claim.sub = '00000000-0000-4000-8000-000000000001';
+do $$
+declare
+  direct_tag_id bigint;
+  direct_trade_id bigint;
+  direct_link_id bigint;
+begin
+  insert into public.journal_tradetags (name, color, user_id, created_at)
+  values ('Direct CRUD', '#445566', auth.uid(), statement_timestamp())
+  returning id into direct_tag_id;
+  insert into public.journal_tradejournal (
+    user_id, company_name, trade_type, quantity, buy_price, entry_date, status,
+    personal_notes, direction, broker, exchange, created_at, updated_at
+  ) values (
+    auth.uid(), 'Direct CRUD', 'EQUITY_INTRADAY', 1, 100, '2026-01-01', 'OPEN',
+    '', 'LONG', 'Dhan', 'NSE', statement_timestamp(), statement_timestamp()
+  ) returning id into direct_trade_id;
+  insert into public.journal_tradejournaltags (trade_id, tag_id)
+  values (direct_trade_id, direct_tag_id) returning id into direct_link_id;
+  update public.journal_tradetags set color = '#556677' where id = direct_tag_id;
+  update public.journal_tradejournal set buy_price = 105 where id = direct_trade_id;
+  if (select color from public.journal_tradetags where id = direct_tag_id) <> '#556677'
+     or (select buy_price from public.journal_tradejournal where id = direct_trade_id) <> 105
+     or not exists (select 1 from public.journal_tradejournaltags where id = direct_link_id) then
+    raise exception 'An owner could not perform direct journal CRUD and link operations';
+  end if;
+  delete from public.journal_tradejournaltags where id = direct_link_id;
+  delete from public.journal_tradejournal where id = direct_trade_id;
+  delete from public.journal_tradetags where id = direct_tag_id;
+  if exists (select 1 from public.journal_tradejournal where id = direct_trade_id)
+     or exists (select 1 from public.journal_tradetags where id = direct_tag_id) then
+    raise exception 'An owner could not delete owned journal rows';
+  end if;
+end;
+$$;
+
+-- Missing JWT subjects cannot see rows, create rows, or call journal write endpoints.
+set request.jwt.claim.sub = '';
+do $$
+begin
+  if auth.uid() is not null
+     or exists (select 1 from public.journal_tradejournal)
+     or exists (select 1 from public.journal_tradetags) then
+    raise exception 'A missing subject saw protected journal rows';
+  end if;
+  begin
+    insert into public.journal_tradetags (name, color, user_id, created_at)
+    values ('Missing subject', '#000000', null, statement_timestamp());
+    raise exception 'A missing subject inserted a journal tag';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.journal_save_tag(null, '{"name":"Missing subject"}');
+    raise exception 'A missing subject used a journal endpoint';
+  exception when insufficient_privilege then null;
+  end;
 end;
 $$;
 
@@ -285,6 +527,27 @@ reset role;
 set role anon;
 do $$
 begin
+  begin
+    perform 1 from public.journal_tradejournal;
+    raise exception 'Anonymous caller could read journal rows';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.journal_tradetags (name, color, user_id, created_at)
+    values ('Anonymous', '#000000', null, statement_timestamp());
+    raise exception 'Anonymous caller could insert journal rows';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    update public.journal_tradetags set color = '#ffffff';
+    raise exception 'Anonymous caller could update journal rows';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    delete from public.journal_tradetags;
+    raise exception 'Anonymous caller could delete journal rows';
+  exception when insufficient_privilege then null;
+  end;
   begin
     perform public.journal_save_trade(null, '{}', null);
     raise exception 'Anonymous caller could execute journal_save_trade';

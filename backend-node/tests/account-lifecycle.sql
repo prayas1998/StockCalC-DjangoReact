@@ -1,21 +1,9 @@
 -- Run as a PostgreSQL superuser against a fresh disposable test database.
--- The journal fixture builds the Django-like schema and applies the first migration.
+-- The journal fixture applies the journal, account, and owner policies in order.
+\set journal_fixture_account_lifecycle true
 \ir journal-writes.sql
 
-create role service_role;
-create role fixture_auth_admin;
-create table auth.users (
-  id uuid primary key,
-  email text unique,
-  raw_user_meta_data jsonb
-);
-insert into auth.users values
-  ('00000000-0000-4000-a000-000000000001', 'alice@users.tradesmart.local', '{}'),
-  ('00000000-0000-4000-a000-000000000002', 'bob@example.com', '{}');
-grant usage on schema auth to fixture_auth_admin;
-grant select, update, delete on auth.users to fixture_auth_admin;
-
-\ir ../supabase/migrations/202611220002_account_lifecycle.sql
+\unset journal_fixture_account_lifecycle
 
 set role service_role;
 do $$
