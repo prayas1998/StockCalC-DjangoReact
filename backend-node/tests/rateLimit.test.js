@@ -126,26 +126,63 @@ test('classifies tags routes as data operations', async () => {
 });
 
 test('production app counts signed-out and invalid introspection requests by anonymous IP', async () => {
-  const signedOut = await productionApp.request('/api/auth/introspect/', {
-    headers: { 'x-forwarded-for': '198.51.100.30' }
-  });
-  assert.equal(signedOut.status, 400);
+  const previousAnonymousLimit = config.rateLimiting.auth.anon;
+  config.rateLimiting.auth.anon = '1/min';
+  try {
+    const signedOut = await productionApp.request('/api/auth/introspect/', {
+      headers: { 'x-forwarded-for': '198.51.100.30' }
+    });
+    assert.equal(signedOut.status, 400);
+    assert.equal((await productionApp.request('/api/auth/introspect/', {
+      headers: { 'x-forwarded-for': '198.51.100.30' }
+    })).status, 429);
 
-  const headers = {
-    authorization: 'Bearer invalid-token',
-    'x-forwarded-for': '198.51.100.31'
-  };
-  for (let i = 0; i < 10; i += 1) {
+    const headers = {
+      authorization: 'Bearer invalid-token',
+      'x-forwarded-for': '198.51.100.31'
+    };
     assert.equal((await productionApp.request('/api/auth/introspect/', { headers })).status, 401);
+    const limited = await productionApp.request('/api/auth/introspect/', { headers });
+    assert.equal(limited.status, 429);
+    assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+  } finally {
+    config.rateLimiting.auth.anon = previousAnonymousLimit;
   }
-  const limited = await productionApp.request('/api/auth/introspect/', { headers });
-  assert.equal(limited.status, 429);
-  assert.ok(Number(limited.headers.get('retry-after')) >= 1);
+});
+
+test('pre-auth IP/category budget bounds provider lookups while preserving anonymous failures', async () => {
+  const previousPreVerifyLimit = config.rateLimiting.auth.preVerifyIp.auth;
+  const previousAnonymousLimit = config.rateLimiting.auth.anon;
+  config.rateLimiting.auth.preVerifyIp.auth = '2/min';
+  config.rateLimiting.auth.anon = '1/min';
+  const forged = jwt.sign({ sub: 'forged-subject', email: 'fixture@example.com' }, 'wrong-signing-secret', {
+    algorithm: 'HS256',
+    expiresIn: '1h'
+  });
+  const headers = {
+    authorization: `Bearer ${forged}`,
+    'x-forwarded-for': '198.51.100.32'
+  };
+  const requestsBefore = verificationRequestCount;
+
+  try {
+    assert.equal((await productionApp.request('/api/auth/introspect/', { headers })).status, 401);
+    assert.equal(verificationRequestCount, requestsBefore + 1);
+    assert.equal((await productionApp.request('/api/auth/introspect/', { headers })).status, 429);
+    assert.equal(verificationRequestCount, requestsBefore + 2);
+    assert.equal((await productionApp.request('/api/auth/introspect/', { headers })).status, 429);
+    assert.equal(verificationRequestCount, requestsBefore + 2);
+  } finally {
+    config.rateLimiting.auth.preVerifyIp.auth = previousPreVerifyLimit;
+    config.rateLimiting.auth.anon = previousAnonymousLimit;
+  }
 });
 
 test('production app counts a valid protected request once under its verified user ID', async () => {
   const previousAuthLimit = config.rateLimiting.auth.user;
-  config.rateLimiting.auth.user = '1/min';
+  const previousPreVerifyLimit = config.rateLimiting.auth.preVerifyIp.auth;
+  config.rateLimiting.auth.user = '2/min';
+  config.rateLimiting.auth.preVerifyIp.auth = '10/min';
   const token = jwt.sign({ sub: 'verified-user-once', email: 'fixture@example.com' }, fixtureSigningSecret, {
     algorithm: 'HS256',
     expiresIn: '1h'
@@ -153,11 +190,51 @@ test('production app counts a valid protected request once under its verified us
   verifiedUsers.set(token, 'verified-user-once');
 
   try {
-    const headers = { authorization: `Bearer ${token}` };
+    const headers = {
+      authorization: `Bearer ${token}`,
+      'x-forwarded-for': '198.51.100.33'
+    };
+    const requestsBefore = verificationRequestCount;
     assert.equal((await productionApp.request('/api/auth/unknown/', { headers })).status, 404);
-    assert.equal((await productionApp.request('/api/auth/unknown/', { headers })).status, 429);
+    assert.equal(verificationRequestCount, requestsBefore + 1);
+
+    verificationUserMissing = true;
+    try {
+      assert.equal((await productionApp.request('/api/auth/unknown/', { headers })).status, 401);
+      assert.equal(verificationRequestCount, requestsBefore + 2);
+    } finally {
+      verificationUserMissing = false;
+    }
+
+    const concurrent = await Promise.all(Array.from({ length: 4 }, () =>
+      productionApp.request('/api/auth/unknown/', { headers })
+    ));
+    assert.deepEqual(concurrent.map(({ status }) => status).sort(), [404, 429, 429, 429]);
+    assert.equal(verificationRequestCount, requestsBefore + 3);
+
+    const newToken = jwt.sign({
+      sub: 'verified-user-once',
+      email: 'fixture@example.com',
+      nonce: 'new-token-after-quota'
+    }, fixtureSigningSecret, { algorithm: 'HS256', expiresIn: '1h' });
+    verifiedUsers.set(newToken, 'verified-user-once');
+    assert.equal((await productionApp.request('/api/auth/unknown/', {
+      headers: { ...headers, authorization: `Bearer ${newToken}` }
+    })).status, 429);
+    assert.equal(verificationRequestCount, requestsBefore + 4);
+
+    const otherUserToken = jwt.sign({
+      sub: 'other-user-shared-ip',
+      email: 'other@example.com'
+    }, fixtureSigningSecret, { algorithm: 'HS256', expiresIn: '1h' });
+    verifiedUsers.set(otherUserToken, 'other-user-shared-ip');
+    assert.equal((await productionApp.request('/api/auth/unknown/', {
+      headers: { ...headers, authorization: `Bearer ${otherUserToken}` }
+    })).status, 404);
+    assert.equal(verificationRequestCount, requestsBefore + 5);
   } finally {
     config.rateLimiting.auth.user = previousAuthLimit;
+    config.rateLimiting.auth.preVerifyIp.auth = previousPreVerifyLimit;
   }
 });
 

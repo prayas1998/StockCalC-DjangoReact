@@ -4,7 +4,7 @@ import { cors } from 'hono/cors';
 import { requestLogger } from './utils/logger.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware } from './middleware/auth.js';
-import { rateLimitMiddleware } from './middleware/rateLimit.js';
+import { preAuthRateLimitMiddleware, rateLimitMiddleware } from './middleware/rateLimit.js';
 import config from './config.js';
 import { calcRoutes } from './routes/calculator.js';
 import { profileRoutes } from './routes/profile.js';
@@ -45,6 +45,7 @@ app.use(
   })
 );
 app.use('*', requestLogger);
+app.use('*', preAuthRateLimitMiddleware);
 app.use('*', authMiddleware);
 app.use('*', rateLimitMiddleware);
 

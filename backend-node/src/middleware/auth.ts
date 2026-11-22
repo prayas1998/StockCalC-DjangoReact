@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import type { User } from '@supabase/supabase-js';
-import { rateLimitMiddleware } from './rateLimit.js';
+import { rateLimitMiddleware, rememberVerifiedToken, releasePreAuthUserReservation } from './rateLimit.js';
 import { supabaseClient } from '../services/supabase.js';
 
 type VerificationFailure = 'invalid' | 'not_found' | 'unavailable';
@@ -135,6 +135,7 @@ export const authMiddleware = async (c: any, next: any) => {
     if (!payload.sub || !email) {
       return rejectVerificationFailure(c, 'invalid');
     }
+    rememberVerifiedToken(token, authUser.id, payload.exp * 1000);
     
     // Create user object (mirroring Django SupabaseUser)
     const user = {
@@ -169,6 +170,8 @@ export const authMiddleware = async (c: any, next: any) => {
         message: 'Authentication failed'
       }, 500);
     }
+  } finally {
+    releasePreAuthUserReservation(c);
   }
 };
 

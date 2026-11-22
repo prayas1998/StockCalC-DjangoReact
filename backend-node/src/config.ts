@@ -52,7 +52,12 @@ export const config = {
     // Authentication endpoints
     auth: {
       user: '20/min',
-      anon: '10/min'
+      anon: '10/min',
+      preVerifyIp: {
+        auth: '20/min',
+        data: '1000/hour',
+        general: '2000/hour'
+      }
     },
     // Data operations (CRUD) endpoints
     dataOperations: {
