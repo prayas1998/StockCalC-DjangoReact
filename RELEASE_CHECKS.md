@@ -58,22 +58,43 @@ download the file.
 Keep promotion blocked until each exposed credential has been retired and
 previously uploaded copies have been checked and removed where possible.
 
-Run hosted destructive checks only against an isolated disposable project and
-empty disposable database. Production and Preview currently share the project
-configuration, and no isolated target or active edge rule is available; do not
-use the shared project for destructive fixtures or weaken MFA. Run release
-migrations only through the approved deployment process. With two disposable
-users, verify journal RLS
-isolation and rollback, account deletion and cascade rollback, and password
-change/deletion/session revocation with an MFA-enabled user at the configured
-assurance level. Check the actual hosted **Require current password** and MFA
-behavior, including the assurance level, and global session revocation from
-two devices. The local PostgreSQL 17 fixtures
-above do not replace these hosted checks. Relevant fixture paths are
+The existing journal-write and account-lifecycle migrations do not add the
+three owner policies. Apply `202611220003_journal_owner_policies.sql` through
+the approved release process in coordination with the Hono rollout:
+
+1. Stage the compatible Hono candidate. Its protected journal queries use the
+   anon/publishable API key with the caller's bearer token; confirm the caller
+   JWT is evaluated as PostgreSQL role `authenticated`.
+2. Route all protected journal consumers to that candidate before enabling
+   policies, or pause incompatible consumers during a maintenance window.
+3. After enabling policies, compare catalog policy definitions and roles with
+   the migration. With ordinary sessions for two disposable accounts, query
+   only their known fixture table/link IDs and verify the Data API returns the
+   caller's subset and no other user's IDs. Separately verify Hono owner
+   read/write and that the other fixture data remains unchanged. Direct DML
+   write enforcement is covered by the disposable PostgreSQL fixtures; do
+   not add direct DML to the hosted smoke. Remove only fixture accounts/rows
+   created for this authorized test.
+
+If the check fails, keep journal traffic off the incompatible backend until
+the issue is corrected. If migration preconditions refuse to apply, investigate
+the target's policy and sequence state; do not remove existing policies or
+weaken RLS as a workaround. For Data API checks, use ordinary caller sessions
+and bounded fixture IDs; do not use service-role credentials or unbounded row
+queries. Keep the service-role key limited to admin actions.
+
+Do not run local SQL fixtures, seeds, drops, truncates, or broad cleanup on a
+shared Supabase target. The smoke test does not replace the mandatory local
+PostgreSQL 17 fixtures above, which cover transaction rollback. Relevant
+fixture paths are
 [`journal-writes.sql`](backend-node/tests/journal-writes.sql),
 [`journal-concurrency.sh`](backend-node/tests/journal-concurrency.sh), and
 [`account-lifecycle.sql`](backend-node/tests/account-lifecycle.sql); use only
-disposable targets.
+an empty local disposable database for the SQL fixtures. Check API edge
+routing, shared edge rate-limiter enforcement, trusted-proxy configuration,
+and Auth-provider behavior as separate release gates; RLS smoke checks do not
+cover them. For account, MFA, and two-device provider checks, see
+[`backend-node/supabase/README.md`](backend-node/supabase/README.md).
 
 Keep account operations on Hono. The Django password-change endpoint returns
 501 and leaves the password unchanged. In a modern-only deployment where
