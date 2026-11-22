@@ -1,22 +1,63 @@
-from rest_framework import authentication
-from rest_framework import exceptions
-import jwt
-import os
-import logging
+from contextlib import closing
 from datetime import datetime, timezone
-from django.conf import settings
+from http.client import HTTPException, HTTPSConnection
+import json
+import jwt
+from time import time
+from urllib.parse import urlsplit
+from uuid import UUID
 
-logger = logging.getLogger('security.auth')
+from django.conf import settings
+from rest_framework import authentication, exceptions, status
+
+
+class AuthenticationUnavailable(exceptions.APIException):
+    status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+    default_detail = 'Authentication service is temporarily unavailable.'
+
+
+def get_project_user(token):
+    public_key = getattr(settings, 'SUPABASE_PUBLISHABLE_KEY', None)
+    try:
+        project = urlsplit(getattr(settings, 'SUPABASE_URL', None) or '')
+        if (
+            not public_key or project.scheme != 'https' or not project.hostname
+            or project.username is not None or project.query or project.fragment
+        ):
+            raise AuthenticationUnavailable()
+
+        # Connect to the configured project only. HTTPSConnection does not follow redirects.
+        with closing(HTTPSConnection(project.hostname, project.port, timeout=5)) as connection:
+            connection.request('GET', f"{project.path.rstrip('/')}/auth/v1/user", headers={
+                'apikey': public_key,
+                'Authorization': f'Bearer {token}',
+                'Accept': 'application/json',
+            })
+            response = connection.getresponse()
+            if response.status in (400, 401, 403, 404):
+                raise exceptions.AuthenticationFailed('Invalid authentication token. Please log in again.')
+            if response.status != 200:
+                raise AuthenticationUnavailable()
+            user = json.load(response)
+    except (OSError, HTTPException, ValueError):
+        raise AuthenticationUnavailable() from None
+
+    if not isinstance(user, dict):
+        raise AuthenticationUnavailable()
+    return user
+
 
 class SupabaseUser:
     """Simplified Supabase user class."""
     
-    def __init__(self, user_id, email, first_name, last_name):
+    def __init__(self, user_id, email, first_name, last_name, *, issued_at=None, expires_at=None):
         self.id = user_id
         self.pk = user_id  # Add pk attribute for Django compatibility
         self.email = email
         self.first_name = first_name
         self.last_name = last_name
+        self.token_issued_at = issued_at
+        self.token_expires_at = expires_at
         self.is_authenticated = True
         self.is_active = True
         self.is_anonymous = False
@@ -50,72 +91,57 @@ class SupabaseUser:
 
 
 class SupabaseAuthentication(authentication.BaseAuthentication):
-    """
-    Simplified Supabase authentication with basic JWT validation.
-    """
+    """Authenticate callers against the configured Supabase project's Auth service."""
     
     def authenticate(self, request):
-        """
-        Authenticate request using simplified JWT validation.
-        """
-        # Extract token from request
-        token = self._extract_token(request)
-        if not token:
+        credentials = authentication.get_authorization_header(request).split()
+        if not credentials or credentials[0].lower() != b'bearer':
             return None
-        
-        try:
-            # Get JWT secret
-            jwt_secret = getattr(settings, 'SUPABASE_JWT_SECRET', None)
-            if not jwt_secret:
-                jwt_secret = os.getenv('SUPABASE_JWT_SECRET')
-            
-            if not jwt_secret:
-                logger.error("JWT secret not configured")
-                raise exceptions.AuthenticationFailed('Authentication service not configured')
-            
-            # Decode and validate token
-            payload = jwt.decode(
-                token,
-                jwt_secret,
-                algorithms=['HS256'],
-                options={"verify_signature": True, "verify_aud": False}
-            )
-            
-            # Extract user information
-            user_id = payload.get('sub')
-            email = payload.get('email', '')
-            user_metadata = payload.get('user_metadata', {})
-            
-            # Extract user names
-            first_name = user_metadata.get('first_name', '')
-            last_name = user_metadata.get('last_name', '')
-            
-            # Create user instance
-            user = SupabaseUser(
-                user_id=user_id,
-                email=email,
-                first_name=first_name,
-                last_name=last_name
-            )
-            
-            logger.info(f"Authentication successful for {email}")
-            return (user, token)
-            
-        except jwt.ExpiredSignatureError:
-            raise exceptions.AuthenticationFailed('Your session has expired. Please log in again.')
-        except jwt.InvalidTokenError:
+        if len(credentials) != 2:
             raise exceptions.AuthenticationFailed('Invalid authentication token. Please log in again.')
-        except Exception as e:
-            logger.error(f"Authentication error: {e}")
-            raise exceptions.AuthenticationFailed('Authentication failed')
-    
-    def _extract_token(self, request):
-        """
-        Extract JWT token from request headers.
-        """
-        # Try Authorization header
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            return auth_header.split(' ')[1]
-        
-        return None
+
+        # Reject malformed and expired inputs locally. Only the project can verify signatures.
+        try:
+            token = credentials[1].decode('ascii')
+            claims = jwt.decode(token, options={"verify_signature": False})
+            subject = str(UUID(claims.get('sub', '')))
+        except (jwt.PyJWTError, TypeError, ValueError, AttributeError):
+            raise exceptions.AuthenticationFailed('Invalid authentication token. Please log in again.') from None
+
+        issued_at = claims.get('iat')
+        expires_at = claims.get('exp')
+        now = int(time())
+        if type(issued_at) is not int or type(expires_at) is not int or issued_at > now + 60:
+            raise exceptions.AuthenticationFailed('Invalid authentication token. Please log in again.')
+        if expires_at <= now:
+            raise exceptions.AuthenticationFailed('Your session has expired. Please log in again.')
+
+        try:
+            issued_at = datetime.fromtimestamp(issued_at, tz=timezone.utc)
+            expires_at = datetime.fromtimestamp(expires_at, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            raise exceptions.AuthenticationFailed('Invalid authentication token. Please log in again.') from None
+
+        account = get_project_user(token)
+        email = account.get('email')
+        if (
+            account.get('id') != subject or account.get('role') != 'authenticated'
+            or account.get('is_anonymous') is True or not isinstance(email, str) or not email.strip()
+        ):
+            raise exceptions.AuthenticationFailed('Invalid authentication token. Please log in again.')
+
+        metadata = account.get('user_metadata')
+        if not isinstance(metadata, dict):
+            metadata = {}
+        user = SupabaseUser(
+            user_id=account['id'],
+            email=email,
+            first_name=metadata.get('first_name') or '',
+            last_name=metadata.get('last_name') or '',
+            issued_at=issued_at,
+            expires_at=expires_at,
+        )
+        return user, token
+
+    def authenticate_header(self, request):
+        return 'Bearer'
