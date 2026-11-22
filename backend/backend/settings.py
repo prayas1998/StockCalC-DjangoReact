@@ -30,8 +30,8 @@ DEBUG = env_config['debug']
 ALLOWED_HOSTS = env_config['allowed_hosts']
 
 # Authentication configuration
-SUPABASE_JWT_SECRET = env_config.get('jwt_secret')
 SUPABASE_URL = env_config.get('supabase_url')
+SUPABASE_PUBLISHABLE_KEY = env_config.get('supabase_publishable_key')
 SUPABASE_SERVICE_ROLE_KEY = env_config.get('supabase_service_role_key')
 
 # Authentication configuration loaded from environment
@@ -182,10 +182,14 @@ if not DATABASE_URL:
             f"Please set DOCKER_DATABASE_URL for development or DATABASE_URL for production."
         )
 
-DATABASES = {
-    "default": dj_database_url.parse(DATABASE_URL, conn_max_age=conn_age)
-}
-print("Database URL: ", DATABASE_URL)
+try:
+    DATABASES = {
+        "default": dj_database_url.parse(DATABASE_URL, conn_max_age=conn_age)
+    }
+except (TypeError, ValueError):
+    raise EnvironmentValidationError(
+        "Invalid database URL configuration. Check its scheme, host, port, and database name."
+    ) from None
 
 # Password validation
 # https://docs.djangoproject.com/en/5.1/ref/settings/#auth-password-validators

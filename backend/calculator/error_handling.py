@@ -14,7 +14,7 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
-from rest_framework.exceptions import ValidationError, AuthenticationFailed, PermissionDenied
+from rest_framework.exceptions import APIException, ValidationError, AuthenticationFailed, NotAuthenticated, PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, DatabaseError
 import uuid
@@ -220,9 +220,12 @@ class ErrorHandler:
     def categorize_error(cls, error: Exception) -> ErrorCategory:
         """Automatically categorize an error based on its type."""
         
-        if isinstance(error, (AuthenticationFailed,)):
+        if isinstance(error, (AuthenticationFailed, NotAuthenticated)):
             return ErrorCategory.AUTHENTICATION
-        
+
+        elif isinstance(error, APIException) and error.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+            return ErrorCategory.EXTERNAL_SERVICE
+
         elif isinstance(error, (PermissionDenied,)):
             return ErrorCategory.AUTHORIZATION
         
