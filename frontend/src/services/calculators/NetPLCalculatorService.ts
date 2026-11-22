@@ -12,6 +12,7 @@ export interface NetPLParams {
 }
 
 export interface NetPLResult {
+  exitPrice: number;
   grossProfit: number;
   netProfit: number;
   profitPercentage: number;
@@ -20,15 +21,24 @@ export interface NetPLResult {
   breakevenPrice: number;
 }
 
+export type NetPLCalculation = NetPLResult | {
+  exitPrice: null;
+  reason: 'invalid-exit' | 'breakeven-unavailable';
+};
+
 export class NetPLCalculatorService {
   /**
    * Calculate net profit/loss based on entry and exit prices
    */
-  static calculateNetPL(params: NetPLParams): NetPLResult | null {
+  static calculateNetPL(params: NetPLParams): NetPLCalculation | null {
     const { entryPrice, quantity, exitPrice, exchange, broker, tradeType, positionType } = params;
 
     if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isSafeInteger(quantity) || quantity <= 0) {
       return null;
+    }
+
+    if (exitPrice !== undefined && (!Number.isFinite(exitPrice) || exitPrice <= 0)) {
+      return { exitPrice: null, reason: 'invalid-exit' };
     }
 
     // Delivery trades are treated as long only (Django parity).
@@ -44,7 +54,12 @@ export class NetPLCalculatorService {
       effectivePositionType
     );
 
-    return this.calculateActualPL(params, breakevenPrice, exitPrice && exitPrice > 0 ? exitPrice : breakevenPrice);
+    const resolvedExitPrice = exitPrice ?? breakevenPrice;
+    if (resolvedExitPrice <= 0) {
+      return { exitPrice: null, reason: 'breakeven-unavailable' };
+    }
+
+    return this.calculateActualPL(params, breakevenPrice, resolvedExitPrice);
   }
 
   /**
@@ -72,6 +87,7 @@ export class NetPLCalculatorService {
     const isProfit = netProfit >= 0;
 
     return {
+      exitPrice,
       grossProfit,
       netProfit,
       profitPercentage,
