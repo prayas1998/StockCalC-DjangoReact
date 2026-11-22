@@ -193,11 +193,22 @@ const ProfileSettings = ({ userId }: { userId: string }) => {
 
     try {
       const { data: response, caller } = await profileApi.changePassword(userId, passwordForm);
+      const confirmed = typeof response.message === 'string' && response.message.trim().length > 0 && (
+        response.password_changed === true ||
+        (response.password_changed === undefined && typeof response.temporary_session_revoked === 'boolean')
+      );
+      if (!confirmed) {
+        throw new Error('Password change was not confirmed. Your current session remains active.');
+      }
+
       if (await clearRevokedSession(caller)) {
+        const sessionCleanupIncomplete = response.caller_session_revoked === false || response.temporary_session_revoked === false;
         toast({
-          variant: response.temporary_session_revoked ? 'default' : 'destructive',
+          variant: sessionCleanupIncomplete ? 'destructive' : 'default',
           title: 'Password changed',
-          description: response.message
+          description: sessionCleanupIncomplete
+            ? `${response.message} One or more sessions may remain signed in.`
+            : response.message
         });
       }
       resetPasswordForm();
