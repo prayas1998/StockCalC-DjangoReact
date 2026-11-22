@@ -143,3 +143,6 @@ frontend/dist/
 # Database
 *.sqlite3
 node_modules
+
+# Keep the production readiness report local-only.
+/PRODUCTION_READINESS.md
