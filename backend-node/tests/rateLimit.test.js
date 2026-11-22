@@ -1,30 +1,76 @@
 import { after, before, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { generateKeyPairSync } from 'node:crypto';
 
 let Hono;
 let config;
 let RateLimiter;
 let rateLimitMiddleware;
 let productionApp;
+let introspectionApp;
+let authRoutes;
 let jwt;
+const fixtureSigningSecret = 'rate-limit-fixture-signing-secret';
+const verifiedUsers = new Map();
+let verificationUnavailable = false;
+let verificationUserMissing = false;
+let verificationRequestCount = 0;
 const originalDateNow = Date.now;
+const originalFetch = globalThis.fetch;
+const { privateKey: providerFixturePrivateKey, publicKey: providerFixturePublicKey } = generateKeyPairSync('ec', {
+  namedCurve: 'prime256v1'
+});
 
 before(async () => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
-  process.env.SUPABASE_ANON_KEY = 'test-anon-key';
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
-  process.env.SUPABASE_JWT_SECRET = 'test-jwt-secret';
+  delete process.env.SUPABASE_ANON_KEY;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  process.env.SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_fixture';
+  process.env.SUPABASE_SECRET_KEY = 'sb_secret_fixture';
   process.env.VERCEL = '1';
+
+  globalThis.fetch = async (input, options) => {
+    verificationRequestCount += 1;
+    const request = new Request(input, options);
+    const url = new URL(request.url);
+    assert.equal(url.pathname, '/auth/v1/user');
+    assert.equal(request.headers.get('apikey'), 'sb_publishable_fixture');
+    if (verificationUnavailable) {
+      return Response.json({ code: 'unexpected_failure' }, { status: 503 });
+    }
+    if (verificationUserMissing) return Response.json({ code: 'user_not_found' }, { status: 404 });
+    const token = request.headers.get('authorization')?.replace('Bearer ', '');
+    const userId = verifiedUsers.get(token);
+    if (!userId) return Response.json({ code: 'bad_jwt' }, { status: 401 });
+    const decoded = jwt.decode(token, { complete: true });
+    if (decoded?.header.alg === 'ES256') {
+      let claims;
+      try {
+        claims = jwt.verify(token, providerFixturePublicKey, { algorithms: ['ES256'] });
+      } catch {
+        return Response.json({ code: 'bad_jwt' }, { status: 401 });
+      }
+      if (typeof claims === 'string' || claims.sub !== userId) {
+        return Response.json({ code: 'bad_jwt' }, { status: 401 });
+      }
+    }
+    return Response.json({ id: userId, email: 'fixture@example.com', user_metadata: {} });
+  };
 
   ({ Hono } = await import('hono'));
   ({ RateLimiter, rateLimitMiddleware } = await import('../dist/middleware/rateLimit.js'));
   ({ default: config } = await import('../dist/config.js'));
   ({ default: jwt } = await import('jsonwebtoken'));
   ({ default: productionApp } = await import('../dist/index.js'));
+  ({ authRoutes } = await import('../dist/routes/auth.js'));
+  const introspectionRoute = authRoutes.find(({ path }) => path === '/api/auth/introspect/');
+  introspectionApp = new Hono();
+  introspectionApp.get(introspectionRoute.path, introspectionRoute.handler);
 });
 
 after(() => {
   Date.now = originalDateNow;
+  globalThis.fetch = originalFetch;
 });
 
 function createFixture({ authenticated = false, userId = 'fixture-user' } = {}) {
@@ -100,10 +146,11 @@ test('production app counts signed-out and invalid introspection requests by ano
 test('production app counts a valid protected request once under its verified user ID', async () => {
   const previousAuthLimit = config.rateLimiting.auth.user;
   config.rateLimiting.auth.user = '1/min';
-  const token = jwt.sign({ sub: 'verified-user-once', email: 'fixture@example.com' }, 'test-jwt-secret', {
+  const token = jwt.sign({ sub: 'verified-user-once', email: 'fixture@example.com' }, fixtureSigningSecret, {
     algorithm: 'HS256',
     expiresIn: '1h'
   });
+  verifiedUsers.set(token, 'verified-user-once');
 
   try {
     const headers = { authorization: `Bearer ${token}` };
@@ -111,6 +158,135 @@ test('production app counts a valid protected request once under its verified us
     assert.equal((await productionApp.request('/api/auth/unknown/', { headers })).status, 429);
   } finally {
     config.rateLimiting.auth.user = previousAuthLimit;
+  }
+});
+
+test('verifies project tokens before protected routes and preserves introspection claims', async () => {
+  const userId = 'verified-user-once';
+  const token = jwt.sign({ sub: userId, email: 'fixture@example.com' }, fixtureSigningSecret, { expiresIn: '1h' });
+  verifiedUsers.set(token, userId);
+
+  const protectedResponse = await productionApp.request('/api/auth/unknown/', {
+    headers: { authorization: `Bearer ${token}` }
+  });
+  assert.equal(protectedResponse.status, 404);
+  assert.doesNotMatch(await protectedResponse.text(), /sb_secret_fixture/);
+
+  const introspection = await introspectionApp.request('/api/auth/introspect/', {
+    headers: { authorization: `Bearer ${token}` }
+  });
+  assert.equal(introspection.status, 200);
+  const body = await introspection.json();
+  assert.equal(body.valid, true);
+  assert.equal(body.user.id, userId);
+  assert.equal(body.token_info.issuer, 'supabase');
+  assert.ok(Number.isFinite(Date.parse(body.token_info.issued_at)));
+  assert.ok(Number.isFinite(Date.parse(body.token_info.expires_at)));
+});
+
+test('accepts project-signed ES256 tokens and rejects unknown signatures and mismatched subjects', async () => {
+  const userId = 'asymmetric-fixture-user';
+  const signed = (sub, key = providerFixturePrivateKey) => jwt.sign({ sub }, key, {
+    algorithm: 'ES256',
+    expiresIn: '1h'
+  });
+  const accepted = signed(userId);
+  verifiedUsers.set(accepted, userId);
+  const response = await productionApp.request('/api/auth/introspect/', {
+    headers: { authorization: `Bearer ${accepted}` }
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).user.id, userId);
+
+  const { privateKey: otherPrivateKey } = generateKeyPairSync('ec', { namedCurve: 'prime256v1' });
+  const unknownSignature = signed(userId, otherPrivateKey);
+  verifiedUsers.set(unknownSignature, userId);
+  assert.equal((await productionApp.request('/api/auth/introspect/', {
+    headers: { authorization: `Bearer ${unknownSignature}` }
+  })).status, 401);
+
+  const mismatchedSubject = signed('claimed-subject');
+  verifiedUsers.set(mismatchedSubject, userId);
+  assert.equal((await productionApp.request('/api/auth/introspect/', {
+    headers: { authorization: `Bearer ${mismatchedSubject}` }
+  })).status, 401);
+});
+
+test('rejects malformed and expired tokens before contacting project auth', async () => {
+  const requestsBefore = verificationRequestCount;
+  const malformed = await productionApp.request('/api/auth/unknown/', {
+    headers: { authorization: 'Bearer invalid-token' }
+  });
+  assert.equal(malformed.status, 401);
+  assert.equal(verificationRequestCount, requestsBefore);
+
+  const expired = jwt.sign({ sub: 'expired-user' }, fixtureSigningSecret, { expiresIn: -1 });
+  const response = await productionApp.request('/api/auth/unknown/', {
+    headers: { authorization: `Bearer ${expired}` }
+  });
+  assert.equal(response.status, 401);
+  assert.equal(verificationRequestCount, requestsBefore);
+
+  const malformedPayload = `${Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url')}.${Buffer.from('not-json').toString('base64url')}.AA`;
+  const decodeFailure = await productionApp.request('/api/auth/unknown/', {
+    headers: { authorization: `Bearer ${malformedPayload}` }
+  });
+  assert.equal(decodeFailure.status, 401);
+  assert.equal(verificationRequestCount, requestsBefore);
+});
+
+test('rejects decoded claims when the project auth endpoint rejects the token', async () => {
+  const forged = jwt.sign({ sub: 'verified-user-once', email: 'fixture@example.com' }, 'other-fixture-secret');
+  const response = await introspectionApp.request('/api/auth/introspect/', {
+    headers: { authorization: `Bearer ${forged}` }
+  });
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), { valid: false, error: 'Invalid token' });
+});
+
+test('fails closed without exposing keys when project verification is unavailable', async () => {
+  verificationUnavailable = true;
+  try {
+    const token = jwt.sign({ sub: 'temporarily-unverifiable' }, fixtureSigningSecret, { expiresIn: '1h' });
+    const headers = { authorization: `Bearer ${token}` };
+    const protectedResponse = await productionApp.request('/api/auth/unknown/', { headers });
+    assert.equal(protectedResponse.status, 503);
+    assert.doesNotMatch(await protectedResponse.text(), /sb_(?:secret|publishable)_fixture/);
+
+    const introspection = await introspectionApp.request('/api/auth/introspect/', { headers });
+    assert.equal(introspection.status, 503);
+    assert.deepEqual(await introspection.json(), {
+      valid: false,
+      error: 'Authentication service unavailable'
+    });
+  } finally {
+    verificationUnavailable = false;
+  }
+});
+
+test('preserves production introspection responses for deleted users and provider outages', async () => {
+  const requestsBefore = verificationRequestCount;
+  const token = jwt.sign({ sub: 'deleted-user' }, fixtureSigningSecret, { expiresIn: '1h' });
+  verificationUserMissing = true;
+  try {
+    const missing = await productionApp.request('/api/auth/introspect/', {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { valid: false, error: 'User not found' });
+    const requestsAfterMissingUser = verificationRequestCount;
+    assert.equal(requestsAfterMissingUser, requestsBefore + 1);
+    verificationUserMissing = false;
+    verificationUnavailable = true;
+    const unavailable = await productionApp.request('/api/auth/introspect/', {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    assert.equal(unavailable.status, 503);
+    assert.deepEqual(await unavailable.json(), { valid: false, error: 'Authentication service unavailable' });
+    assert.equal(verificationRequestCount, requestsAfterMissingUser + 1);
+  } finally {
+    verificationUserMissing = false;
+    verificationUnavailable = false;
   }
 });
 

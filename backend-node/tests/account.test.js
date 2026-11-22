@@ -4,13 +4,12 @@ import jwt from 'jsonwebtoken';
 
 const aliceId = '00000000-0000-4000-a000-000000000001';
 const bobId = '00000000-0000-4000-a000-000000000002';
-const secret = 'test-jwt-signing-secret';
+const fixtureSigningSecret = 'test-jwt-signing-secret';
 Object.assign(process.env, {
   VERCEL: '1',
   SUPABASE_URL: 'https://account-fixture.invalid',
   SUPABASE_ANON_KEY: 'fixture-anon-key',
   SUPABASE_SERVICE_ROLE_KEY: 'fixture-service-key',
-  SUPABASE_JWT_SECRET: secret,
 });
 
 const user = (id, username) => ({
@@ -22,7 +21,7 @@ const user = (id, username) => ({
 });
 const alice = user(aliceId, 'alice');
 const bob = user(bobId, 'bob');
-const callerToken = jwt.sign({ sub: aliceId, email: 'stale_jwt_email@example.com' }, secret, { expiresIn: '1h' });
+const callerToken = jwt.sign({ sub: aliceId, email: 'stale_jwt_email@example.com' }, fixtureSigningSecret, { expiresIn: '1h' });
 const callerAuth = `Bearer ${callerToken}`;
 const temporaryToken = 'temporary-access-token';
 const temporaryAuth = `Bearer ${temporaryToken}`;
@@ -40,9 +39,16 @@ globalThis.fetch = async (input, init) => {
   assert.equal(url.origin, 'https://account-fixture.invalid');
   const auth = request.headers.get('authorization');
   const body = request.body ? await request.json() : null;
-  fixture.calls.push({ method: request.method, path: url.pathname, auth, body, scope: url.searchParams.get('scope') });
+  const call = { method: request.method, path: url.pathname, auth, body, scope: url.searchParams.get('scope') };
 
   if (url.pathname === '/auth/v1/user') {
+    if (request.method === 'GET') {
+      fixture.verificationCalls.push(call);
+      assert.equal(auth, callerAuth);
+      assert.equal(request.headers.get('apikey'), 'fixture-anon-key');
+      return json(fixture.alice);
+    }
+    fixture.calls.push(call);
     const changingPassword = request.method === 'PUT' && body.password;
     assert.equal(auth, changingPassword ? temporaryAuth : callerAuth);
     assert.equal(request.headers.get('apikey'), 'fixture-anon-key');
@@ -55,6 +61,7 @@ globalThis.fetch = async (input, init) => {
     }
     return json(fixture.alice);
   }
+  fixture.calls.push(call);
   if (url.pathname === '/auth/v1/token') {
     assert.equal(url.searchParams.get('grant_type'), 'password');
     assert.equal(body.email, fixture.alice.email);
@@ -86,7 +93,7 @@ const { default: app } = await import('../dist/index.js');
 
 test.after(() => { globalThis.fetch = realFetch; });
 test.beforeEach(() => {
-  fixture = { alice, password: 'old-password', cleanupReady: true, accountDeleted: false, calls: [] };
+  fixture = { alice, password: 'old-password', cleanupReady: true, accountDeleted: false, calls: [], verificationCalls: [] };
 });
 
 const request = (path, method = 'GET', data) => app.request(path, {
@@ -110,7 +117,7 @@ test('incorrect and missing passwords block password changes and account deletio
   assert.equal((await deleteAccount()).status, 400);
   assert.equal((await changePassword()).status, 400);
   assert.deepEqual(fixture.calls.map(({ path }) => path), [
-    '/auth/v1/user', '/auth/v1/token', '/auth/v1/user', '/auth/v1/token',
+    '/auth/v1/token', '/auth/v1/token',
   ]);
   assert.equal(fixture.password, 'old-password');
   assert.equal(fixture.accountDeleted, false);
@@ -121,15 +128,17 @@ test('fresh proof changes the original user through a new grant and revokes that
   assert.equal(result.status, 200);
   assert.equal((await result.json()).temporary_session_revoked, true);
   assert.equal(fixture.password, 'new-password');
-  assert.deepEqual(fixture.calls[2], {
+  assert.deepEqual(fixture.calls[1], {
     method: 'PUT', path: '/auth/v1/user', auth: temporaryAuth,
     body: { current_password: 'old-password', password: 'new-password' }, scope: null,
   });
-  assert.deepEqual(fixture.calls[3], {
+  assert.deepEqual(fixture.calls[2], {
     method: 'POST', path: '/auth/v1/logout', auth: temporaryAuth, body: null, scope: 'local',
   });
+  const verifiedCount = fixture.verificationCalls.length;
   assert.equal((await changePassword('old-password')).status, 400);
-  assert.equal(fixture.calls[4].auth, callerAuth);
+  assert.equal(fixture.calls[3].path, '/auth/v1/token');
+  assert.ok(fixture.verificationCalls.length > verifiedCount);
 });
 
 test('a failed temporary revoke reports a cleanup warning after a successful password change', async () => {
