@@ -13,6 +13,12 @@ export const isValidUsername = (value: string): boolean => {
 export const usernameToInternalEmail = (username: string): string =>
   `${normalizeUsername(username)}@${INTERNAL_EMAIL_DOMAIN}`;
 
+export const usernameFromEmail = (email: string | undefined): string => {
+  const normalizedEmail = email?.toLowerCase();
+  const suffix = `@${INTERNAL_EMAIL_DOMAIN}`;
+  return normalizedEmail?.endsWith(suffix) ? normalizedEmail.slice(0, -suffix.length) : '';
+};
+
 export const resolveIdentifierToEmail = (identifier: string): string => {
   const trimmed = identifier.trim();
   return isLikelyEmail(trimmed) ? trimmed : usernameToInternalEmail(trimmed);

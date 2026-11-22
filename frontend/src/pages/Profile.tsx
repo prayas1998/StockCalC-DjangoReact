@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -19,35 +19,34 @@ import {
   AlertDialogTitle
 } from '@/components/ui/alert-dialog';
 import { User, Lock, Trash2, Eye, EyeOff } from 'lucide-react';
-import { profileApi } from '@/services/profileApi';
+import { profileApi, type ProfileData } from '@/services/profileApi';
 import Header from '@/components/ui/header';
-import { isValidUsername, normalizeUsername } from '@/lib/authIdentity';
-
-interface ProfileData {
-  email: string;
-  username: string;
-  first_name: string;
-  last_name: string;
-  date_joined: string | null;
-  last_login: string | null;
-}
 
 interface ValidationErrors {
   [key: string]: string[];
 }
 
-const Profile = () => {
-  const { user, signOut, loading: authLoading, updateUserProfile, refreshSession } = useAuth();
+const ProfileLoading = () => (
+  <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
+    <div className="text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
+      <p className="mt-4 text-muted-foreground">Loading profile...</p>
+    </div>
+  </div>
+);
+
+const ProfileSettings = ({ userId }: { userId: string }) => {
+  const { clearRevokedSession } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const mounted = useRef(false);
 
   const [profileData, setProfileData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
 
-  const [profileForm, setProfileForm] = useState({
-    username: ''
-  });
+  const [activeSessions, setActiveSessions] = useState<number | null>(null);
+  const [revokingSessions, setRevokingSessions] = useState(false);
 
   const [passwordForm, setPasswordForm] = useState({
     current_password: '',
@@ -68,136 +67,86 @@ const Profile = () => {
   const [deleting, setDeleting] = useState(false);
 
   const [errors, setErrors] = useState<ValidationErrors>({});
-  const [isProfileFormDirty, setIsProfileFormDirty] = useState(false);
 
   useEffect(() => {
-    if (!user && !authLoading) {
-      navigate('/');
-    }
-  }, [user, authLoading, navigate]);
-
-  useEffect(() => {
-    if (user) {
-      void loadProfile();
-    }
-  }, [user]);
-
-  const loadProfile = async () => {
-    try {
-      setLoading(true);
-      setErrors({});
-      const data = await profileApi.getProfile();
-      setProfileData(data);
-      setProfileForm({
-        username: data.username || (data.email ? data.email.split('@')[0] : '')
-      });
-      setIsProfileFormDirty(false);
-    } catch (error: unknown) {
-      const status = (error as { response?: { status?: number } })?.response?.status;
-      if (status === 401) {
-        toast({
-          variant: 'destructive',
-          title: 'Authentication Error',
-          description: 'Please log in again to access your profile'
-        });
-        navigate('/');
-      } else if (status === 403) {
-        toast({
-          variant: 'destructive',
-          title: 'Access Denied',
-          description: 'You do not have permission to access this profile'
-        });
-      } else if (status && status >= 500) {
-        toast({
-          variant: 'destructive',
-          title: 'Server Error',
-          description: 'Our servers are experiencing issues. Please try again later.'
-        });
-      } else {
-        const message = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.message ||
-          (error as { response?: { data?: { error?: string } } })?.response?.data?.error ||
-          'Failed to load profile information';
-        toast({
-          variant: 'destructive',
-          title: 'Error',
-          description: message
-        });
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const validateProfileForm = (): boolean => {
-    const newErrors: ValidationErrors = {};
-    const normalizedUsername = normalizeUsername(profileForm.username);
-
-    if (!normalizedUsername) {
-      newErrors.username = ['Username is required'];
-    } else if (!isValidUsername(normalizedUsername)) {
-      newErrors.username = ['Username must be 3-30 chars with lowercase letters, numbers, or underscores'];
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const handleProfileUpdate = async (e: React.FormEvent) => {
-    e.preventDefault();
+    mounted.current = true;
+    let active = true;
+    setLoading(true);
+    setProfileData(null);
+    setActiveSessions(null);
     setErrors({});
 
-    if (!validateProfileForm()) {
-      return;
-    }
-
-    setUpdating(true);
-
-    try {
-      const normalizedUsername = normalizeUsername(profileForm.username);
-      const response = await profileApi.updateProfile({ username: normalizedUsername });
-
-      if (user) {
-        try {
-          const supabaseResult = await updateUserProfile({ username: normalizedUsername }, false);
-          if (supabaseResult.error) {
-            toast({
-              variant: 'default',
-              title: 'Partial Success',
-              description: 'Profile was saved, but session sync may take a moment.'
-            });
-          } else {
-            await refreshSession();
-          }
-        } catch (supabaseError) {
-          console.warn('Supabase profile update failed:', supabaseError);
+    const loadProfile = async () => {
+      try {
+        const data = await profileApi.getProfile();
+        if (active) setProfileData(data);
+      } catch (error: unknown) {
+        if (!active) return;
+        const status = (error as { response?: { status?: number } })?.response?.status;
+        if (status === 401) {
+          toast({
+            variant: 'destructive',
+            title: 'Authentication Error',
+            description: 'Please log in again to access your profile'
+          });
+          navigate('/');
+        } else if (status === 403) {
+          toast({
+            variant: 'destructive',
+            title: 'Access Denied',
+            description: 'You do not have permission to access this profile'
+          });
+        } else if (status && status >= 500) {
+          toast({
+            variant: 'destructive',
+            title: 'Server Error',
+            description: 'Our servers are experiencing issues. Please try again later.'
+          });
+        } else {
+          const message = (error as { response?: { data?: { error?: string; message?: string } } })?.response?.data?.message ||
+            (error as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+            'Failed to load profile information';
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: message
+          });
         }
+      } finally {
+        if (active) setLoading(false);
       }
+    };
 
-      if (response.profile) {
-        setProfileData(response.profile);
-        setProfileForm({
-          username: response.profile.username || normalizedUsername
-        });
-        setIsProfileFormDirty(false);
+    void loadProfile();
+    void profileApi.getSecurityStatus().then((data) => {
+      if (active) setActiveSessions(data.active_sessions);
+    }).catch(() => {
+      if (active) setActiveSessions(null);
+    });
+
+    return () => {
+      mounted.current = false;
+      active = false;
+    };
+  }, [userId, navigate, toast]);
+
+  const handleRevokeSessions = async () => {
+    setRevokingSessions(true);
+    try {
+      const { data: { message }, caller } = await profileApi.revokeAllSessions(userId);
+      if (await clearRevokedSession(caller)) {
+        toast({ title: 'Sessions signed out', description: message });
       }
-
-      toast({
-        title: 'Success',
-        description: response.message || 'Profile updated successfully'
-      });
     } catch (error: unknown) {
-      const apiErrors = (error as { response?: { data?: { errors?: ValidationErrors } } })?.response?.data?.errors;
-      if (apiErrors) {
-        setErrors(apiErrors);
-      } else {
+      if (mounted.current) {
         toast({
           variant: 'destructive',
-          title: 'Error',
-          description: 'Failed to update profile'
+          title: 'Unable to sign out all sessions',
+          description: error instanceof Error ? error.message : 'Please try again.'
         });
       }
     } finally {
-      setUpdating(false);
+      setRevokingSessions(false);
     }
   };
 
@@ -243,21 +192,21 @@ const Profile = () => {
     setUpdating(true);
 
     try {
-      const response = await profileApi.changePassword(passwordForm);
-      toast({
-        title: 'Success',
-        description: response.message || 'Password changed successfully'
-      });
+      const { data: response, caller } = await profileApi.changePassword(userId, passwordForm);
+      if (await clearRevokedSession(caller)) {
+        toast({
+          variant: response.temporary_session_revoked ? 'default' : 'destructive',
+          title: 'Password changed',
+          description: response.message
+        });
+      }
       resetPasswordForm();
     } catch (error: unknown) {
-      const apiErrors = (error as { response?: { data?: { errors?: ValidationErrors } } })?.response?.data?.errors;
-      if (apiErrors) {
-        setErrors(apiErrors);
-      } else {
+      if (mounted.current) {
         toast({
           variant: 'destructive',
-          title: 'Error',
-          description: 'Failed to change password'
+          title: 'Unable to change password',
+          description: error instanceof Error ? error.message : 'Please try again.'
         });
       }
     } finally {
@@ -270,49 +219,22 @@ const Profile = () => {
     setDeleting(true);
 
     try {
-      const response = await profileApi.deleteAccount(deleteForm.password);
-
-      if (response.success) {
-        toast({
-          title: 'Account Deleted',
-          description: response.message
-        });
-
-        await signOut();
-        navigate('/');
-      } else if (response.support_needed) {
-        toast({
-          variant: 'destructive',
-          title: 'Partial Account Deletion',
-          description: response.message,
-          duration: 10000
-        });
-
-        await signOut();
-        navigate('/');
-      } else {
-        toast({
-          variant: 'destructive',
-          title: 'Account Deletion Failed',
-          description: response.message || 'Failed to delete account completely'
-        });
+      const { data: response, caller } = await profileApi.deleteAccount(userId, deleteForm.password);
+      if (!response.success) throw new Error(response.message);
+      setShowDeleteDialog(false);
+      if (await clearRevokedSession(caller)) {
+        toast({ title: 'Account deleted', description: response.message });
       }
     } catch (error: unknown) {
-      const apiErrors = (error as { response?: { data?: { errors?: ValidationErrors } } })?.response?.data?.errors;
-      if (apiErrors) {
-        setErrors(apiErrors);
-      } else {
-        const message = (error as { message?: string })?.message ||
-          'Failed to delete account. Please try again or contact support.';
+      if (mounted.current) {
         toast({
           variant: 'destructive',
-          title: 'Error',
-          description: message
+          title: 'Unable to delete account',
+          description: error instanceof Error ? error.message : 'Please try again.'
         });
       }
     } finally {
       setDeleting(false);
-      setShowDeleteDialog(false);
       setDeleteForm({ password: '' });
     }
   };
@@ -322,16 +244,6 @@ const Profile = () => {
       ...prev,
       [field]: !prev[field]
     }));
-  };
-
-  const resetProfileForm = () => {
-    if (profileData) {
-      setProfileForm({
-        username: profileData.username || ''
-      });
-      setIsProfileFormDirty(false);
-      setErrors({});
-    }
   };
 
   const resetPasswordForm = () => {
@@ -348,18 +260,6 @@ const Profile = () => {
     setErrors({});
   };
 
-  const handleProfileFormChange = (value: string) => {
-    setProfileForm({ username: value });
-    setIsProfileFormDirty(true);
-    if (errors.username) {
-      setErrors((prev) => {
-        const next = { ...prev };
-        delete next.username;
-        return next;
-      });
-    }
-  };
-
   const handlePasswordFormChange = (field: keyof typeof passwordForm, value: string) => {
     setPasswordForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) {
@@ -371,16 +271,7 @@ const Profile = () => {
     }
   };
 
-  if (loading || authLoading) {
-    return (
-      <div className="min-h-screen bg-background text-foreground flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto" />
-          <p className="mt-4 text-muted-foreground">Loading profile...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <ProfileLoading />;
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -408,22 +299,13 @@ const Profile = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Profile Information</CardTitle>
-                  <CardDescription>Update your username</CardDescription>
+                  {profileData?.username && <CardDescription>Your username is permanent.</CardDescription>}
                 </CardHeader>
                 <CardContent>
-                  <form onSubmit={handleProfileUpdate} className="space-y-6">
+                  <div className="space-y-6">
                     <div className="space-y-2">
-                      <Label htmlFor="username">Username</Label>
-                      <Input
-                        id="username"
-                        value={profileForm.username}
-                        onChange={(e) => handleProfileFormChange(e.target.value)}
-                        placeholder="your_username"
-                      />
-                      <p className="text-xs text-muted-foreground">3-30 characters. Use lowercase letters, numbers, and underscores.</p>
-                      {errors.username && (
-                        <p className="text-sm text-destructive">{errors.username[0]}</p>
-                      )}
+                      <Label htmlFor="identifier">{profileData?.username ? 'Username' : 'Sign-in email'}</Label>
+                      <Input id="identifier" value={profileData?.username || profileData?.email || ''} readOnly />
                     </div>
 
                     {profileData && (
@@ -446,24 +328,7 @@ const Profile = () => {
                         </div>
                       </div>
                     )}
-
-                    <div className="flex gap-3">
-                      <Button type="submit" disabled={updating} className="flex-1 md:flex-none">
-                        {updating ? 'Updating...' : 'Update Profile'}
-                      </Button>
-                      {isProfileFormDirty && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={resetProfileForm}
-                          disabled={updating}
-                          className="flex-1 md:flex-none"
-                        >
-                          Reset
-                        </Button>
-                      )}
-                    </div>
-                  </form>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -582,6 +447,18 @@ const Profile = () => {
                   <Separator className="my-8" />
 
                   <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-foreground">Sessions</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Active sessions: {activeSessions ?? 'Unknown'}
+                    </p>
+                    <Button variant="outline" onClick={handleRevokeSessions} disabled={revokingSessions}>
+                      {revokingSessions ? 'Signing out...' : 'Sign out on all devices'}
+                    </Button>
+                  </div>
+
+                  <Separator className="my-8" />
+
+                  <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-foreground">Danger Zone</h3>
                     <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900 rounded-lg">
                       <h4 className="font-medium text-red-800 dark:text-red-300 mb-2">Delete Account</h4>
@@ -605,7 +482,11 @@ const Profile = () => {
         </div>
       </div>
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialog open={showDeleteDialog} onOpenChange={(open) => {
+        if (deleting) return;
+        setShowDeleteDialog(open);
+        if (!open) setDeleteForm({ password: '' });
+      }}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
@@ -629,9 +510,9 @@ const Profile = () => {
             </div>
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleDeleteAccount}
+              onClick={(event) => { event.preventDefault(); void handleDeleteAccount(); }}
               disabled={deleting || !deleteForm.password}
               className="bg-red-600 hover:bg-red-700"
             >
@@ -642,6 +523,18 @@ const Profile = () => {
       </AlertDialog>
     </div>
   );
+};
+
+const Profile = () => {
+  const { user, loading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!loading && !user) navigate('/', { replace: true });
+  }, [loading, user, navigate]);
+
+  if (loading) return <ProfileLoading />;
+  return user ? <ProfileSettings key={user.id} userId={user.id} /> : null;
 };
 
 export default Profile;
