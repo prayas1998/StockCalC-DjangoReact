@@ -8,9 +8,8 @@ export const config = {
   // Supabase Configuration
   supabase: {
     url: process.env.SUPABASE_URL || '',
-    anonKey: process.env.SUPABASE_ANON_KEY || '',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-    jwtSecret: process.env.SUPABASE_JWT_SECRET || '',
+    anonKey: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_ANON_KEY || '',
+    serviceRoleKey: process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
   },
   
   // API Configuration
@@ -53,7 +52,12 @@ export const config = {
     // Authentication endpoints
     auth: {
       user: '20/min',
-      anon: '10/min'
+      anon: '10/min',
+      preVerifyIp: {
+        auth: '20/min',
+        data: '1000/hour',
+        general: '2000/hour'
+      }
     },
     // Data operations (CRUD) endpoints
     dataOperations: {
@@ -72,12 +76,7 @@ export const config = {
   isProduction: process.env.NODE_ENV === 'production',
   
   // Validation
-  requiredEnvVars: [
-    'SUPABASE_URL',
-    'SUPABASE_ANON_KEY', 
-    'SUPABASE_SERVICE_ROLE_KEY',
-    'SUPABASE_JWT_SECRET'
-  ]
+  requiredEnvVars: ['SUPABASE_URL']
 } as const;
 
 // Environment validation - run immediately when module is imported
@@ -98,15 +97,11 @@ export function validateConfig(): void {
   }
   
   if (!config.supabase.anonKey) {
-    throw new Error('SUPABASE_ANON_KEY cannot be empty');
-  }
-  
-  if (!config.supabase.jwtSecret) {
-    throw new Error('SUPABASE_JWT_SECRET cannot be empty');
+    throw new Error('SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY must be set');
   }
   
   if (!config.supabase.serviceRoleKey) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY cannot be empty');
+    throw new Error('SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY must be set');
   }
 }
 

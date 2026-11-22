@@ -25,6 +25,7 @@ export default function JournalPage() {
   const location = useLocation()
   const navigationType = useNavigationType()
   const searchRequestIdRef = useRef(0)
+  const activeSearchRef = useRef(false)
   useEffect(() => () => { searchRequestIdRef.current++ }, [])
   // URL-synced filter state
   const { filters, searchQuery, setSearchQuery: setSearchQueryState, updateFilter, resetFilters } = useJournalFilters()
@@ -53,6 +54,7 @@ export default function JournalPage() {
 
   const setSearchQuery = useCallback((query: string) => {
     searchRequestIdRef.current++
+    activeSearchRef.current = false
     setSearchResults(null)
     setIsSearching(false)
     setSearchQueryState(query)
@@ -60,6 +62,7 @@ export default function JournalPage() {
 
   const clearSearch = useCallback(() => {
     searchRequestIdRef.current++
+    activeSearchRef.current = false
     clearLocalSearch()
     setSearchQueryState('')
   }, [clearLocalSearch, setSearchQueryState])
@@ -86,27 +89,6 @@ export default function JournalPage() {
   const selectedCompanies = useMemo(() => {
     return filters.companies || []
   }, [filters.companies])
-
-  // Filter update handlers that sync to URL
-  const setSelectedStatuses = useCallback((statuses: TradeStatus[]) => {
-    updateFilter('status', statuses)
-  }, [updateFilter])
-
-  const setSelectedTypes = useCallback((types: TradeType[]) => {
-    updateFilter('trade_type', types)
-  }, [updateFilter])
-
-  const setSelectedTagIds = useCallback((tagIds: number[]) => {
-    updateFilter('tags', tagIds)
-  }, [updateFilter])
-
-  const setSelectedCompanies = useCallback((companies: string[]) => {
-    updateFilter('companies', companies)
-  }, [updateFilter])
-
-  const clearAllFilters = useCallback(() => {
-    resetFilters()
-  }, [resetFilters])
 
   // Get journal data and mutations
   const { trades, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage, deleteTrade } = useJournal(withCompanyApiFilters({
@@ -173,14 +155,64 @@ export default function JournalPage() {
     }
   }, [setSearchResults, setIsSearching])
 
-  // Handle search - always use server-side search with current filters.
-  const handleSearch = useCallback(() => {
+  const searchWithUpdatedFilters = useCallback((nextFilters: Partial<JournalFilters>) => {
     const requestId = ++searchRequestIdRef.current
-    if (!searchQuery.trim()) {
+    if (!activeSearchRef.current || !searchQuery.trim()) {
       setSearchResults(null)
       setIsSearching(false)
       return
     }
+    setSearchResults(null)
+    setIsSearching(true)
+    void runSearch(searchQuery, buildSearchFilters({
+      status: selectedStatuses,
+      trade_type: selectedTypes,
+      tags: selectedTagIds,
+      companies: selectedCompanies,
+      ...nextFilters,
+    }), requestId)
+  }, [searchQuery, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching, runSearch, buildSearchFilters])
+
+  // Filter update handlers sync the URL and refresh an active server search.
+  const setSelectedStatuses = useCallback((statuses: TradeStatus[]) => {
+    updateFilter('status', statuses)
+    searchWithUpdatedFilters({ status: statuses })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const setSelectedTypes = useCallback((types: TradeType[]) => {
+    updateFilter('trade_type', types)
+    searchWithUpdatedFilters({ trade_type: types })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const setSelectedTagIds = useCallback((tagIds: number[]) => {
+    updateFilter('tags', tagIds)
+    searchWithUpdatedFilters({ tags: tagIds })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const setSelectedCompanies = useCallback((companies: string[]) => {
+    updateFilter('companies', companies)
+    searchWithUpdatedFilters({ companies })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const clearAllFilters = useCallback(() => {
+    searchRequestIdRef.current++
+    activeSearchRef.current = false
+    setSearchResults(null)
+    setIsSearching(false)
+    resetFilters()
+  }, [resetFilters, setSearchResults, setIsSearching])
+
+  // Handle search - always use server-side search with current filters.
+  const handleSearch = useCallback(() => {
+    const requestId = ++searchRequestIdRef.current
+    if (!searchQuery.trim()) {
+      activeSearchRef.current = false
+      setSearchResults(null)
+      setIsSearching(false)
+      return
+    }
+    activeSearchRef.current = true
+    setSearchResults(null)
     setIsSearching(true)
     void runSearch(searchQuery, buildSearchFilters({
       status: selectedStatuses,
@@ -198,9 +230,11 @@ export default function JournalPage() {
     const requestId = ++searchRequestIdRef.current
     setSearchResults(null)
     if (!query.trim()) {
+      activeSearchRef.current = false
       setIsSearching(false)
       return
     }
+    activeSearchRef.current = true
     setIsSearching(true)
     void runSearch(query, buildSearchFilters(filtersFromParams(params)), requestId)
   }, [location.key, navigationType, location.search, runSearch, buildSearchFilters, setSearchResults, setIsSearching])
@@ -210,6 +244,7 @@ export default function JournalPage() {
     (suggestion: { text: string; type: string }) => {
       setSelectedCompany(suggestion.text)
       setSearchQuery(suggestion.text)
+      activeSearchRef.current = true
       const requestId = ++searchRequestIdRef.current
       setIsSearching(true)
       void runSearch(suggestion.text, buildSearchFilters({
@@ -229,6 +264,7 @@ export default function JournalPage() {
       return;
     }
     const requestId = ++searchRequestIdRef.current
+    setSearchResults(null)
     setIsSearching(true)
     // Add a small delay to ensure backend has processed the update
     await new Promise(resolve => setTimeout(resolve, 100));
@@ -239,7 +275,7 @@ export default function JournalPage() {
       tags: selectedTagIds,
       companies: selectedCompanies,
     }), requestId, true)
-  }, [searchQuery, searchResults, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setIsSearching, runSearch, buildSearchFilters]);
+  }, [searchQuery, searchResults, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching, runSearch, buildSearchFilters]);
 
   // Format trade data for form
   const getInitialFormData = useCallback((): TradeJournalCreate | undefined => {
@@ -337,6 +373,7 @@ export default function JournalPage() {
               trades={trades}
               searchResults={searchResults}
               searchQuery={searchQuery}
+              isSearching={isSearching}
               isLoading={isLoading}
               isError={isError}
               hasNextPage={hasNextPage}

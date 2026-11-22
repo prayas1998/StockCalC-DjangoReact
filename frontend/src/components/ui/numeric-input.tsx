@@ -12,10 +12,11 @@ export interface NumericInputProps extends Omit<React.InputHTMLAttributes<HTMLIn
   min?: number
   max?: number
   maxDecimalPlaces?: number
+  clearIncompleteOnBlur?: boolean
 }
 
 const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
-  ({ value, onChange, allowDecimal = true, min, max, maxDecimalPlaces, className, ...props }, ref) => {
+  ({ value, onChange, allowDecimal = true, min, max, maxDecimalPlaces, clearIncompleteOnBlur = true, className, ...props }, ref) => {
     const [showError, setShowError] = useState(false)
     const [errorMessage, setErrorMessage] = useState("")
 
@@ -223,7 +224,7 @@ const NumericInput = forwardRef<HTMLInputElement, NumericInputProps>(
       const currentValue = e.target.value
 
       // Only clear truly incomplete/invalid values, not values that don't meet min/max constraints
-      if (currentValue === "-" || currentValue === "." || currentValue === "0.") {
+      if (clearIncompleteOnBlur && (currentValue === "-" || currentValue === "." || currentValue === "0.")) {
         // Clear incomplete values that are not valid numbers
         onChange("")
         return
