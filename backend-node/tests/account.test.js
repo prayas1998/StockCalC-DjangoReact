@@ -21,15 +21,20 @@ const user = (id, username) => ({
 });
 const alice = user(aliceId, 'alice');
 const bob = user(bobId, 'bob');
-const callerToken = jwt.sign({ sub: aliceId, email: 'stale_jwt_email@example.com' }, fixtureSigningSecret, { expiresIn: '1h' });
+const callerToken = jwt.sign({ sub: aliceId, email: 'stale_jwt_email@example.com', aal: 'aal2' }, fixtureSigningSecret, { expiresIn: '1h' });
 const callerAuth = `Bearer ${callerToken}`;
+const lowerAssuranceToken = jwt.sign({ sub: aliceId, email: 'stale_jwt_email@example.com', aal: 'aal1' }, fixtureSigningSecret, { expiresIn: '1h' });
+const lowerAssuranceAuth = `Bearer ${lowerAssuranceToken}`;
 const temporaryToken = 'temporary-access-token';
 const temporaryAuth = `Bearer ${temporaryToken}`;
 const json = (value, status = 200) => Response.json(value, { status });
-const authError = (code, status) => Response.json({ code, msg: code }, {
+const authError = (code, status) => Response.json({ code, message: code }, {
   status,
   headers: { 'X-Supabase-Api-Version': '2024-01-01' },
 });
+const legacyAuthError = (errorCode, status) => Response.json({
+  code: status, error_code: errorCode, msg: 'Legacy provider error',
+}, { status });
 
 let fixture;
 const realFetch = globalThis.fetch;
@@ -44,16 +49,19 @@ globalThis.fetch = async (input, init) => {
   if (url.pathname === '/auth/v1/user') {
     if (request.method === 'GET') {
       fixture.verificationCalls.push(call);
-      assert.equal(auth, callerAuth);
+      assert.equal(auth, fixture.callerAuth);
       assert.equal(request.headers.get('apikey'), 'fixture-anon-key');
       return json(fixture.alice);
     }
     fixture.calls.push(call);
     const changingPassword = request.method === 'PUT' && body.password;
-    assert.equal(auth, changingPassword ? temporaryAuth : callerAuth);
+    assert.equal(auth, fixture.callerAuth);
     assert.equal(request.headers.get('apikey'), 'fixture-anon-key');
     if (changingPassword) {
-      if (body.current_password !== fixture.password) return authError('invalid_credentials', 400);
+      assert.equal(request.headers.get('X-Supabase-Api-Version'), '2024-01-01');
+      if (fixture.mfaEnabled && auth !== callerAuth) return authError('insufficient_aal', 401);
+      if (fixture.requiresFreshSignIn) return legacyAuthError('reauthentication_needed', 400);
+      if (fixture.providerChecksCurrentPassword && body.current_password !== fixture.password) return authError('current_password_invalid', 400);
       fixture.password = body.password;
     }
     if (request.method === 'PUT' && body.data) {
@@ -74,7 +82,8 @@ globalThis.fetch = async (input, init) => {
     });
   }
   if (url.pathname === '/auth/v1/logout') {
-    if (fixture.revokeFailure) return authError(fixture.revokeFailure, 403);
+    const failure = auth === temporaryAuth ? fixture.temporaryRevokeFailure : fixture.callerRevokeFailure;
+    if (failure) return authError(failure, 403);
     return new Response(null, { status: 204 });
   }
   if (url.pathname === `/auth/v1/admin/users/${aliceId}`) {
@@ -93,12 +102,15 @@ const { default: app } = await import('../dist/index.js');
 
 test.after(() => { globalThis.fetch = realFetch; });
 test.beforeEach(() => {
-  fixture = { alice, password: 'old-password', cleanupReady: true, accountDeleted: false, calls: [], verificationCalls: [] };
+  fixture = {
+    alice, callerAuth, password: 'old-password', providerChecksCurrentPassword: true,
+    cleanupReady: true, accountDeleted: false, calls: [], verificationCalls: [],
+  };
 });
 
 const request = (path, method = 'GET', data) => app.request(path, {
   method,
-  headers: { Authorization: callerAuth, 'Content-Type': 'application/json' },
+  headers: { Authorization: fixture.callerAuth, 'Content-Type': 'application/json' },
   body: data === undefined ? undefined : JSON.stringify(data),
 });
 const changePassword = (password, userId) => request('/api/profile/change-password/', 'POST', {
@@ -110,6 +122,7 @@ const changePassword = (password, userId) => request('/api/profile/change-passwo
 const deleteAccount = (password, userId) => request('/api/profile/delete-account/', 'DELETE', { password, user_id: userId });
 
 test('incorrect and missing passwords block password changes and account deletion', async () => {
+  fixture.providerChecksCurrentPassword = false;
   const passwordResponse = await changePassword('wrong-password');
   assert.equal(passwordResponse.status, 400);
   assert.match((await passwordResponse.json()).message, /incorrect/);
@@ -123,36 +136,81 @@ test('incorrect and missing passwords block password changes and account deletio
   assert.equal(fixture.accountDeleted, false);
 });
 
-test('fresh proof changes the original user through a new grant and revokes that grant after the write', async () => {
+test('an MFA-enrolled account can change its password from the verified AAL2 caller session', async () => {
+  fixture.mfaEnabled = true;
+  const response = await changePassword('old-password', aliceId);
+  assert.equal(response.status, 200);
+  assert.equal(fixture.password, 'new-password');
+  assert.equal(fixture.calls.find(({ method }) => method === 'PUT').auth, callerAuth);
+});
+
+test('a verified password grant never replaces the original caller for the write', async () => {
   const result = await changePassword('old-password', aliceId);
   assert.equal(result.status, 200);
-  assert.equal((await result.json()).temporary_session_revoked, true);
+  assert.deepEqual(await result.json(), {
+    password_changed: true,
+    temporary_session_revoked: true,
+    caller_session_revoked: true,
+    message: 'Password changed. Sign in with your new password.',
+  });
   assert.equal(fixture.password, 'new-password');
   assert.deepEqual(fixture.calls[1], {
-    method: 'PUT', path: '/auth/v1/user', auth: temporaryAuth,
+    method: 'PUT', path: '/auth/v1/user', auth: callerAuth,
     body: { current_password: 'old-password', password: 'new-password' }, scope: null,
   });
-  assert.deepEqual(fixture.calls[2], {
-    method: 'POST', path: '/auth/v1/logout', auth: temporaryAuth, body: null, scope: 'local',
-  });
+  assert.deepEqual(fixture.calls.slice(2), [
+    { method: 'POST', path: '/auth/v1/logout', auth: temporaryAuth, body: null, scope: 'local' },
+    { method: 'POST', path: '/auth/v1/logout', auth: callerAuth, body: null, scope: 'local' },
+  ]);
   const verifiedCount = fixture.verificationCalls.length;
   assert.equal((await changePassword('old-password')).status, 400);
-  assert.equal(fixture.calls[3].path, '/auth/v1/token');
+  assert.equal(fixture.calls[4].path, '/auth/v1/token');
   assert.ok(fixture.verificationCalls.length > verifiedCount);
 });
 
-test('a failed temporary revoke reports a cleanup warning after a successful password change', async () => {
-  fixture.revokeFailure = 'unexpected_failure';
-  const response = await changePassword('old-password');
-  assert.equal(response.status, 200);
-  const { message, temporary_session_revoked } = await response.json();
+test('password proof does not bypass the provider’s MFA or recent sign-in policy', async () => {
+  fixture.mfaEnabled = true;
+  fixture.callerAuth = lowerAssuranceAuth;
+  const insufficientAssurance = await changePassword('old-password');
+  assert.equal(insufficientAssurance.status, 403);
+  assert.match((await insufficientAssurance.json()).message, /Complete multi-factor authentication/);
+
+  fixture.callerAuth = callerAuth;
+  fixture.requiresFreshSignIn = true;
+  const oldSession = await changePassword('old-password');
+  assert.equal(oldSession.status, 403);
+  assert.match((await oldSession.json()).message, /Sign in again/);
+  assert.equal(fixture.password, 'old-password');
+  assert.deepEqual(fixture.calls.filter(({ path }) => path === '/auth/v1/logout').map(({ auth }) => auth), [temporaryAuth, temporaryAuth]);
+});
+
+test('successful password changes report temporary and caller cleanup failures independently', async () => {
+  fixture.temporaryRevokeFailure = 'unexpected_failure';
+  const temporaryFailure = await changePassword('old-password');
+  assert.equal(temporaryFailure.status, 200);
+  assert.deepEqual(await temporaryFailure.json(), {
+    password_changed: true,
+    temporary_session_revoked: false,
+    caller_session_revoked: true,
+    message: 'Password changed. Session cleanup could not be confirmed. Sign in with your new password and sign out all sessions.',
+  });
   assert.equal(fixture.password, 'new-password');
-  assert.equal(temporary_session_revoked, false);
-  assert.match(message, /Password changed.*temporary verification session/);
+
+  fixture.password = 'old-password';
+  fixture.temporaryRevokeFailure = undefined;
+  fixture.callerRevokeFailure = 'unexpected_failure';
+  const callerFailure = await changePassword('old-password');
+  assert.equal(callerFailure.status, 200);
+  assert.equal(fixture.password, 'new-password');
+  const result = await callerFailure.json();
+  assert.equal(result.password_changed, true);
+  assert.equal(result.temporary_session_revoked, true);
+  assert.equal(result.caller_session_revoked, false);
+  assert.match(result.message, /Session cleanup could not be confirmed/);
 });
 
 test('already-revoked temporary grants count as cleaned up', async () => {
-  fixture.revokeFailure = 'session_not_found';
+  fixture.temporaryRevokeFailure = 'session_not_found';
   const response = await changePassword('old-password');
   assert.equal(response.status, 200);
   assert.equal((await response.json()).temporary_session_revoked, true);
@@ -170,7 +228,7 @@ test('password proof for another UUID or failed temporary-grant revocation block
   assert.equal((await changePassword('old-password')).status, 502);
   assert.equal((await deleteAccount('old-password')).status, 502);
   fixture.returnedUser = alice;
-  fixture.revokeFailure = 'unexpected_failure';
+  fixture.temporaryRevokeFailure = 'unexpected_failure';
   assert.equal((await deleteAccount('old-password')).status, 502);
   assert.equal(fixture.calls.some(({ method, path }) => method === 'PUT' || path.includes('/admin/') || path.includes('/rpc/')), false);
 });
@@ -211,7 +269,7 @@ test('session revocation reports provider rejection and uses the requested scope
   const revoke = await request('/api/auth/revoke-all/', 'POST', { user_id: aliceId });
   assert.equal(revoke.status, 200);
   assert.deepEqual(fixture.calls.map(({ auth, scope }) => [auth, scope]), [[callerAuth, 'global']]);
-  fixture.revokeFailure = 'unexpected_failure';
+  fixture.callerRevokeFailure = 'unexpected_failure';
   assert.equal((await request('/api/auth/revoke-all/', 'POST')).status, 502);
   assert.equal((await request('/api/auth/logout/', 'POST')).status, 502);
   assert.equal(fixture.calls.at(-1).scope, 'local');
