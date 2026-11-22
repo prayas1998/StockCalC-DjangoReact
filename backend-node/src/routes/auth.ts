@@ -1,6 +1,6 @@
 import { Context } from 'hono';
 import { z } from 'zod';
-import { getAccessToken, requireAuth, verifyToken } from '../middleware/auth.js';
+import { getAccessToken, requireAuth, TokenVerificationError, verifyToken, type VerifiedToken } from '../middleware/auth.js';
 import { usernameFromEmail } from '../services/authIdentity.js';
 import { supabaseClient } from '../services/supabase.js';
 
@@ -82,24 +82,15 @@ export const authRoutes = [
 
       try {
         const token = authHeader.substring(7);
-        const payload = verifyToken(token);
-        
-        // Get fresh user data from Supabase
-        const { data: authUser, error } = await supabaseClient.auth.getUser(token);
-        
-        if (error || authUser.user?.id !== payload.sub) {
-          return c.json({
-            valid: false,
-            error: 'User not found'
-          }, 404);
-        }
+        const verified = c.get('verifiedAuth') as VerifiedToken | undefined;
+        const { payload, user } = verified ?? await verifyToken(token);
         
         return c.json({
           valid: true,
           user: {
-            id: authUser.user.id,
-            email: authUser.user.email,
-            username: usernameFromEmail(authUser.user.email),
+            id: user.id,
+            email: user.email,
+            username: usernameFromEmail(user.email),
             is_authenticated: true,
             is_active: true // Supabase doesn't have banned_for_reason in the base user object
           },
@@ -110,6 +101,18 @@ export const authRoutes = [
           }
         }, 200);
       } catch (error) {
+        if (error instanceof TokenVerificationError && error.reason === 'unavailable') {
+          return c.json({
+            valid: false,
+            error: 'Authentication service unavailable'
+          }, 503);
+        }
+        if (error instanceof TokenVerificationError && error.reason === 'not_found') {
+          return c.json({
+            valid: false,
+            error: 'User not found'
+          }, 404);
+        }
         return c.json({
           valid: false,
           error: 'Invalid token'

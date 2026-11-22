@@ -6,10 +6,10 @@ process.env.VERCEL = '1';
 process.env.SUPABASE_URL = 'https://journal-pnl-fixture.invalid';
 process.env.SUPABASE_ANON_KEY = 'fixture-anon';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'fixture-service';
-process.env.SUPABASE_JWT_SECRET = 'fixture-journal-pnl-secret';
+const fixtureSigningSecret = 'fixture-journal-pnl-secret';
 
 const userId = '00000000-0000-4000-8000-000000000001';
-const token = jwt.sign({ sub: userId, email: 'fixture@example.com' }, process.env.SUPABASE_JWT_SECRET);
+const token = jwt.sign({ sub: userId, email: 'fixture@example.com' }, fixtureSigningSecret, { expiresIn: '1h' });
 const short = {
   user_id: userId,
   company_name: 'Fixture',
@@ -34,6 +34,9 @@ const trades = [
 globalThis.fetch = async (input) => {
   const url = new URL(input instanceof Request ? input.url : input);
   assert.equal(url.origin, process.env.SUPABASE_URL);
+  if (url.pathname === '/auth/v1/user') {
+    return Response.json({ id: userId, email: 'fixture@example.com' });
+  }
   assert.equal(url.pathname, '/rest/v1/journal_tradejournal');
   const id = url.searchParams.get('id');
   return Response.json(trades.filter((trade) => id === `eq.${trade.id}`));
