@@ -201,6 +201,7 @@ export interface JournalFilters {
   end_date?: string;
   tags?: number[];
   companies?: string[];
+  company?: string[];
   is_profitable?: boolean;
   query?: string;
   page?: number;

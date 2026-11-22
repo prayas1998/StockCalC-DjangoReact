@@ -13,7 +13,7 @@ import { formatCurrency } from "@/lib/utils"
 const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onCalculationStateChange }) => {
   const { transactions, addTransaction, setTransactions, platform, exchange, tradeType, positionType } =
     useCalculatorContext()
-  const { handleManualCalculation, calculationState, settingsChanged, settingsChangeMessage } = useCalculation()
+  const { handleManualCalculation, clearCalculation, calculationState, settingsChanged, settingsChangeMessage } = useCalculation()
 
   // Pass calculation state changes to parent
   useEffect(() => {
@@ -58,20 +58,24 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
 
   // Function to clear all transactions
   const handleClearAll = () => {
+    clearCalculation()
     setTransactions([{ id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }])
   }
 
-  // Get breakeven price from calculation state
-  const getBreakevenPrice = () => {
-    if (!calculationState.result?.summary) return 0
+  // Get breakeven price and scope from calculation state
+  const getBreakeven = () => {
+    if (!calculationState.result?.summary) return { price: null, mode: null as string | null }
 
     const summary = calculationState.result.summary as Record<string, string | number>
+    const mode = String(summary.breakevenMode || "full")
+    if (mode === "unavailable") return { price: null, mode }
     // Check all possible variations of the property name
     const possibleNames = ["breakevenPrice", "breakeven_price", "BreakevenPrice"]
 
     for (const name of possibleNames) {
       if (name in summary) {
-        return Number(summary[name]) || 0
+        const price = Number(summary[name]) || 0
+        return { price: price > 0 ? price : null, mode }
       }
     }
 
@@ -81,7 +85,8 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
     )
 
     if (key) {
-      return Number(summary[key]) || 0
+      const price = Number(summary[key]) || 0
+      return { price: price > 0 ? price : null, mode }
     }
 
     // Fallback calculation if breakeven price is not provided
@@ -93,17 +98,19 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
 
         if (quantity > 0) {
           const calculatedBreakeven = (buyValue + charges) / quantity
-          return Number(calculatedBreakeven.toFixed(2))
+          return { price: Number(calculatedBreakeven.toFixed(2)), mode }
         }
       } catch (error) {
         console.error("Error calculating fallback breakeven price:", error)
       }
     }
 
-    return 0
+    return { price: null, mode: "unavailable" }
   }
 
-  const breakEvenPrice = getBreakevenPrice()
+  const breakeven = getBreakeven()
+  const hasCalculationResult = calculationState.result !== null
+  const breakevenScope = breakeven.mode === "unavailable" ? "Unavailable" : breakeven.mode === "remaining" ? "Remaining position" : "Full position"
 
   return (
     <div className="space-y-3">
@@ -162,8 +169,12 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ showTitle = true, onC
 
         {/* Enhanced Breakeven Price */}
         <div className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 dark:bg-primary/20 rounded-md border border-primary/20">
-          <span className="text-xs font-medium text-primary">Breakeven:</span>
-          <span className="text-sm font-semibold text-primary">{formatCurrency(breakEvenPrice)}</span>
+          <span className="text-xs font-medium text-primary">
+            {hasCalculationResult ? `Breakeven · ${breakevenScope} (₹0.01 tick):` : "Breakeven:"}
+          </span>
+          <span className="text-sm font-semibold text-primary">
+            {!hasCalculationResult ? "—" : breakeven.price === null ? "Unavailable" : formatCurrency(breakeven.price)}
+          </span>
         </div>
       </div>
     </div>
