@@ -54,10 +54,10 @@ export const useNetPLCalculator = (sharedState: SharedCalculatorState): NetPLCal
     }
 
     const entryPrice = parseFloat(state.buyPrice);
-    const quantity = parseInt(state.quantity);
+    const quantity = Number(state.quantity);
     const exitPrice = state.sellPrice ? parseFloat(state.sellPrice) : undefined;
 
-    if (isNaN(entryPrice) || isNaN(quantity) || entryPrice <= 0 || quantity <= 0) {
+    if (!Number.isFinite(entryPrice) || !Number.isSafeInteger(quantity) || entryPrice <= 0 || quantity <= 0) {
       setResult(null);
       return;
     }

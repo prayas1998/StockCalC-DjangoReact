@@ -29,6 +29,10 @@ const Tools = () => {
       <Header />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <p className="mb-4 text-xs text-muted-foreground">
+          NSE equity estimates use the tariff effective 1 March 2026, one order per leg, and ₹0.01 quote increments.
+          Groww delivery estimates use the standard depository rate.
+        </p>
         {/* Position Sizing Calculator - with independent state */}
         <div className="mb-16">
           <PositionSizingCalculatorContainer

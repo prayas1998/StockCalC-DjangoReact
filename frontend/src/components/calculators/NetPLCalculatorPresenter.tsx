@@ -153,7 +153,10 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
         </Button>
       </div>
 
-      {result && (
+      {result && effectiveExitPrice === 0 && (
+        <p className="mt-4 text-sm text-muted-foreground">No positive price on the ₹0.01 grid breaks even.</p>
+      )}
+      {result && effectiveExitPrice > 0 && (
         <ResultsPanel
           title="P&L Analysis"
           results={[

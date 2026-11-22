@@ -1,4 +1,4 @@
-import { calculateCharges, Charges } from '@/pages/Tools/ChargesUtils';
+import { calculatePositionCharges, type Charges } from '@/pages/Tools/ChargesUtils';
 import { calculateBreakevenPrice } from '@/pages/Tools/BreakEven';
 
 export interface NetPLParams {
@@ -27,7 +27,7 @@ export class NetPLCalculatorService {
   static calculateNetPL(params: NetPLParams): NetPLResult | null {
     const { entryPrice, quantity, exitPrice, exchange, broker, tradeType, positionType } = params;
 
-    if (entryPrice <= 0 || quantity <= 0) {
+    if (!Number.isFinite(entryPrice) || entryPrice <= 0 || !Number.isSafeInteger(quantity) || quantity <= 0) {
       return null;
     }
 
@@ -44,42 +44,7 @@ export class NetPLCalculatorService {
       effectivePositionType
     );
 
-    // If exit price is not provided, show breakeven calculation only
-    if (!exitPrice || exitPrice <= 0) {
-      return this.calculateBreakevenResult(params, breakevenPrice);
-    }
-
-    // Calculate actual P&L with provided exit price
-    return this.calculateActualPL(params, breakevenPrice, exitPrice);
-  }
-
-  /**
-   * Calculate breakeven result when no exit price is specified
-   */
-  private static calculateBreakevenResult(params: NetPLParams, breakevenPrice: number): NetPLResult {
-    const { entryPrice, quantity, exchange, broker, tradeType, positionType } = params;
-    
-    const isIntradayShort = tradeType === 'equity-intraday' && positionType === 'short';
-    const isLong = !isIntradayShort;
-    const entryValue = entryPrice * quantity;
-    const exitValue = breakevenPrice * quantity;
-    
-    const charges = calculateCharges(
-      isLong ? entryValue : exitValue,
-      isLong ? exitValue : entryValue,
-      exchange,
-      broker,
-      tradeType
-    );
-
-    return {
-      grossProfit: 0,
-      netProfit: 0,
-      profitPercentage: 0,
-      isProfit: true,
-      charges,
-      breakevenPrice
-    };
+    return this.calculateActualPL(params, breakevenPrice, exitPrice && exitPrice > 0 ? exitPrice : breakevenPrice);
   }
 
   /**
@@ -96,18 +61,11 @@ export class NetPLCalculatorService {
     const entryValue = entryPrice * quantity;
     const exitValue = exitPrice * quantity;
 
-    // Calculate charges using the utility function
-    const charges = calculateCharges(
-      isLong ? entryValue : exitValue,
-      isLong ? exitValue : entryValue,
-      exchange,
-      broker,
-      tradeType
-    );
+    const charges = calculatePositionCharges(quantity, entryPrice, exitPrice, exchange, broker, tradeType, positionType);
 
     // Calculate profits
-    const grossProfit = isLong ? exitValue - entryValue : entryValue - exitValue;
-    const netProfit = grossProfit - charges.totalCharges;
+    const grossProfit = Number((isLong ? exitValue - entryValue : entryValue - exitValue).toFixed(2));
+    const netProfit = Number((grossProfit - charges.totalCharges).toFixed(2));
 
     // Calculate percentage
     const profitPercentage = (netProfit / entryValue) * 100;

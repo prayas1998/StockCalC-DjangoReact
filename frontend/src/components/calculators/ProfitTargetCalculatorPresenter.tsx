@@ -6,6 +6,7 @@ import { NumericInput } from "@/components/ui/numeric-input"
 import { CalculatorCard } from "@/components/shared/CalculatorCard"
 import { ResultsPanel } from "@/components/shared/ResultsPanel"
 import { ClearButton } from "@/components/shared/ClearButton"
+import { MIN_PRICE } from "@/pages/Tools/BreakEven"
 import { formatCurrency } from "@/pages/Tools/ChargesUtils"
 import type { ProfitTargetCalculatorHook } from "@/hooks/useProfitTargetCalculator"
 import type { SharedCalculatorState } from "@/hooks/useSharedCalculatorState"
@@ -79,10 +80,10 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
     const targetNetProfit = entryPrice * quantity * (cappedPct / 100)
 
     const tolerance = 0.01
-    const isAtMinimumPrice = result.sellingPrice <= 0.05 + 1e-9
+    const isAtMinimumPrice = result.sellingPrice === MIN_PRICE
 
     if (isAtMinimumPrice && result.netProfit + tolerance < targetNetProfit) {
-      return "Target net profit isn't reachable for short positions after charges. Showing the maximum achievable result at ₹0.05."
+      return "Target net profit isn't reachable for short positions after charges. Showing the maximum achievable result at ₹0.01."
     }
 
     if (profitPct > 100) {
@@ -190,7 +191,10 @@ export const ProfitTargetCalculatorPresenter: React.FC<ProfitTargetCalculatorPre
         </div>
       )}
 
-      {result && (
+      {result && result.sellingPrice === 0 && (
+        <p className="mt-4 text-sm text-muted-foreground">No qualifying price is available on the ₹0.01 grid.</p>
+      )}
+      {result && result.sellingPrice > 0 && (
         <ResultsPanel
           title="Target Analysis"
           results={[

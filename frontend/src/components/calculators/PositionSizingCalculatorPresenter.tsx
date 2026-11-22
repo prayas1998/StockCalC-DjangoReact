@@ -60,38 +60,17 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
     return result
   }, [result])
 
-  // Calculate breakeven prices for both long and short positions
-  const breakevenPrices = useMemo(() => {
-    if (!positionSizingResult || !state.entryPrice || positionSizingResult.quantity <= 0) return null
-
-    const entryPrice = Number.parseFloat(state.entryPrice)
-    if (isNaN(entryPrice)) return null
-
-    try {
-      const longBreakeven = calculateBreakevenPrice(
-        positionSizingResult.quantity,
-        entryPrice,
-        "NSE", // Make this configurable if needed
-        selectedBroker,
-        selectedTradeType,
-        "long",
-      )
-
-      const shortBreakeven = calculateBreakevenPrice(
-        positionSizingResult.quantity,
-        entryPrice,
-        "NSE", // Make this configurable if needed
-        selectedBroker,
-        selectedTradeType,
-        "short",
-      )
-
-      return { longBreakeven, shortBreakeven }
-    } catch (error) {
-      console.error("Error calculating breakeven prices:", error)
-      return null
-    }
-  }, [positionSizingResult, state.entryPrice, selectedBroker, selectedTradeType])
+  const breakevenPrice = useMemo(() => {
+    if (!positionSizingResult || positionSizingResult.quantity <= 0) return 0;
+    return calculateBreakevenPrice(
+      positionSizingResult.quantity,
+      Number(state.entryPrice),
+      "NSE",
+      selectedBroker,
+      selectedTradeType,
+      positionType,
+    );
+  }, [positionSizingResult, state.entryPrice, selectedBroker, selectedTradeType, positionType]);
 
   const infoContent = (
     <div className="space-y-4">
@@ -346,11 +325,7 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
               <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                 <span className="text-gray-600 dark:text-gray-300">Breakeven Price:</span>
                 <span className="font-bold text-blue-600 dark:text-blue-400">
-                  {breakevenPrices
-                    ? formatCurrency(
-                        positionType === "long" ? breakevenPrices.longBreakeven : breakevenPrices.shortBreakeven,
-                      )
-                    : "-"}
+                  {breakevenPrice > 0 ? formatCurrency(breakevenPrice) : "Unavailable"}
                 </span>
               </div>
             </div>
@@ -386,7 +361,7 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
                       {/* <span className="text-xs text-green-600 dark:text-green-400">(Recommended)</span> */}
                     </div>
                     <span className="font-bold text-green-800 dark:text-green-200 text-lg">
-                      {formatCurrency(targetAnalysis.targetPrices.ratio1to2)}
+                      {targetAnalysis.targetPrices.ratio1to2 > 0 ? formatCurrency(targetAnalysis.targetPrices.ratio1to2) : "Unavailable"}
                     </span>
                   </div>
                 </div>
@@ -396,13 +371,13 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
                   <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                     <span className="text-gray-600 dark:text-gray-400 text-sm">1:1 Target</span>
                     <span className="font-medium text-gray-700 dark:text-gray-200">
-                      {formatCurrency(targetAnalysis.targetPrices.ratio1to1)}
+                      {targetAnalysis.targetPrices.ratio1to1 > 0 ? formatCurrency(targetAnalysis.targetPrices.ratio1to1) : "Unavailable"}
                     </span>
                   </div>
                   <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
                     <span className="text-gray-600 dark:text-gray-400 text-sm">1:3 Target</span>
                     <span className="font-medium text-gray-700 dark:text-gray-200">
-                      {formatCurrency(targetAnalysis.targetPrices.ratio1to3)}
+                      {targetAnalysis.targetPrices.ratio1to3 > 0 ? formatCurrency(targetAnalysis.targetPrices.ratio1to3) : "Unavailable"}
                     </span>
                   </div>
                 </div>
@@ -419,7 +394,7 @@ export const PositionSizingCalculatorPresenter: React.FC<PositionSizingCalculato
               </div>
 
               <div className="flex justify-between items-center p-2 bg-gray-50 dark:bg-gray-700/50 rounded">
-                <span className="text-gray-500 dark:text-gray-400">Est. Charges:</span>
+                <span className="text-gray-500 dark:text-gray-400">Est. Entry Charges:</span>
                 <span className="font-medium text-amber-600 dark:text-amber-400">
                   {formatCurrency(positionSizingResult.estimatedCharges)}
                 </span>
