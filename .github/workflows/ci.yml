@@ -50,6 +50,18 @@ jobs:
 
   django-settings-tests:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -59,15 +71,27 @@ jobs:
           sparse-checkout-cone-mode: false
       - name: Verify credential backup is absent
         run: test ! -e backend-node/.env.backup
+      - name: Ensure Django tests cannot read local environment files
+        run: test ! -e .env && test ! -e backend/.env
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install pinned Django dependencies
         run: python -m pip install -r requirements.txt
         working-directory: backend
-      - name: Run Django rollback and settings regression tests
-        run: python -m unittest calculator.test_rollback_auth backend.test_database_url_redaction
+      - name: Run isolated Django rollback and settings regression tests
+        run: python manage.py test calculator.test_rollback_auth backend.test_database_url_redaction journal.test_search_filters
         working-directory: backend
+        env:
+          DJANGO_SETTINGS_MODULE: backend.settings
+          DJANGO_ENV: prod
+          DEBUG_VALUE: 'false'
+          DB_ENV: prod
+          DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/postgres'
+          DJANGO_SECRET_KEY: synthetic-django-secret-key-for-ci-validation-not-real-000000000000000000000000000000
+          DJANGO_ALLOWED_HOSTS: testserver
+          SUPABASE_URL: https://trusted-project.invalid
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_fixture
 
   backend:
     runs-on: ubuntu-latest
