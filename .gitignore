@@ -35,6 +35,7 @@ lerna-debug.log*
 .env.production.local
 .env.local
 *.local
+**/.env*.backup
 
 # Editor files
 .DS_Store
