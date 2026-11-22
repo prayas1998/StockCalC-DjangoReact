@@ -1,16 +1,16 @@
 # Production readiness checklist
 
-**Release recommendation (2026-11-22) — hold deployment.** The intended backend is Hono on Node.js and TypeScript in `backend-node/`, with Supabase Auth and Postgres. The migration lives on `origin/1-migration-hono` at `5c02ee86f819295b0dc567445ec57e645194e5dc`. The checklist lives on `main` at the review baseline `27815f1`, which still contains Django. From either branch, inspect a cited file with, for example, `git show 5c02ee86:backend-node/src/routes/journal.ts`.
+**Release recommendation (2026-11-22) — hold deployment.** The intended backend is Hono on Node.js and TypeScript in `backend-node/`, with Supabase Auth and Postgres. The migration lives on `origin/1-migration-hono` at `5c02ee86f819295b0dc567445ec57e645194e5dc`. The historical audit baseline is `main` at `27815f19121e726e7db45303e4ce2546e598f396`, which still contains Django; the Hono source baseline is `5c02ee86f819295b0dc567445ec57e645194e5dc` (`origin/1-migration-hono` at review time). This guard checklist is on `readiness/guard` at `80c4268fdddb518d5b11fd9b1379da294fa82c13`. Inspect Hono examples against their historical source with, for example, `git show 5c02ee86:backend-node/src/routes/journal.ts`.
 
 The review covered Dhan and Groww equity delivery and intraday long/short, the calculator UI and tools, journal, auth, and release checks. Tests used local Hono requests, a route-dispatch fixture, and a temporary Chrome profile against Vite and Hono with dummy settings. Source inspection supplied the journal write and auth findings. Live Supabase policies, constraints, session settings, Vercel deployment, and historical contract notes remain unverified.
 
 ## Durable tracking register
 
-Status for every item starts **Open**. Layer assignments identify the implementation or operational layer that should own the work; they do not imply an assigned individual. The P0 repository-index containment is complete on this branch, while rotation, access-log review, history cleanup, artifact scanning, and deployed verification remain open.
+Status for every item starts **Open**. Layer assignments identify the implementation or operational layer that should own the work; they do not imply an assigned individual. This guard branch adds ignore/diff/deployment protections but retains the tracked backup in its Git base. The separate `readiness/remove-backup` branch at `b47c066` contains the index-removal change; it is intentionally outside PR publication pending owner coordination. A GitHub compare against the tracked base still exposes a five-line textual deletion patch despite attributes on the base. No backup values were read. Rotation, access-log review, coordinated history cleanup, broader artifact scanning, and deployed verification remain open.
 
 | # | Item | Layer | Status |
 |---|---|---|---|
-| P0.1 | Rotate exposed credentials, remove backup artifacts/history, review access, verify deployment | Security / operations / repository | Open (index removal done; external actions pending) |
+| P0.1 | Rotate exposed credentials, remove backup artifacts/history, review access, verify deployment | Security / operations / repository | Partial: guard retains tracked base; deletion isolated on `readiness/remove-backup` pending owner coordination |
 | P1.1 | Make journal trade and tag writes atomic and owner-validated | API / database | Open |
 | P1.2 | Use caller JWT/RLS scope on journal reads | API / authentication | Open |
 | P1.3 | Restore six unreachable GET endpoints | API routing | Open |
@@ -40,7 +40,7 @@ Status for every item starts **Open**. Layer assignments identify the implementa
 
 ## P0 — credentials and data safety
 
-- [ ] **Rotate exposed credentials and remove the artifact.** Tracked `backend-node/.env.backup:1-4` contains a database URL, JWT secret, and Supabase service-role token. Whether any remain active is unknown. If still active, these credentials can grant privileged access. Rotate the exposed credentials and invalidate the originals, review access/auth logs for misuse, remove the backup from the working tree and (after coordination) repository history, and scan history/artifacts for copies. Do not copy values into issues or logs.
+- [ ] **Rotate exposed credentials and remove the artifact.** The guard branch does not remove the tracked path from its base. The isolated `readiness/remove-backup` branch at `b47c066` contains the index-removal change, pending owner coordination. GitHub compare still exposes a five-line textual deletion patch despite `.gitattributes`; do not treat the attribute as suppressing this patch. Tracked `backend-node/.env.backup:1-4` was reported to contain a database URL, JWT secret, and Supabase service-role token. Whether any remain active is unknown. If still active, these credentials can grant privileged access. Rotate and invalidate them, review access/auth logs, coordinate history cleanup, scan broader artifacts, and verify deployed secrets. Do not copy values into issues or logs.
 
 ## P1 — user-visible correctness and account integrity
 
