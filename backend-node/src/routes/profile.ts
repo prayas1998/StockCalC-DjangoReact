@@ -11,13 +11,13 @@ const confirmedAccountSchema = z.object({ user_id: z.string().uuid().optional() 
 const confirmedPasswordChangeSchema = changePasswordSchema.and(confirmedAccountSchema);
 const deleteAccountSchema = confirmedAccountSchema.extend({ password: z.string().min(1) });
 
-async function revokePasswordGrant(accessToken: string): Promise<boolean> {
+async function revokeSession(accessToken: string, session: 'temporary' | 'caller'): Promise<boolean> {
   try {
     const { error } = await supabaseClient.auth.admin.signOut(accessToken, 'local');
     if (!error || isAuthSessionMissingError(error)) return true;
-    console.warn('Supabase rejected temporary session cleanup', { code: error.code });
+    console.warn('Supabase rejected session cleanup', { session, code: error.code });
   } catch {
-    console.warn('Supabase temporary session cleanup failed');
+    console.warn('Supabase session cleanup failed', { session });
   }
   return false;
 }
@@ -52,7 +52,7 @@ async function verifyCurrentPassword(c: Context, userId: string, password: strin
     return { result: 'unavailable' } as const;
   }
   if (reauth.user?.id !== userId || reauth.session.user.id !== userId) {
-    await revokePasswordGrant(reauth.session.access_token);
+    await revokeSession(reauth.session.access_token, 'temporary');
     return { result: 'unavailable' } as const;
   }
   return { result: 'verified', accessToken: reauth.session.access_token } as const;
@@ -80,8 +80,15 @@ async function updateAuthUser(accessToken: string, attributes: { data: Record<st
     },
     body: JSON.stringify(attributes)
   });
-  const data = await response.json().catch(() => null) as User | null;
-  return { ok: response.ok, status: response.status, user: response.ok ? data : null };
+  const data = await response.json().catch(() => null) as (User & { code?: unknown; error_code?: unknown }) | null;
+  // Older Auth responses use the numeric HTTP status as `code`.
+  const providerCode = typeof data?.code === 'string' ? data.code : data?.error_code;
+  return {
+    ok: response.ok,
+    status: response.status,
+    user: response.ok ? data : null,
+    code: !response.ok && typeof providerCode === 'string' ? providerCode : undefined
+  };
 }
 
 export const profileRoutes = [
@@ -228,16 +235,30 @@ export const profileRoutes = [
           return passwordVerificationError(c, verification.result);
         }
 
-        // Use the new session so Supabase's 24-hour reauthentication check can pass.
-        // Supabase preserves the session used for the change and revokes other sessions.
+        // The password grant proves possession of the current password. Use the original
+        // session for the write so Supabase can still enforce the caller's MFA assurance.
+        const callerToken = getAccessToken(c);
         let temporarySessionRevoked: boolean;
         let response: Awaited<ReturnType<typeof updateAuthUser>>;
         try {
-          response = await updateAuthUser(verification.accessToken, { current_password, password: new_password });
+          response = await updateAuthUser(callerToken, { current_password, password: new_password });
         } finally {
-          temporarySessionRevoked = await revokePasswordGrant(verification.accessToken);
+          temporarySessionRevoked = await revokeSession(verification.accessToken, 'temporary');
         }
         if (!response.user || response.user.id !== user.id) {
+          if (response.code === 'current_password_invalid') {
+            return passwordVerificationError(c, 'incorrect');
+          }
+          if (response.code === 'insufficient_aal' || response.code === 'reauthentication_needed') {
+            return c.json({
+              error: true,
+              error_id: `pwd_${Date.now()}`,
+              category: 'authentication' as const,
+              message: response.code === 'insufficient_aal'
+                ? 'Complete multi-factor authentication before changing your password.'
+                : 'Sign in again and complete any required verification before changing your password.'
+            }, 403);
+          }
           const providerFailure = response.ok || response.status >= 500;
           return c.json({
             error: true,
@@ -247,11 +268,16 @@ export const profileRoutes = [
           }, providerFailure ? 502 : 400);
         }
 
+        // GoTrue preserves the session used for the password change. Finish signing it
+        // out so the browser can discard that session and ask for the new password.
+        const callerSessionRevoked = await revokeSession(callerToken, 'caller');
         return c.json({
-          message: temporarySessionRevoked
+          password_changed: true,
+          temporary_session_revoked: temporarySessionRevoked,
+          caller_session_revoked: callerSessionRevoked,
+          message: temporarySessionRevoked && callerSessionRevoked
             ? 'Password changed. Sign in with your new password.'
-            : 'Password changed. The temporary verification session could not be revoked. Sign in again to revoke it.',
-          temporary_session_revoked: temporarySessionRevoked
+            : 'Password changed. Session cleanup could not be confirmed. Sign in with your new password and sign out all sessions.'
         }, 200);
       } catch (error) {
         return c.json({
@@ -286,7 +312,7 @@ export const profileRoutes = [
         if (verification.result !== 'verified') {
           return passwordVerificationError(c, verification.result);
         }
-        if (!await revokePasswordGrant(verification.accessToken)) {
+        if (!await revokeSession(verification.accessToken, 'temporary')) {
           return passwordVerificationError(c, 'unavailable');
         }
 

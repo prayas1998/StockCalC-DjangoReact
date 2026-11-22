@@ -152,35 +152,9 @@ class ProfileAPIView(APIView):
 @permission_classes([IsAuthenticated])
 @auth_rate_limit
 def change_password(request):
-    """
-    Handle password change requests
-    Since we're using Supabase authentication, password changes should be handled on the frontend
-    This endpoint returns instructions for the frontend
-    """
-    try:
-        # Check if user is authenticated
-        if not request.user or not hasattr(request.user, 'id'):
-            error_data, status_code = handle_authentication_error(
-                Exception("User not authenticated"),
-                request=request,
-                user_message="Please log in to change your password"
-            )
-            return Response(error_data, status=status_code)
-        
-        # For Supabase authentication, password changes are handled client-side
-        # We'll return a success response indicating the frontend should handle this
-        return Response({
-            'message': 'Password change should be handled through Supabase client',
-            'action': 'use_supabase_client'
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        error_data, status_code = handle_server_error(
-            e,
-            request=request,
-            context={'operation': 'change_password', 'user_id': getattr(request.user, 'id', None)}
-        )
-        return Response(error_data, status=status_code)
+    return Response({
+        'message': 'This backend cannot change passwords. Your password is unchanged.'
+    }, status=status.HTTP_501_NOT_IMPLEMENTED)
 
 
 @api_view(['DELETE'])
@@ -191,6 +165,11 @@ def delete_account(request):
     Complete account deletion with proper data cleanup and Supabase user deletion.
     Follows production-ready patterns with comprehensive error handling.
     """
+    if not supabase_admin.is_configured():
+        return Response({
+            'message': 'Account deletion is unavailable on this backend. Your account and data are unchanged.'
+        }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
     try:
         user_id = request.user.id
         logger.info(f"Starting complete account deletion for user {user_id}")

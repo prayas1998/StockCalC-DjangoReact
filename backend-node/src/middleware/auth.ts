@@ -1,23 +1,19 @@
 import jwt from 'jsonwebtoken';
-import { createClient } from '@supabase/supabase-js';
-import config from '../config.js';
-import { RequestContext } from '../types/index.js';
+import type { User } from '@supabase/supabase-js';
+import { rateLimitMiddleware } from './rateLimit.js';
+import { supabaseClient } from '../services/supabase.js';
 
-// JWT verification function
-export function verifyToken(token: string): any {
-  try {
-    const decoded = jwt.verify(token, config.supabase.jwtSecret, { algorithms: ['HS256'] });
-    return decoded;
-  } catch (error) {
-    throw new Error('Invalid token');
+type VerificationFailure = 'invalid' | 'not_found' | 'unavailable';
+
+export class TokenVerificationError extends Error {
+  constructor(readonly reason: VerificationFailure) {
+    super(reason);
   }
 }
 
-// Supabase admin client - import from services to avoid duplication
-
 interface JWTPayload {
-  sub: string; // user ID
-  email: string;
+  sub: string;
+  email?: string;
   user_metadata?: {
     first_name?: string;
     last_name?: string;
@@ -25,6 +21,92 @@ interface JWTPayload {
   iat: number;
   exp: number;
   role?: string;
+}
+
+export interface VerifiedToken {
+  payload: JWTPayload;
+  user: User;
+}
+
+function decodeTokenShape(token: string): JWTPayload {
+  if (!/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) {
+    throw new TokenVerificationError('invalid');
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.decode(token);
+  } catch {
+    throw new TokenVerificationError('invalid');
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (
+    !decoded || typeof decoded === 'string' ||
+    typeof decoded.sub !== 'string' ||
+    typeof decoded.iat !== 'number' || !Number.isFinite(decoded.iat) ||
+    typeof decoded.exp !== 'number' || !Number.isFinite(decoded.exp) ||
+    decoded.exp <= now || decoded.iat > now + 60
+  ) {
+    throw new TokenVerificationError('invalid');
+  }
+
+  return decoded as JWTPayload;
+}
+
+function authFailure(error: unknown): TokenVerificationError {
+  const providerError = error as { code?: string; status?: number };
+  if (providerError?.status === 404 || providerError?.code === 'user_not_found') {
+    return new TokenVerificationError('not_found');
+  }
+  if ([400, 401, 403].includes(providerError?.status ?? 0) || providerError?.code === 'bad_jwt') {
+    return new TokenVerificationError('invalid');
+  }
+  return new TokenVerificationError('unavailable');
+}
+
+export async function verifyToken(token: string): Promise<VerifiedToken> {
+  const decoded = decodeTokenShape(token);
+  let result;
+  try {
+    result = await supabaseClient.auth.getUser(token);
+  } catch (error) {
+    throw authFailure(error);
+  }
+
+  if (result.error) throw authFailure(result.error);
+  if (!result.data.user) throw new TokenVerificationError('not_found');
+
+  // Local claims only screen token shape; Supabase remains the source of verification.
+  if (decoded.sub !== result.data.user.id) {
+    throw new TokenVerificationError('invalid');
+  }
+
+  return { payload: decoded as JWTPayload, user: result.data.user };
+}
+
+async function rejectVerificationFailure(c: any, reason: VerificationFailure) {
+  const rateLimitResponse = await rateLimitMiddleware(c, async () => {});
+  if (rateLimitResponse) return rateLimitResponse;
+
+  if (c.req.path === '/api/auth/introspect/') {
+    if (reason === 'unavailable') {
+      return c.json({ valid: false, error: 'Authentication service unavailable' }, 503);
+    }
+    if (reason === 'not_found') {
+      return c.json({ valid: false, error: 'User not found' }, 404);
+    }
+    return c.json({ valid: false, error: 'Invalid token' }, 401);
+  }
+
+  const unavailable = reason === 'unavailable';
+  return c.json({
+    error: true,
+    error_id: `auth_${Date.now()}`,
+    category: unavailable ? 'server_error' : 'authentication',
+    message: unavailable
+      ? 'Authentication service is temporarily unavailable'
+      : 'Invalid authentication token. Please log in again.'
+  }, unavailable ? 503 : 401);
 }
 
 export const authMiddleware = async (c: any, next: any) => {
@@ -47,24 +129,20 @@ export const authMiddleware = async (c: any, next: any) => {
     const token = authHeader.substring(7); // Remove 'Bearer '
     
     // Verify JWT token
-    const payload = jwt.verify(token, config.supabase.jwtSecret) as JWTPayload;
+    const { payload, user: authUser } = await verifyToken(token);
     
-    if (!payload || !payload.sub || !payload.email) {
-      return c.json({
-        error: true,
-        error_id: `auth_${Date.now()}`,
-        category: 'authentication',
-        message: 'Invalid authentication token. Please log in again.'
-      }, 401);
+    const email = authUser.email || payload.email;
+    if (!payload.sub || !email) {
+      return rejectVerificationFailure(c, 'invalid');
     }
     
     // Create user object (mirroring Django SupabaseUser)
     const user = {
-      id: payload.sub,
-      email: payload.email,
+      id: authUser.id,
+      email,
       first_name: payload.user_metadata?.first_name || '',
       last_name: payload.user_metadata?.last_name || '',
-      username: payload.email.split('@')[0],
+      username: email.split('@')[0],
       is_authenticated: true,
       is_active: true,
       is_anonymous: false,
@@ -76,23 +154,12 @@ export const authMiddleware = async (c: any, next: any) => {
     c.set('user', user);
     c.set('userId', payload.sub);
     c.set('accessToken', token);
+    c.set('verifiedAuth', { payload, user: authUser } satisfies VerifiedToken);
     
     await next();
   } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      return c.json({
-        error: true,
-        error_id: `auth_${Date.now()}`,
-        category: 'authentication',
-        message: 'Your session has expired. Please log in again.'
-      }, 401);
-    } else if (error instanceof jwt.JsonWebTokenError) {
-      return c.json({
-        error: true,
-        error_id: `auth_${Date.now()}`,
-        category: 'authentication',
-        message: 'Invalid authentication token. Please log in again.'
-      }, 401);
+    if (error instanceof TokenVerificationError) {
+      return rejectVerificationFailure(c, error.reason);
     } else {
       console.error('Auth middleware error:', error);
       return c.json({

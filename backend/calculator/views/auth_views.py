@@ -11,7 +11,6 @@ from django.http import JsonResponse
 from django.conf import settings
 from django.utils import timezone
 import json
-import jwt
 import os
 import logging
 from datetime import datetime, timedelta
@@ -101,62 +100,25 @@ def revoke_all_tokens(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def token_introspection(request):
-    """
-    Provide detailed token introspection for the current user.
-    
-    Returns comprehensive information about the current token
-    including security warnings and metadata.
-    """
-    try:
-        # Get the current token
-        token = None
-        auth_header = request.headers.get('Authorization')
-        if auth_header and auth_header.startswith('Bearer '):
-            token = auth_header.split(' ')[1]
-        else:
-            token = request.COOKIES.get('auth_token')
-        
-        if not token:
-            return Response(
-                {'error': 'No token found'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        # Perform introspection
-        # Token introspection removed for simplification
-        introspection_result = {'valid': True, 'payload': {}, 'metadata': {}}
-        
-        # Remove sensitive information
-        safe_result = {
-            'valid': introspection_result['valid'],
-            'metadata': introspection_result['metadata'],
-            'warnings': introspection_result['warnings'],
-            'security_checks': introspection_result['security_checks'],
-            'claims_validation': {
-                claim: info for claim, info in introspection_result['claims_validation'].items()
-                if claim not in ['sub', 'email']  # Don't expose sensitive claims
-            }
-        }
-        
-        # Add user-friendly information
-        user = request.user
-        if hasattr(user, 'get_token_metadata'):
-            token_metadata = user.get_token_metadata()
-            safe_result['user_info'] = {
-                'token_age_hours': token_metadata.get('token_age_hours'),
-                'remaining_hours': token_metadata.get('remaining_hours'),
-                'role': token_metadata.get('role'),
-                'last_authenticated': getattr(user, 'last_authenticated', None)
-            }
-        
-        return Response(safe_result, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        logger.error(f"Token introspection error: {e}")
-        return Response(
-            {'error': 'Token introspection failed'}, 
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+    """Describe the session already verified by the authentication class."""
+    user = request.user
+    email = user.email.lower()
+    username_suffix = '@users.tradesmart.local'
+    return Response({
+        'valid': True,
+        'user': {
+            'id': user.id,
+            'email': user.email,
+            'username': email.removesuffix(username_suffix) if email.endswith(username_suffix) else '',
+            'is_authenticated': user.is_authenticated,
+            'is_active': user.is_active,
+        },
+        'token_info': {
+            'issued_at': user.token_issued_at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+            'expires_at': user.token_expires_at.isoformat(timespec='milliseconds').replace('+00:00', 'Z'),
+            'issuer': 'supabase',
+        },
+    })
 
 
 @api_view(['GET'])

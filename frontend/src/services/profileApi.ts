@@ -19,6 +19,14 @@ export interface PasswordChangeData {
   confirm_password: string;
 }
 
+export interface PasswordChangeResponse {
+  message: string;
+  password_changed?: boolean;
+  caller_session_revoked?: boolean;
+  temporary_session_revoked?: boolean;
+  action?: string;
+}
+
 async function accountRequest<T>(userId: string, path: string, method: string, body: object = {}): Promise<{ data: T; caller: SessionIdentity }> {
   const { data: { session }, error } = await supabase.auth.getSession();
   if (error || session?.user.id !== userId) {
@@ -67,7 +75,7 @@ export const profileApi = {
   },
 
   changePassword(userId: string, data: PasswordChangeData) {
-    return accountRequest<{ message: string; temporary_session_revoked: boolean }>(userId, '/profile/change-password/', 'POST', data);
+    return accountRequest<PasswordChangeResponse>(userId, '/profile/change-password/', 'POST', data);
   },
 
   deleteAccount(userId: string, password: string) {
