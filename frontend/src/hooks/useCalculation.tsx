@@ -3,6 +3,7 @@ import { calculateCharges } from "@/services/api";
 import type { CalculationState, Transaction } from "@/types/calculator";
 import { useCalculatorContext } from "@/context/CalculatorContext";
 import { formatTransactionsForApi } from "@/utils/transactionUtils";
+import { isLatestCalculation } from "@/utils/calculationRequest";
 
 export const useCalculation = () => {
   const { 
@@ -18,14 +19,15 @@ export const useCalculation = () => {
     result: null,
   });
 
-  // Track previous settings to detect changes
-  const [previousSettings, setPreviousSettings] = useState({
+  // Track previous settings to detect changes (ref — no re-render needed)
+  const previousSettingsRef = useRef({
     broker: platform,
     tradeType: tradeType,
     positionType: positionType,
     exchange: exchange
   });
   const [changedSettings, setChangedSettings] = useState<string[]>([]);
+  const requestIdRef = useRef(0);
 
   // Use refs to track the latest values and prevent stale closures
   const latestValuesRef = useRef({
@@ -36,16 +38,8 @@ export const useCalculation = () => {
     positionType
   });
 
-  // Update refs whenever values change
-  useEffect(() => {
-    latestValuesRef.current = {
-      platform,
-      exchange,
-      tradeType,
-      transactions,
-      positionType
-    };
-  }, [platform, exchange, tradeType, transactions, positionType]);
+  // Keep handlers pointed at the current values during the same render.
+  latestValuesRef.current = { platform, exchange, tradeType, transactions, positionType };
 
   // Debounce timer ref
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -80,22 +74,25 @@ export const useCalculation = () => {
       clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
     }
+    const requestId = ++requestIdRef.current;
+    setCalculationState({ error: null, result: null });
 
     const performCalculation = async () => {
       // Use the latest values from ref to avoid stale closures
+      const calculationInputs = latestValuesRef.current;
       const { 
         platform: currentPlatform, 
         exchange: currentExchange, 
         tradeType: currentTradeType, 
         transactions: currentTransactions, 
         positionType: currentPositionType 
-      } = latestValuesRef.current;
-
-      setCalculationState({
-        error: null,
-        result: null,
-      });
-
+      } = calculationInputs;
+      const inputsAreCurrent = () => isLatestCalculation(
+        requestId,
+        requestIdRef.current,
+        calculationInputs,
+        latestValuesRef.current,
+      );
       try {
         const validation = validateTransactions(currentTransactions);
 
@@ -125,11 +122,13 @@ export const useCalculation = () => {
           throw new Error(`${result.error}: ${result.detail || ""}`);
         }
 
+        if (!inputsAreCurrent()) return;
         setCalculationState({
           error: null,
           result,
         });
       } catch (error) {
+        if (!inputsAreCurrent()) return;
         setCalculationState({
           error:
             error instanceof Error ? error.message : "Unknown error occurred",
@@ -151,6 +150,15 @@ export const useCalculation = () => {
     setChangedSettings([]);
   }, []);
 
+  const clearCalculation = useCallback(() => {
+    requestIdRef.current++;
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    setCalculationState({ error: null, result: null });
+  }, []);
+
   // Manual calculation function for button click
   const handleManualCalculation = useCallback(async () => {
     clearChangedSettingsFlag();
@@ -166,67 +174,47 @@ export const useCalculation = () => {
     );
   }, [transactions]);
 
+  // Any input change invalidates in-flight requests and results for old inputs.
+  useEffect(() => {
+    requestIdRef.current++;
+    setCalculationState({ error: null, result: null });
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+  }, [platform, exchange, tradeType, transactions, positionType]);
+
   // Detect settings changes and clear results
   useEffect(() => {
-    const currentSettings = {
-      broker: platform,
-      tradeType: tradeType,
-      positionType: positionType,
-      exchange: exchange
-    };
-
+    const prev = previousSettingsRef.current;
     const changes: string[] = [];
-    
-    if (previousSettings.broker !== currentSettings.broker) {
-      changes.push('Broker');
-    }
-    if (previousSettings.tradeType !== currentSettings.tradeType) {
-      changes.push('Trade type');
-    }
-    if (previousSettings.positionType !== currentSettings.positionType) {
-      changes.push('Position');
-    }
-    if (previousSettings.exchange !== currentSettings.exchange) {
-      changes.push('Exchange');
-    }
+
+    if (prev.broker !== platform) changes.push('Broker');
+    if (prev.tradeType !== tradeType) changes.push('Trade type');
+    if (prev.positionType !== positionType) changes.push('Position');
+    if (prev.exchange !== exchange) changes.push('Exchange');
 
     if (changes.length > 0) {
-      // Settings have changed, clear results
-      setCalculationState({
-        error: null,
-        result: null,
-      });
-      
-      // Only show validation message if user has entered meaningful data
       if (hasValidTransactionData()) {
         setChangedSettings(changes);
       }
-      
-      setPreviousSettings(currentSettings);
-      
-      // Clear any pending calculations
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-        debounceTimerRef.current = null;
-      }
-    }
-  }, [platform, tradeType, positionType, exchange, previousSettings, hasValidTransactionData]);
 
-  // Clear results when inputs change (but don't auto-calculate)
+      previousSettingsRef.current = { broker: platform, tradeType, positionType, exchange };
+
+    }
+  }, [platform, tradeType, positionType, exchange, hasValidTransactionData]);
+
+  // Cancel any pending debounced calculation when inputs become invalid
   useEffect(() => {
     const validation = validateTransactions(transactions);
 
     if (!validation.isValid || transactions.length === 0) {
-      // Clear any pending calculations
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
         debounceTimerRef.current = null;
       }
-      // Reset to default values when inputs are invalid
-      setCalculationState({
-        error: null,
-        result: null,
-      });
+      requestIdRef.current++;
+      setCalculationState({ error: null, result: null });
     }
   }, [exchange, tradeType, transactions, positionType, validateTransactions]);
 
@@ -262,6 +250,7 @@ export const useCalculation = () => {
     calculationState,
     handleCalculateCharges,
     handleManualCalculation,
+    clearCalculation,
     settingsChanged: changedSettings.length > 0,
     settingsChangeMessage: getSettingsChangeMessage()
   };

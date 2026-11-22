@@ -53,10 +53,10 @@ export const useProfitTargetCalculator = (sharedState: SharedCalculatorState): P
     }
 
     const entryPrice = parseFloat(state.buyPrice);
-    const quantity = parseInt(state.quantity);
+    const quantity = Number(state.quantity);
     const profitPercentage = state.profitPercentage ? parseFloat(state.profitPercentage) : undefined;
 
-    if (isNaN(entryPrice) || isNaN(quantity) || entryPrice <= 0 || quantity <= 0) {
+    if (!Number.isFinite(entryPrice) || !Number.isSafeInteger(quantity) || entryPrice <= 0 || quantity <= 0) {
       setResult(null);
       return;
     }

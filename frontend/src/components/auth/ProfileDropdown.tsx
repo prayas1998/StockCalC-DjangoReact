@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { usernameFromEmail } from "@/lib/authIdentity";
 import { useAuth } from "@/context/AuthContext";
 import { User, LogOut, Receipt, BookOpen, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -26,15 +27,19 @@ const ProfileDropdown = () => {
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
-  const firstName = user?.user_metadata?.first_name || "User";
+  const username = usernameFromEmail(user?.email);
+  const displayName =
+    username ||
+    user?.user_metadata?.first_name ||
+    (user?.email ? user.email.split("@")[0] : "User");
+  const accountIdentifier = username || user?.email || "Signed in";
   
   const handleLogout = () => {
     setShowLogoutConfirm(true);
   };
   
   const confirmLogout = async () => {
-    await signOut();
-    setShowLogoutConfirm(false);
+    if (await signOut()) setShowLogoutConfirm(false);
   };
   
   return (
@@ -49,7 +54,7 @@ const ProfileDropdown = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLogout}>Log out</AlertDialogAction>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void confirmLogout(); }}>Log out</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -58,12 +63,12 @@ const ProfileDropdown = () => {
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" className="flex items-center gap-2">
             <User className="h-5 w-5" />
-            {firstName}
+            {displayName}
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="min-w-[240px] max-w-[320px] w-auto">
           <div className="p-2 text-sm font-medium text-muted-foreground break-words">
-            {user?.email}
+            {accountIdentifier}
           </div>
           <DropdownMenuSeparator />
           <DropdownMenuItem 

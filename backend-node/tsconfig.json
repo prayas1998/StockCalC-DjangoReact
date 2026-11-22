@@ -12,7 +12,7 @@
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",
-    "rootDir": "./",
+    "rootDir": "./src",
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "paths": {
@@ -20,11 +20,11 @@
     }
   },
   "include": [
-    "src/**/*",
-    "api/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "api"
   ]
 }

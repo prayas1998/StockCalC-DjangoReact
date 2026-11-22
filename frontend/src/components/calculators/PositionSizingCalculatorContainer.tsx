@@ -32,10 +32,13 @@ export const PositionSizingCalculatorContainer: React.FC<PositionSizingCalculato
       calculate={calculator.calculate}
       selectedBroker={selectedBroker}
       selectedTradeType={selectedTradeType}
-      positionType={positionType}
+      positionType={selectedTradeType === 'equity-delivery' ? 'long' : positionType}
       LEVERAGE={LEVERAGE}
       onBrokerChange={onBrokerChange}
-      onTradeTypeChange={onTradeTypeChange}
+      onTradeTypeChange={(tradeType) => {
+        if (tradeType === 'equity-delivery') setPositionType('long');
+        onTradeTypeChange(tradeType);
+      }}
       onPositionTypeChange={setPositionType}
     />
   );

@@ -1,38 +1,33 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { Session, User, AuthError } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from 'react';
+import { Session, User, AuthError, isAuthSessionMissingError } from '@supabase/supabase-js';
+import { authSessionStorageKey, supabase } from '../lib/supabase';
+import { forgetRevokedSession, readStoredSession, type SessionIdentity } from '../lib/authSession';
 import { useToast } from '@/components/ui/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { setAuthToken, removeAuthToken } from '../lib/tokenStorage';
+import { isValidUsername, normalizeUsername, resolveIdentifierToEmail, usernameFromEmail, usernameToInternalEmail } from '../lib/authIdentity';
 
 interface AuthContextProps {
   session: Session | null;
   user: User | null;
-  signUp: (email: string, password: string, firstName: string, lastName?: string) => Promise<{ error: AuthError | null }>;
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>;
-  signOut: () => Promise<void>;
+  signUp: (username: string, password: string) => Promise<{ error: AuthError | null }>;
+  signIn: (identifier: string, password: string) => Promise<{ error: AuthError | null }>;
+  signOut: () => Promise<boolean>;
+  clearRevokedSession: (revoked: SessionIdentity) => Promise<boolean>;
   loading: boolean;
   refreshSession: () => Promise<Session | null>;
-  updateUserProfile: (updates: { email?: string; first_name?: string; last_name?: string }, showToast?: boolean) => Promise<{ error: AuthError | null }>;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
 
-/**
- * Checks if a JWT token is expired or about to expire
- * @param token JWT token to check
- * @param bufferSeconds Seconds before actual expiration to consider token as expired
- * @returns boolean indicating if token is expired or about to expire
- */
-const isTokenExpiring = (token: string, bufferSeconds = 300): boolean => {
+const usernameConfirmationMessage = 'Your account requires email confirmation. Contact support to activate your username account.';
+
+const refreshSession = async (): Promise<Session | null> => {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    const expiryTime = payload.exp * 1000; // Convert to milliseconds
-    // Consider token expired if it's within buffer period
-    return expiryTime < (Date.now() + bufferSeconds * 1000);
-  } catch (error) {
-    console.error('Error checking token expiration:', error);
-    return true; // Assume expired if we can't parse it
+    const { data, error } = await supabase.auth.refreshSession();
+    return error ? null : data.session;
+  } catch {
+    return null;
   }
 };
 
@@ -41,128 +36,82 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const previousUserId = useRef<string>();
   const queryClient = useQueryClient();
 
-  /**
-   * Refreshes the authentication session
-   * @returns Refreshed session or null if refresh failed
-   */
-  const refreshSession = async (): Promise<Session | null> => {
-    try {
-      const { data, error } = await supabase.auth.refreshSession();
-      
-      if (error) {
-        console.error('Session refresh error:', error);
-        return null;
-      }
-      
-      if (data.session) {
-        setSession(data.session);
-        setUser(data.session.user);
-        setAuthToken(data.session.access_token);
-        return data.session;
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Unexpected error during session refresh:', error);
-      return null;
-    }
-  };
-
-  // Update token in storage and handle session state
-  const updateSessionState = async (newSession: Session | null, clearCache: boolean = false) => {
-    const previousUserId = user?.id;
-    const newUserId = newSession?.user?.id;
-    
-    setSession(newSession);
-    setUser(newSession?.user ?? null);
-    
-    if (newSession?.access_token) {
-      setAuthToken(newSession.access_token);
+  const syncSession = useCallback((nextSession: Session | null, clearCache = false) => {
+    const userId = nextSession?.user.id;
+    if (previousUserId.current !== userId || clearCache) queryClient.clear();
+    previousUserId.current = userId;
+    setSession(nextSession);
+    setUser(nextSession?.user ?? null);
+    if (nextSession?.access_token) {
+      setAuthToken(nextSession.access_token);
     } else {
       removeAuthToken();
     }
-    
-    // Clear query cache if user changed or explicitly requested
-    if (clearCache || (previousUserId && newUserId && previousUserId !== newUserId) || (!newUserId && previousUserId)) {
-      queryClient.clear();
-      console.log('Query cache cleared due to user change');
-    }
-    
     setLoading(false);
-  };
+  }, [queryClient]);
 
   useEffect(() => {
-    // Get initial session
-    const initializeAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      await updateSessionState(session);
-      
-      // Proactively refresh if token is about to expire
-      if (session?.access_token && isTokenExpiring(session.access_token)) {
-        await refreshSession();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (nextSession?.access_token !== readStoredSession(authSessionStorageKey)?.access_token) return;
+      syncSession(nextSession, event === 'SIGNED_IN' || event === 'SIGNED_OUT');
+    });
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === authSessionStorageKey && event.newValue === null && !localStorage.getItem(authSessionStorageKey)) {
+        syncSession(null, true);
       }
     };
-    
-    initializeAuth();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // Clear cache on sign out or sign in events
-      const shouldClearCache = event === 'SIGNED_OUT' || event === 'SIGNED_IN';
-      await updateSessionState(session, shouldClearCache);
-      
-      // Check if token is about to expire and refresh if needed
-      if (session?.access_token && isTokenExpiring(session.access_token)) {
-        const refreshedSession = await refreshSession();
-        if (!refreshedSession) {
-          // Handle failed refresh by logging out
-          toast({
-            variant: 'destructive',
-            title: 'Session expired',
-            description: 'Your session has expired. Please log in again.',
-          });
-          await signOut();
-        }
-      }
-    });
+    window.addEventListener('storage', onStorage);
 
     return () => {
       subscription.unsubscribe();
+      window.removeEventListener('storage', onStorage);
     };
-  }, []);
+  }, [syncSession]);
 
-  const signUp = async (email: string, password: string, firstName: string, lastName?: string) => {
+  const clearRevokedSession = (revoked: SessionIdentity) => forgetRevokedSession(authSessionStorageKey, revoked, () => {
+    syncSession(null, true);
+  });
+
+  const signUp = async (username: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
+      const normalizedUsername = normalizeUsername(username);
+      if (!isValidUsername(normalizedUsername)) {
+        throw new AuthError('Username must be 3-30 characters using lowercase letters, numbers, or underscores.');
+      }
+
+      const { data, error } = await supabase.auth.signUp({
+        email: usernameToInternalEmail(normalizedUsername),
         password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName || '',
-          },
-        },
       });
 
-      if (error) throw error;
+      if (error) {
+        if (/confirmation email/i.test(error.message)) {
+          throw new AuthError(usernameConfirmationMessage);
+        }
+        throw error;
+      }
+      if (!data.session) {
+        throw new AuthError(usernameConfirmationMessage);
+      }
       
       toast({
         title: 'Account created successfully',
-        description: 'Please check your email to verify your account before signing in.',
+        description: 'You can now sign in with your username and password.',
       });
       
       return { error: null };
     } catch (error) {
       const authError = error as AuthError;
       
-      // Check for duplicate email error
+      // Check for duplicate username conflicts surfaced as email conflicts.
       if (authError.message && authError.message.toLowerCase().includes("already")) {
         toast({
           variant: 'destructive',
-          title: 'Email already registered',
-          description: 'This email is already registered. Please sign in instead.',
+          title: 'Username already taken',
+          description: 'Please choose a different username.',
         });
       } else {
         toast({
@@ -175,24 +124,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (identifier: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const email = resolveIdentifierToEmail(identifier);
+      const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       });
 
-      if (error) throw error;
-      
+      if (error) {
+        if (error.code === 'email_not_confirmed' && usernameFromEmail(email)) {
+          throw new AuthError(usernameConfirmationMessage);
+        }
+        throw error;
+      }
+
       toast({
         title: 'Welcome back!',
         description: 'You have been successfully logged in.',
       });
       
       return { error: null };
+      
     } catch (error) {
       const authError = error as AuthError;
-      
+
       toast({
         variant: 'destructive',
         title: 'Login failed',
@@ -204,56 +160,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     try {
-      // Clear query cache before signing out
-      queryClient.clear();
-      
-      await supabase.auth.signOut();
-      removeAuthToken();
-      
+      if (session) {
+        const { error } = await supabase.auth.admin.signOut(session.access_token, 'local');
+        if (error && !isAuthSessionMissingError(error)) throw error;
+        const cleared = await clearRevokedSession({ userId: session.user.id, accessToken: session.access_token });
+        if (!cleared) return true;
+      }
       toast({
         title: 'Signed out',
         description: 'You have been successfully logged out.',
       });
-    } catch (error) {
+      return true;
+    } catch {
       toast({
         variant: 'destructive',
         title: 'Error signing out',
-        description: 'An unknown error occurred',
+        description: 'Unable to sign out. Please try again.',
       });
-    }
-  };
-
-  const updateUserProfile = async (updates: { email?: string; first_name?: string; last_name?: string }, showToast: boolean = true) => {
-    try {
-      const { error } = await supabase.auth.updateUser({
-        email: updates.email,
-        data: {
-          first_name: updates.first_name,
-          last_name: updates.last_name,
-        },
-      });
-
-      if (error) throw error;
-      
-      if (showToast) {
-        toast({
-          title: 'Profile updated',
-          description: 'Your profile has been successfully updated.',
-        });
-      }
-      
-      return { error: null };
-    } catch (error) {
-      const authError = error as AuthError;
-      
-      if (showToast) {
-        toast({
-          variant: 'destructive',
-          title: 'Update failed',
-          description: authError.message || 'An unknown error occurred',
-        });
-      }
-      return { error: authError };
+      return false;
     }
   };
 
@@ -263,9 +187,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signUp,
     signIn,
     signOut,
+    clearRevokedSession,
     loading,
     refreshSession,
-    updateUserProfile,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

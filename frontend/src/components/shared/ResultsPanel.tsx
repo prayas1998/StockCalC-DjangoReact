@@ -60,7 +60,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                 <TrendingUp className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span className="text-sm font-medium text-amber-800 dark:text-amber-200">Breakeven:</span>
               </div>
-              <span className="font-semibold text-amber-800 dark:text-amber-200">{formatCurrency(breakevenPrice)}</span>
+              <span className="font-semibold text-amber-800 dark:text-amber-200">{breakevenPrice > 0 ? formatCurrency(breakevenPrice) : "Unavailable"}</span>
             </div>
           </div>
         )}
@@ -86,7 +86,7 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-xs text-slate-600 dark:text-slate-400">Exchange:</span>
+                <span className="text-xs text-slate-600 dark:text-slate-400">{charges.exchangeIncludesIpft ? "Exchange + IPFT" : "Exchange"}:</span>
                 <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
                   {formatCurrency(charges.exchangeCharges)}
                 </span>
@@ -109,7 +109,15 @@ export const ResultsPanel: React.FC<ResultsPanelProps> = ({
                   {formatCurrency(charges.sebiCharges)}
                 </span>
               </div>
-              {exchange === "NSE" && (
+              {charges.dpCharges > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="text-xs text-slate-600 dark:text-slate-400">DP:</span>
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    {formatCurrency(charges.dpCharges)}
+                  </span>
+                </div>
+              )}
+              {exchange === "NSE" && !charges.exchangeIncludesIpft && (
                 <div className="flex justify-between items-center col-span-2">
                   <span className="text-xs text-slate-600 dark:text-slate-400">IPFT:</span>
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-300">

@@ -15,12 +15,14 @@ import { Input } from "@/components/ui/input";
 import { Loader2, AlertCircle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from '@/context/AuthContext';
+import { isValidUsername, normalizeUsername } from "@/lib/authIdentity";
 
 const signupSchema = z
   .object({
-    firstName: z.string().min(1, "First name is required"),
-    lastName: z.string().optional(),
-    email: z.string().email("Invalid email address"),
+    username: z.string()
+      .min(3, "Username must be at least 3 characters")
+      .max(30, "Username must be 30 characters or less")
+      .refine((value) => isValidUsername(value), "Use lowercase letters, numbers, or underscores only"),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string(),
   })
@@ -40,14 +42,12 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
   const { signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [emailExists, setEmailExists] = useState(false);
+  const [usernameExists, setUsernameExists] = useState(false);
   
   const form = useForm<SignupValues>({
     resolver: zodResolver(signupSchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
-      email: "",
+      username: "",
       password: "",
       confirmPassword: "",
     },
@@ -56,28 +56,22 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
   const onSubmit = async (data: SignupValues) => {
     setIsLoading(true);
     setFormError(null);
-    setEmailExists(false);
+    setUsernameExists(false);
     
     try {
-      const { error } = await signUp(
-        data.email,
-        data.password,
-        data.firstName,
-        data.lastName
-      );
+      const { error } = await signUp(normalizeUsername(data.username), data.password);
       
       if (!error) {
         onSuccess();
       } else {
-        // Check for email already registered error
+        // Check for username conflict errors.
         if (error.message && (
             error.message.includes("already registered") || 
             error.message.includes("already in use") ||
-            error.message.includes("email already exists")
+            error.message.includes("already exists")
           )) {
-          setEmailExists(true);
+          setUsernameExists(true);
         } else {
-          // Handle other errors
           setFormError(error.message || "An error occurred during signup");
         }
       }
@@ -98,11 +92,11 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
           </Alert>
         )}
         
-        {emailExists && (
+        {usernameExists && (
           <Alert className="border-blue-200 bg-blue-50">
             <AlertCircle className="h-4 w-4 text-blue-500" />
             <AlertDescription className="flex items-center gap-2">
-              This email is already registered.
+              This username is already taken.
               <Button 
                 variant="link" 
                 className="h-auto p-0" 
@@ -114,45 +108,16 @@ const SignupForm = ({ switchMode, onSuccess }: SignupFormProps) => {
           </Alert>
         )}
         
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="firstName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>First Name</FormLabel>
-                <FormControl>
-                  <Input placeholder="John" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          
-          <FormField
-            control={form.control}
-            name="lastName"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Last Name (Optional)</FormLabel>
-                <FormControl>
-                  <Input placeholder="Doe" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-        
         <FormField
           control={form.control}
-          name="email"
+          name="username"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Email</FormLabel>
+              <FormLabel>Username</FormLabel>
               <FormControl>
-                <Input placeholder="you@example.com" {...field} />
+                <Input placeholder="your_username" {...field} />
               </FormControl>
+              <p className="text-xs text-muted-foreground">3-30 chars, lowercase letters, numbers, underscores.</p>
               <FormMessage />
             </FormItem>
           )}

@@ -1,3 +1,4 @@
+import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { requestLogger } from './utils/logger.js';
@@ -25,7 +26,19 @@ app.use('*', errorHandler);
 app.use(
   '*',
   cors({
-    origin: config.api.corsOrigins,
+    origin: (origin) => {
+      if (!origin) return undefined;
+      const isAllowed = config.api.corsOrigins.some((allowed) => {
+        if (typeof allowed === 'string') {
+          return origin === allowed;
+        }
+        if (allowed instanceof RegExp) {
+          return allowed.test(origin);
+        }
+        return false;
+      });
+      return isAllowed ? origin : undefined;
+    },
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowHeaders: ['Content-Type', 'Authorization'],
     credentials: true
@@ -58,6 +71,14 @@ app.get('/api/health-check/', (c) => {
 app.get('/', (c) => {
   return c.text('API is running fine!');
 });
+
+// Start local server (non-Vercel environments)
+if (process.env.VERCEL !== '1') {
+  const port = Number(process.env.PORT) || 8000;
+  serve({ fetch: app.fetch, port }, () => {
+    console.log(`Server running at http://localhost:${port}`);
+  });
+}
 
 // Export for Vercel deployment
 export default app;

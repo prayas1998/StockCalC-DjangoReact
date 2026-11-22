@@ -1,20 +1,44 @@
+import Decimal from 'decimal.js';
 import { z } from 'zod';
 
-// Calculation request validation
+// The calculator accepts the existing decimal string and number inputs.
+const calculationDecimal = z.union([z.string().trim(), z.number()]).transform(String)
+  .refine((value) => {
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) return false;
+    return Number.isFinite(Number(value)) && Math.abs(Number(value)) <= Number.MAX_SAFE_INTEGER;
+  }, 'Enter a finite numeric value within the supported range');
+const calculationPrice = calculationDecimal.pipe(z.string().refine((value) => new Decimal(value).gte(0), 'Price must be nonnegative'));
+const calculationQuantity = calculationDecimal.pipe(z.string().refine((value) => {
+  const quantity = new Decimal(value);
+  return quantity.isInteger() && quantity.gt(0);
+}, 'Quantity must be a positive whole number'));
+const orderId = z.string().trim().min(1).max(100).optional();
+
 export const calculationRequestSchema = z.object({
-  platform: z.string().min(1, 'Platform is required').default('groww'),
-  exchange: z.string().min(1, 'Exchange is required').default('NSE'),
-  tradeType: z.string().min(1, 'Trade type is required').default('equity-delivery'),
+  platform: z.string().default('groww').transform((value) => value.toLowerCase()).pipe(z.enum(['dhan', 'groww'])),
+  exchange: z.string().default('NSE').transform((value) => value.toUpperCase()).pipe(z.enum(['NSE', 'BSE'])),
+  tradeType: z.enum(['equity-delivery', 'equity-intraday']).default('equity-delivery'),
   transactions: z.array(z.object({
-    quantity: z.string().min(1, 'Quantity is required'),
-    buyPrice: z.string().min(1, 'Buy price is required'),
-    sellPrice: z.string().min(1, 'Sell price is required')
+    quantity: calculationQuantity,
+    buyPrice: calculationPrice,
+    sellPrice: calculationPrice,
+    buyOrderId: orderId,
+    sellOrderId: orderId,
+    debitInstructionId: orderId,
+  }).refine((row) => Number(row.buyPrice) > 0 || Number(row.sellPrice) > 0, {
+    message: 'Enter at least one positive price for each transaction'
   })).min(1, 'At least one transaction is required'),
-  positionType: z.enum(['long', 'short']).default('long')
+  positionType: z.enum(['long', 'short']).default('long'),
+  tradeDate: z.string().date().optional(),
+  growwDpRate: z.enum(['standard', 'female']).default('standard'),
+}).refine((data) => data.tradeType !== 'equity-delivery' || data.positionType === 'long', {
+  path: ['positionType'],
+  message: 'Delivery calculations only support long positions'
 });
 
 // Profile update validation
 export const profileUpdateSchema = z.object({
+  username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{3,30}$/, 'Username must be 3-30 chars using lowercase letters, numbers, or underscores').optional(),
   email: z.string().email('Invalid email format').optional(),
   first_name: z.string().min(1, 'First name must be at least 1 character').optional(),
   last_name: z.string().min(1, 'Last name must be at least 1 character').optional()
@@ -31,25 +55,88 @@ export const changePasswordSchema = z.object({
 });
 
 // Journal trade validation
-export const tradeJournalCreateSchema = z.object({
+const tradeJournalBaseSchema = z.object({
   company_name: z.string().min(1, 'Company name is required'),
   trade_type: z.enum(['EQUITY_DELIVERY', 'EQUITY_INTRADAY']),
-  quantity: z.number().min(1, 'Quantity must be at least 1'),
-  buy_price: z.number().min(0, 'Buy price must be non-negative'),
-  sell_price: z.number().min(0, 'Sell price must be non-negative').optional(),
-  stop_loss: z.number().min(0, 'Stop loss must be non-negative').optional(),
-  target_price: z.number().min(0, 'Target price must be non-negative').optional(),
+  quantity: z.number().int().min(1, 'Quantity must be at least 1'),
+  buy_price: z.number().finite().positive('Buy price must be greater than 0').nullish(),
+  sell_price: z.number().finite().positive('Sell price must be greater than 0').nullish(),
+  stop_loss: z.number().finite().positive('Stop loss must be greater than 0').nullish(),
+  target_price: z.number().finite().positive('Target price must be greater than 0').nullish(),
   entry_date: z.string().min(1, 'Entry date is required'),
-  exit_date: z.string().min(1, 'Exit date is required').optional(),
+  exit_date: z.string().min(1, 'Exit date is required').nullish(),
   status: z.enum(['OPEN', 'CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL', 'CANCELLED']),
   personal_notes: z.string().optional(),
-  tags: z.array(z.number()).optional(),
+  tags: z.array(z.number().int().safe().positive()).optional(),
   direction: z.enum(['LONG', 'SHORT']).default('LONG'),
   broker: z.enum(['Dhan', 'Groww']).default('Dhan'),
   exchange: z.enum(['NSE', 'BSE']).default('NSE')
 });
 
-export const tradeJournalUpdateSchema = tradeJournalCreateSchema.partial();
+export const tradeJournalCreateSchema = tradeJournalBaseSchema.superRefine((data, ctx) => {
+  const { direction, status, buy_price, sell_price, stop_loss, target_price, exit_date } = data;
+  const entryPrice = direction === 'LONG' ? buy_price : sell_price;
+
+  if (data.trade_type === 'EQUITY_DELIVERY' && direction === 'SHORT') {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['direction'], message: 'Short positions require an intraday trade' });
+  }
+
+  // Direction-aware entry price requirement
+  if (direction === 'LONG') {
+    if (!buy_price) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['buy_price'], message: 'Buy price is required and must be greater than 0 for long trades' });
+    }
+  } else {
+    if (!sell_price) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sell_price'], message: 'Entry price (sell price) is required and must be greater than 0 for short trades' });
+    }
+  }
+
+  // Status-aware exit price requirement
+  if (status === 'CLOSED_MANUAL') {
+    if (direction === 'LONG' && !sell_price) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sell_price'], message: 'Exit price (sell price) is required and must be greater than 0 for manually closed long trades' });
+    }
+    if (direction === 'SHORT' && !buy_price) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['buy_price'], message: 'Exit price (buy price) is required and must be greater than 0 for manually closed short trades' });
+    }
+  }
+
+  if (status === 'CLOSED_TARGET' && !target_price) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_price'], message: 'Target price is required and must be greater than 0 for trades closed at target' });
+  }
+
+  if (status === 'CLOSED_STOPLOSS' && !stop_loss) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['stop_loss'], message: 'Stop loss is required and must be greater than 0 for trades closed at stop loss' });
+  }
+
+  // Exit date required for all closed statuses
+  if (['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'].includes(status) && !exit_date) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['exit_date'], message: 'Exit date is required for closed trades' });
+  }
+
+  // Price sanity checks
+  if (typeof target_price === 'number' && typeof entryPrice === 'number') {
+    if (direction === 'LONG' && target_price <= entryPrice) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_price'], message: `Target price (${target_price}) must be greater than entry price (${entryPrice}) for long positions` });
+    }
+    if (direction === 'SHORT' && target_price >= entryPrice) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['target_price'], message: `Target price (${target_price}) must be less than entry price (${entryPrice}) for short positions` });
+    }
+  }
+
+  if (typeof stop_loss === 'number' && typeof entryPrice === 'number') {
+    if (direction === 'LONG' && stop_loss >= entryPrice) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['stop_loss'], message: `Stop loss (${stop_loss}) must be less than entry price (${entryPrice}) for long positions` });
+    }
+    if (direction === 'SHORT' && stop_loss <= entryPrice) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['stop_loss'], message: `Stop loss (${stop_loss}) must be greater than entry price (${entryPrice}) for short positions` });
+    }
+  }
+});
+
+// The journal_save_trade RPC validates these fields against the locked trade.
+export const tradeJournalUpdateSchema = tradeJournalBaseSchema.partial();
 
 // Tag validation
 export const tagCreateSchema = z.object({

@@ -35,6 +35,7 @@ lerna-debug.log*
 .env.production.local
 .env.local
 *.local
+**/.env*.backup
 
 # Editor files
 .DS_Store
@@ -142,3 +143,6 @@ frontend/dist/
 # Database
 *.sqlite3
 node_modules
+
+# Keep the production readiness report local-only.
+/PRODUCTION_READINESS.md

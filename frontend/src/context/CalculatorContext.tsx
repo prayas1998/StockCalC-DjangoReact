@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { positionTypeForTrade } from '@/utils/transactionUtils';
 import { Transaction } from '@/types/calculator';
 
 export type PositionType = 'long' | 'short';
@@ -26,7 +27,7 @@ const CalculatorContext = createContext<CalculatorContextType | undefined>(undef
 
 export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }) => {
   const [positionType, setPositionType] = useState<PositionType>('long');
-  const [tradeType, setTradeType] = useState<TradeType>('equity-delivery');
+  const [tradeType, setTradeTypeInternal] = useState<TradeType>('equity-delivery');
   const [exchange, setExchange] = useState<Exchange>('NSE');
   const [transactions, setTransactions] = useState<Transaction[]>([
     { id: "1", companyName: "", quantity: "0", buyPrice: "0", sellPrice: "0" }
@@ -47,6 +48,11 @@ export const CalculatorProvider: React.FC<{children: ReactNode}> = ({ children }
     // Don't reset transactions when platform changes - preserve user input
     // Only clear results, not the form data
   }, [setPlatformInternal]);
+
+  const setTradeType = useCallback((newTradeType: TradeType) => {
+    setTradeTypeInternal(newTradeType);
+    setPositionType((current) => positionTypeForTrade(newTradeType, current));
+  }, []);
 
   const updateTransaction = useCallback((
     id: string,

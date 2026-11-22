@@ -99,7 +99,7 @@ const Footer = () => {
           <div className="pt-6 border-t border-slate-200 dark:border-slate-700">
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
               <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                <span>© {new Date().getFullYear()} TradeSmart. Made with</span>
+                <span>&copy; {new Date().getFullYear()} TradeSmart. Made with</span>
                 <Heart className="h-4 w-4 text-red-500" />
                 <span>for traders</span>
               </div>

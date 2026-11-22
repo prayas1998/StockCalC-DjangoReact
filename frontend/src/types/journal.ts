@@ -72,7 +72,7 @@ export interface TradeJournal {
   created_at: string;
   updated_at: string;
   tags: TradeTags[];
-  pnl?: number;
+  pnl?: number | null;
   pnl_percentage?: number;
   unrealized_pnl?: number;
   risk_reward_ratio?: number;
@@ -201,6 +201,7 @@ export interface JournalFilters {
   end_date?: string;
   tags?: number[];
   companies?: string[];
+  company?: string[];
   is_profitable?: boolean;
   query?: string;
   page?: number;

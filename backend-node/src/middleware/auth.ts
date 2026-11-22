@@ -1,7 +1,8 @@
 import jwt from 'jsonwebtoken';
 import { createClient } from '@supabase/supabase-js';
 import config from '../config.js';
-import { RequestContext } from '../types.js';
+import { RequestContext } from '../types/index.js';
+import { rateLimitMiddleware } from './rateLimit.js';
 
 // JWT verification function
 export function verifyToken(token: string): any {
@@ -27,6 +28,18 @@ interface JWTPayload {
   role?: string;
 }
 
+async function rejectInvalidToken(c: any, message: string) {
+  const rateLimitResponse = await rateLimitMiddleware(c, async () => {});
+  if (rateLimitResponse) return rateLimitResponse;
+
+  return c.json({
+    error: true,
+    error_id: `auth_${Date.now()}`,
+    category: 'authentication',
+    message
+  }, 401);
+}
+
 export const authMiddleware = async (c: any, next: any) => {
   try {
     // Skip auth for health check
@@ -50,12 +63,7 @@ export const authMiddleware = async (c: any, next: any) => {
     const payload = jwt.verify(token, config.supabase.jwtSecret) as JWTPayload;
     
     if (!payload || !payload.sub || !payload.email) {
-      return c.json({
-        error: true,
-        error_id: `auth_${Date.now()}`,
-        category: 'authentication',
-        message: 'Invalid authentication token. Please log in again.'
-      }, 401);
+      return rejectInvalidToken(c, 'Invalid authentication token. Please log in again.');
     }
     
     // Create user object (mirroring Django SupabaseUser)
@@ -80,19 +88,9 @@ export const authMiddleware = async (c: any, next: any) => {
     await next();
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
-      return c.json({
-        error: true,
-        error_id: `auth_${Date.now()}`,
-        category: 'authentication',
-        message: 'Your session has expired. Please log in again.'
-      }, 401);
+      return rejectInvalidToken(c, 'Your session has expired. Please log in again.');
     } else if (error instanceof jwt.JsonWebTokenError) {
-      return c.json({
-        error: true,
-        error_id: `auth_${Date.now()}`,
-        category: 'authentication',
-        message: 'Invalid authentication token. Please log in again.'
-      }, 401);
+      return rejectInvalidToken(c, 'Invalid authentication token. Please log in again.');
     } else {
       console.error('Auth middleware error:', error);
       return c.json({

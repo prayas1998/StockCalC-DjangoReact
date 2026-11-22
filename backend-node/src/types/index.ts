@@ -12,6 +12,7 @@ export interface User {
 export interface UserProfileResponse extends User {}
 
 export interface ProfileUpdateRequest {
+  username?: string;
   email?: string;
   first_name?: string;
   last_name?: string;
@@ -28,6 +29,9 @@ export interface Transaction {
   quantity: string;
   buyPrice: string;
   sellPrice: string;
+  buyOrderId?: string;
+  sellOrderId?: string;
+  debitInstructionId?: string;
 }
 
 export interface CalculationRequest {
@@ -36,6 +40,8 @@ export interface CalculationRequest {
   tradeType: string;
   transactions: Transaction[];
   positionType: 'long' | 'short';
+  tradeDate?: string;
+  growwDpRate?: 'standard' | 'female';
 }
 
 export interface CalculationResponse {
@@ -44,18 +50,20 @@ export interface CalculationResponse {
     buyValue: string;
     sellValue: string;
     averageBuyPrice: string;
+    charges: string;
   }>;
   charges: {
     totalCharges: string;
     brokerage: string;
     stt: string;
-    exchangeCharges: string;
+    exchangeCharges: string | null;
+    exchangeAndIpft: string | null;
     stampDuty: string;
     sebiFee: string;
-    ipft: string;
+    ipft: string | null;
     gst: string;
     dpCharges: string;
-    [key: string]: string;
+    [key: string]: string | null;
   };
   summary: {
     totalQuantity: string;
@@ -66,6 +74,14 @@ export interface CalculationResponse {
     grossPnL: string;
     netPnL: string;
     breakevenPrice: string;
+    breakevenMode: 'remaining' | 'full' | 'unavailable';
+    matchedQuantity: string;
+    openQuantity: string;
+    openSide: 'buy' | 'sell' | '';
+    openCashFlow: string;
+    cashFlow: string;
+    netPayable: string;
+    netReceivable: string;
     [key: string]: string;
   };
 }

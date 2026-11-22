@@ -80,21 +80,25 @@ export const JOURNAL_CONFIG = {
 
 // Environment-specific overrides
 export function getJournalConfig() {
-  const config = { ...JOURNAL_CONFIG };
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  const isProduction = process.env.NODE_ENV === 'production';
 
-  // Development overrides
-  if (process.env.NODE_ENV === 'development') {
-    config.performance.cacheTimeout = 1000; // 1 second for faster development
-    config.security.enableRateLimiting = false;
-  }
-
-  // Production overrides
-  if (process.env.NODE_ENV === 'production') {
-    config.features.enableAdvancedAnalytics = true;
-    config.security.enableAuditLog = true;
-  }
-
-  return config;
+  return {
+    ...JOURNAL_CONFIG,
+    features: {
+      ...JOURNAL_CONFIG.features,
+      ...(isProduction && { enableAdvancedAnalytics: true }),
+    },
+    performance: {
+      ...JOURNAL_CONFIG.performance,
+      ...(isDevelopment && { cacheTimeout: 1000 }), // 1 second for faster development
+    },
+    security: {
+      ...JOURNAL_CONFIG.security,
+      ...(isDevelopment && { enableRateLimiting: false }),
+      ...(isProduction && { enableAuditLog: true }),
+    },
+  };
 }
 
 // Type definitions for configuration

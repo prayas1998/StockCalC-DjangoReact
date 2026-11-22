@@ -45,7 +45,7 @@ const Features = () => {
           ].map((feature, index) => (
             <Card
               key={index}
-              className={`group relative p-8 bg-gradient-to-br ${feature.bgGradient} border-0 shadow-lg hover:shadow-xl transition-all duration-500 hover:scale-105 hover:-translate-y-2 overflow-hidden`}
+              className={`group relative p-8 bg-gradient-to-br ${feature.bgGradient} border border-transparent dark:border-slate-800/60 shadow-lg hover:shadow-xl hover-glow transition-all duration-500 hover:scale-105 hover:-translate-y-2 overflow-hidden`}
             >
               <div className="absolute inset-0 bg-white/60 dark:bg-slate-800/60 backdrop-blur-sm" />
               <div className="absolute inset-0 opacity-0 group-hover:opacity-100 bg-gradient-to-br from-white/80 to-transparent dark:from-slate-700/80 dark:to-transparent transition-opacity duration-500" />

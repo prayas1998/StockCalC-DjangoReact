@@ -18,20 +18,33 @@ export const config = {
     version: 'v1',
     prefix: '/api',
     corsOrigins: (() => {
-      const parsed = process.env.CORS_ORIGINS
+      const envRaw = process.env.CORS_ORIGINS
         ?.split(',')
-        .map(origin => origin.trim())
+        .map((origin) => origin.trim().replace(/\/$/, ''))
         .filter(Boolean);
-      return parsed && parsed.length > 0
-        ? parsed
-        : [
-            'http://localhost:8080',
-            'http://127.0.0.1:8080',
-            'http://localhost:5173',
-            'http://127.0.0.1:5173',
-            'https://stockcalc-frontend.vercel.app',
-            'https://stockcalc-frontend-prayas1998-prayas1998s-projects.vercel.app'
-          ];
+
+      // Supports `regex:<pattern>` entries in env.
+      const parsed: Array<string | RegExp> = (envRaw ?? []).map((entry) => {
+        if (entry.toLowerCase().startsWith('regex:')) {
+          return new RegExp(entry.slice('regex:'.length));
+        }
+        return entry;
+      });
+
+      if (parsed.length > 0) {
+        return parsed;
+      }
+
+      return [
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'https://stockcalc-frontend.vercel.app',
+        'https://stockcalc-frontend-prayas1998-prayas1998s-projects.vercel.app',
+        /^https:\/\/stockcalc-frontend-.*\.vercel\.app$/,
+        /^https:\/\/stockcalc-frontend-.*-prayas1998s-projects\.vercel\.app$/
+      ];
     })()
   },
   

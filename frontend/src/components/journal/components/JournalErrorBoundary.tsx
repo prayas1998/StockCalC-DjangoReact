@@ -20,6 +20,10 @@ interface State {
   errorInfo: React.ErrorInfo | null;
 }
 
+type SentryWindow = Window & {
+  Sentry?: { captureException: (error: Error, options?: unknown) => void };
+};
+
 export class JournalErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -55,8 +59,9 @@ export class JournalErrorBoundary extends Component<Props, State> {
     }
 
     // Report to error tracking service (if available)
-    if (typeof window !== 'undefined' && (window as { Sentry?: { captureException: (error: Error, options?: unknown) => void } }).Sentry) {
-      (window as { Sentry: { captureException: (error: Error, options?: unknown) => void } }).Sentry.captureException(error, {
+    const sentry = typeof window !== 'undefined' ? (window as SentryWindow).Sentry : undefined;
+    if (sentry) {
+      sentry.captureException(error, {
         contexts: {
           react: {
             componentStack: errorInfo.componentStack,
@@ -160,8 +165,9 @@ export function useErrorHandler() {
     }
     
     // Report to error tracking service
-    if (typeof window !== 'undefined' && (window as { Sentry?: { captureException: (error: Error) => void } }).Sentry) {
-      (window as { Sentry: { captureException: (error: Error) => void } }).Sentry.captureException(error);
+    const sentry = typeof window !== 'undefined' ? (window as SentryWindow).Sentry : undefined;
+    if (sentry) {
+      sentry.captureException(error);
     }
   };
 }

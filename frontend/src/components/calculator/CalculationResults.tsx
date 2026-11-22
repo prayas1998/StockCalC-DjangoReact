@@ -1,21 +1,61 @@
 import { Card } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import type { CalculationResultsProps } from "@/types/calculator";
-import { useState, useEffect, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
+import {
+  computeNetCashflow,
+  deriveBuySellLegCharges,
+} from "@/utils/cashflow";
+
+const formatPct = (value: number, decimals = 2) =>
+  `${value >= 0 ? "+" : ""}${value.toFixed(decimals)}%`;
 
 const CalculationResults = ({
   calculationState,
   formatCurrency,
   exchange,
+  tradeType,
+  positionType,
+  broker,
 }: CalculationResultsProps) => {
   const navigate = useNavigate();
-  const grossPnL = Number(calculationState.result?.summary.grossPnL ?? 0);
-  const netPnL = Number(calculationState.result?.summary.netPnL ?? 0);
-  const totalCharges = Number(
-    calculationState.result?.charges.totalCharges ?? 0
-  );
-  const turnover = Number(calculationState.result?.summary.turnover || 0);
+  const summary = calculationState.result?.summary;
+  const charges = calculationState.result?.charges;
+  const openQuantity = Number(summary?.openQuantity ?? 0);
+  const openPosition = summary?.openSide === (positionType === "short" ? "sell" : "buy");
+  const combinedExchangeFee = charges?.exchangeAndIpft != null;
+  const grossPnL = Number(summary?.grossPnL ?? 0);
+  const netPnL = Number(summary?.netPnL ?? 0);
+  const totalCharges = Number(charges?.totalCharges ?? 0);
+  const totalBuyValue = Number(summary?.totalBuyValue ?? 0);
+  const totalSellValue = Number(summary?.totalSellValue ?? 0);
+  const turnover = Number(summary?.turnover ?? 0);
+  const { buySideCharges, sellSideCharges } = deriveBuySellLegCharges({
+    buyValue: totalBuyValue,
+    sellValue: totalSellValue,
+    exchange,
+    broker,
+    tradeType,
+    totalCharges,
+  });
+  const estimatedCashflow = computeNetCashflow({
+    buyValue: totalBuyValue,
+    sellValue: totalSellValue,
+    buySideCharges,
+    sellSideCharges,
+  });
+
+  const netPayable = Number(summary?.netPayable ?? estimatedCashflow.netPayable);
+  const netReceivable = Number(summary?.netReceivable ?? estimatedCashflow.netReceivable);
+
+  // Percentage metrics (only when results are present)
+  const hasResults = calculationState.result !== null;
+  const netPnLPct = hasResults && netPayable > 0 && openQuantity === 0 && positionType === "long"
+    ? (netPnL / netPayable) * 100
+    : null;
+  const chargesPct = hasResults && turnover > 0
+    ? (totalCharges / turnover) * 100
+    : null;
 
   // Determine P&L status
   const getPnLStatus = (value: number) => {
@@ -43,7 +83,7 @@ const CalculationResults = ({
       )}
 
       {/* Main Results - Compact Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
         {/* Turnover */}
         <Card className="p-3 border-slate-200 dark:border-slate-700">
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
@@ -54,17 +94,22 @@ const CalculationResults = ({
           </div>
         </Card>
 
-        {/* Gross P&L */}
+        {/* Net P&L */}
         <Card className="p-3 border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              GROSS P&L
+              {summary?.matchedQuantity === undefined ? "NET P&L" : "REALIZED NET P&L"}
             </span>
-            <grossStatus.icon className="h-3 w-3 text-slate-400" />
+            <netStatus.icon className="h-3 w-3 text-slate-400" />
           </div>
-          <div className={`text-lg font-semibold ${grossStatus.color}`}>
-            {formatCurrency(grossPnL)}
+          <div className={`text-lg font-semibold ${netStatus.color}`}>
+            {formatCurrency(netPnL)}
           </div>
+          {netPnLPct !== null && (
+            <div className={`text-xs font-medium mt-0.5 ${netStatus.color}`}>
+              {formatPct(netPnLPct)} on invested capital
+            </div>
+          )}
         </Card>
 
         {/* Total Charges */}
@@ -75,21 +120,57 @@ const CalculationResults = ({
           <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
             {formatCurrency(totalCharges)}
           </div>
+          {chargesPct !== null && (
+            <div className="text-xs font-medium mt-0.5 text-slate-500 dark:text-slate-400">
+              {formatPct(chargesPct, 3)} of turnover
+            </div>
+          )}
         </Card>
 
-        {/* Net P&L */}
+        {/* Gross P&L */}
         <Card className="p-3 border-slate-200 dark:border-slate-700">
           <div className="flex items-center justify-between mb-1">
             <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
-              NET P&L
+              {summary?.matchedQuantity === undefined ? "GROSS P&L" : "REALIZED GROSS P&L"}
             </span>
-            <netStatus.icon className="h-3 w-3 text-slate-400" />
+            <grossStatus.icon className="h-3 w-3 text-slate-400" />
           </div>
-          <div className={`text-lg font-semibold ${netStatus.color}`}>
-            {formatCurrency(netPnL)}
+          <div className={`text-lg font-semibold ${grossStatus.color}`}>
+            {formatCurrency(grossPnL)}
+          </div>
+        </Card>
+
+        {/* Net Payable */}
+        <Card className="p-3 border-slate-200 dark:border-slate-700">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+            NET PAYABLE
+          </div>
+          <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {formatCurrency(netPayable)}
+          </div>
+        </Card>
+
+        {/* Net Receivable */}
+        <Card className="p-3 border-slate-200 dark:border-slate-700">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">
+            NET RECEIVABLE
+          </div>
+          <div className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+            {formatCurrency(netReceivable)}
           </div>
         </Card>
       </div>
+
+      {openQuantity > 0 && (
+        <Card className="p-3 border-slate-200 dark:border-slate-700">
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            {openPosition ? "Open position" : "Unmatched exit"} · {openQuantity} shares
+          </div>
+          <div className="mt-1 text-sm font-semibold tabular-nums">
+            Cash flow {formatCurrency(summary?.openCashFlow)}
+          </div>
+        </Card>
+      )}
 
       {/* Charges Breakdown - Simplified */}
       <Card className="p-3 border-slate-200 dark:border-slate-700">
@@ -103,7 +184,7 @@ const CalculationResults = ({
             Brokerage
           </span>
           <span className="text-sm font-medium text-slate-900 dark:text-slate-100">
-            {formatCurrency(calculationState.result?.charges.brokerage ?? 0)}
+            {formatCurrency(charges?.brokerage ?? 0)}
           </span>
         </div>
 
@@ -111,37 +192,35 @@ const CalculationResults = ({
         <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
           {[
             { key: "stt", label: "STT" },
-            { key: "exchangeCharges", label: "Exchange" },
+            combinedExchangeFee
+              ? { key: "exchangeAndIpft", label: "Exchange + IPFT" }
+              : { key: "exchangeCharges", label: "Exchange" },
             { key: "sebiFee", label: "SEBI" },
             { key: "gst", label: "GST" },
             { key: "stampDuty", label: "Stamp" },
             { key: "dpCharges", label: "DP" },
-            ...(exchange === "NSE" ? [{ key: "ipft", label: "IPFT" }] : []),
+            ...(exchange === "NSE" && !combinedExchangeFee ? [{ key: "ipft", label: "IPFT" }] : []),
           ].map(({ key, label }) => (
             <div key={key} className="flex justify-between items-center py-1">
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 {label}
               </span>
               <span className="text-xs font-medium text-slate-700 dark:text-slate-300">
-                {formatCurrency(
-                  calculationState.result?.charges[
-                    key as keyof typeof calculationState.result.charges
-                  ] ?? 0
-                )}
+                {formatCurrency(charges?.[key] ?? 0)}
               </span>
             </div>
           ))}
         </div>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {exchange === "BSE" ? "BSE standard-group rates only." : "NSE fee schedule effective 1 March 2026."}
+          {" Enter rows for one stock" + (tradeType === "equity-intraday" ? " and one trading day." : ".")}
+          {tradeType === "equity-delivery" && (broker === "Groww"
+            ? " Each sell row represents one order and uses the standard depository rate. Combine fills from the same order."
+            : " Each sell row represents one debit instruction. Combine fills from the same instruction.")}
+        </p>
       </Card>
 
-      {/* Journal Link - Enhanced */}
-      {/* <div className="text-center py-2">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
-          <span className="text-sm text-slate-600 dark:text-slate-400">
-            Visit <span className="font-medium text-slate-800 dark:text-slate-200">Journal page</span> to save trades
-          </span>
-        </div>
-      </div> */}
+      {/* Journal Link */}
       <div className="text-center py-2">
       <div className="inline-flex items-center gap-2 px-4 py-2 bg-slate-50 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700">
         <span className="text-sm text-slate-600 dark:text-slate-400">
