@@ -138,7 +138,7 @@ export class RateLimiter {
   }
 
   private siftDown(index: number): void {
-    while (true) {
+    for (;;) {
       const left = index * 2 + 1;
       const right = left + 1;
       let smallest = index;

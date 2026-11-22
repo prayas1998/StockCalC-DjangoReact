@@ -4,6 +4,14 @@
 
 import { toast } from '@/components/ui/use-toast';
 
+const getErrorMessage = (error: unknown): string | undefined => {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string') {
+    return error.message;
+  }
+  return undefined;
+};
+
 export enum ErrorCategory {
   AUTHENTICATION = 'authentication',
   AUTHORIZATION = 'authorization',
@@ -74,7 +82,7 @@ class ErrorHandler {
       id: this.generateErrorId(),
       category: ErrorCategory.NETWORK,
       severity: ErrorSeverity.MEDIUM,
-      message: error.message || 'Network error occurred',
+      message: getErrorMessage(error) || 'Network error occurred',
       userMessage: 'Connection problem. Please check your internet connection and try again.',
       originalError: error,
       context,
@@ -142,7 +150,13 @@ class ErrorHandler {
   }
 
   private isBackendErrorResponse(data: unknown): data is BackendErrorResponse {
-    return data && typeof data === 'object' && data.error === true && data.category;
+    if (typeof data !== 'object' || data === null) return false;
+
+    const response = data as Record<string, unknown>;
+    return response.error === true &&
+      typeof response.error_id === 'string' &&
+      typeof response.category === 'string' &&
+      typeof response.message === 'string';
   }
 
   private createFromBackendError(
@@ -210,7 +224,7 @@ class ErrorHandler {
       id: this.generateErrorId(),
       category,
       severity,
-      message: originalError.message || `HTTP ${status} error`,
+      message: getErrorMessage(originalError) || `HTTP ${status} error`,
       userMessage,
       originalError,
       context,
@@ -296,12 +310,15 @@ class ErrorHandler {
   }
 
   private logError(error: FrontendError): void {
+    const safeContext = error.context
+      ? Object.fromEntries(Object.entries(error.context).filter(([key]) => key !== 'originalError'))
+      : undefined;
     const logData = {
       id: error.id,
       category: error.category,
       severity: error.severity,
       message: error.message,
-      context: error.context,
+      context: safeContext,
       timestamp: error.timestamp.toISOString(),
       userAgent: navigator.userAgent,
       url: window.location.href
@@ -310,7 +327,10 @@ class ErrorHandler {
     if (this.isDevelopment) {
       console.group(`Error ${error.id}`);
       console.error('Error Details:', logData);
-      if (error.originalError) {
+      const requestUrl = error.context?.requestUrl;
+      const isSensitiveAccountRequest = typeof requestUrl === 'string' &&
+        /\/profile\/(change-password|delete-account)\/?(?:\?|$)/.test(requestUrl);
+      if (error.originalError && !isSensitiveAccountRequest) {
         console.error('Original Error:', error.originalError);
       }
       console.groupEnd();

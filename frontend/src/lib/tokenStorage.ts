@@ -51,7 +51,7 @@ export const parseTokenPayload = (token: string): Record<string, unknown> | null
  */
 export const isTokenExpiring = (token: string, bufferSeconds = 300): boolean => {
   const payload = parseTokenPayload(token);
-  if (!payload) return true;
+  if (!payload || typeof payload.exp !== 'number') return true;
   
   const expiryTime = payload.exp * 1000; // Convert to milliseconds
   return expiryTime < (Date.now() + bufferSeconds * 1000);

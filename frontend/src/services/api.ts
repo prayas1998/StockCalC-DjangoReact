@@ -5,7 +5,7 @@ import { API_ENDPOINTS, getApiUrl } from '../config';
 import { supabase } from '../lib/supabase';
 import { getAuthToken as getStoredToken, setAuthToken, removeAuthToken } from '../lib/tokenStorage';
 import { handleApiError, handleAuthenticationError, handleNetworkError } from '../utils/frontendErrorHandler';
-import axios from 'axios';
+import axios, { type InternalAxiosRequestConfig } from 'axios';
 
 export interface CalculationResponse {
   transactions: {
@@ -95,7 +95,7 @@ api.interceptors.request.use(
 
 // Simple mutex and queue for token refresh
 let isRefreshing = false;
-let failedQueue: Array<{resolve: (value?: unknown) => void, reject: (reason?: unknown) => void, config: Record<string, unknown>}> = [];
+let failedQueue: Array<{resolve: (value?: unknown) => void, reject: (reason?: unknown) => void, config: InternalAxiosRequestConfig}> = [];
 
 // Development logging helper
 const logTokenRefresh = (event: string, data?: unknown) => {

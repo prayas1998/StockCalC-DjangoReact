@@ -147,7 +147,11 @@ export const ValidationRules = {
 
   positiveNumber: (message = 'Must be a positive number'): ValidationRule => ({
     validate: (value) => {
-      const num = parseFloat(value);
+      const num = typeof value === 'number'
+        ? value
+        : typeof value === 'string'
+          ? parseFloat(value)
+          : Number.NaN;
       if (isNaN(num) || num <= 0) {
         return message;
       }
