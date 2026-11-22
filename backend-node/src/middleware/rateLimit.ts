@@ -1,63 +1,214 @@
 import { Context, Next } from 'hono';
 import config from '../config.js';
-import { ApiErrorResponse, RequestContext } from '../types/index.js';
 
-// Rate limiting implementation (simplified in-memory store)
-class RateLimiter {
-  private requests: Map<string, number[]> = new Map();
-  
-  isAllowed(key: string, limit: string, windowMs: number): boolean {
+interface RequestNode {
+  timestamp: number;
+  next?: RequestNode;
+}
+
+interface Counter {
+  head?: RequestNode;
+  tail?: RequestNode;
+  count: number;
+  windowMs: number;
+}
+
+interface Expiry {
+  key: string;
+  expiresAt: number;
+}
+
+interface RateLimitResult {
+  allowed: boolean;
+  retryAfterMs?: number;
+}
+
+// This is a per-process ceiling. It does not coordinate Vercel instances.
+export class RateLimiter {
+  private counters = new Map<string, Counter>();
+  private expiries: Expiry[] = [];
+  private expiryIndex = new Map<string, number>();
+
+  constructor(private readonly maxKeys = 10_000) {}
+
+  isAllowed(key: string, limit: number, windowMs: number): RateLimitResult {
     const now = Date.now();
-    const requests = this.requests.get(key) || [];
-    
-    // Clean old requests
-    const validRequests = requests.filter(time => now - time < windowMs);
-    this.requests.set(key, validRequests);
-    
-    // Check limit
-    return validRequests.length < parseInt(limit);
+    this.removeExpiredCounters(now);
+
+    let counter = this.counters.get(key);
+    if (counter) {
+      this.removeExpiredRequests(counter, now);
+      if (counter.count === 0) {
+        this.counters.delete(key);
+        this.removeExpiryAt(this.expiryIndex.get(key)!);
+        counter = undefined;
+      }
+    }
+
+    if (!counter) {
+      if (this.counters.size >= this.maxKeys) {
+        return { allowed: false, retryAfterMs: this.nextExpiryDelay(now) };
+      }
+      counter = { count: 0, windowMs };
+      this.counters.set(key, counter);
+    }
+
+    if (counter.count >= limit) {
+      return { allowed: false, retryAfterMs: this.nextExpiryDelayFor(key, now) };
+    }
+
+    const node = { timestamp: now };
+    if (counter.tail) {
+      counter.tail.next = node;
+    } else {
+      counter.head = node;
+    }
+    counter.tail = node;
+    counter.count += 1;
+    this.updateExpiry(key, counter.tail.timestamp + counter.windowMs);
+    return { allowed: true };
+  }
+
+  private removeExpiredCounters(now: number): void {
+    while (this.expiries[0]?.expiresAt <= now) {
+      const { key } = this.removeExpiryAt(0);
+      this.counters.delete(key);
+    }
+  }
+
+  private removeExpiredRequests(counter: Counter, now: number): void {
+    while (counter.head && counter.head.timestamp + counter.windowMs <= now) {
+      counter.head = counter.head.next;
+      counter.count -= 1;
+    }
+  }
+
+  private nextExpiryDelayFor(key: string, now: number): number {
+    const counter = this.counters.get(key);
+    const expiresAt = counter?.head ? counter.head.timestamp + counter.windowMs : undefined;
+    return expiresAt === undefined ? 0 : Math.max(0, expiresAt - now);
+  }
+
+  private nextExpiryDelay(now: number): number {
+    const expiresAt = this.expiries[0]?.expiresAt;
+    return expiresAt === undefined ? 0 : Math.max(0, expiresAt - now);
+  }
+
+  private updateExpiry(key: string, expiresAt: number): void {
+    const index = this.expiryIndex.get(key);
+    if (index === undefined) {
+      this.expiries.push({ key, expiresAt });
+      const insertedIndex = this.expiries.length - 1;
+      this.expiryIndex.set(key, insertedIndex);
+      this.siftUp(insertedIndex);
+      return;
+    }
+
+    const previousExpiry = this.expiries[index].expiresAt;
+    this.expiries[index].expiresAt = expiresAt;
+    if (expiresAt < previousExpiry) {
+      this.siftUp(index);
+    } else {
+      this.siftDown(index);
+    }
+  }
+
+  private removeExpiryAt(index: number): Expiry {
+    const removed = this.expiries[index];
+    const last = this.expiries.pop()!;
+    this.expiryIndex.delete(removed.key);
+
+    if (index < this.expiries.length) {
+      this.expiries[index] = last;
+      this.expiryIndex.set(last.key, index);
+      this.siftDown(index);
+      this.siftUp(this.expiryIndex.get(last.key)!);
+    }
+
+    return removed;
+  }
+
+  private siftUp(index: number): void {
+    while (index > 0) {
+      const parent = Math.floor((index - 1) / 2);
+      if (this.expiries[parent].expiresAt <= this.expiries[index].expiresAt) break;
+      this.swap(parent, index);
+      index = parent;
+    }
+  }
+
+  private siftDown(index: number): void {
+    while (true) {
+      const left = index * 2 + 1;
+      const right = left + 1;
+      let smallest = index;
+      if (left < this.expiries.length && this.expiries[left].expiresAt < this.expiries[smallest].expiresAt) {
+        smallest = left;
+      }
+      if (right < this.expiries.length && this.expiries[right].expiresAt < this.expiries[smallest].expiresAt) {
+        smallest = right;
+      }
+      if (smallest === index) break;
+      this.swap(index, smallest);
+      index = smallest;
+    }
+  }
+
+  private swap(left: number, right: number): void {
+    [this.expiries[left], this.expiries[right]] = [this.expiries[right], this.expiries[left]];
+    this.expiryIndex.set(this.expiries[left].key, left);
+    this.expiryIndex.set(this.expiries[right].key, right);
   }
 }
 
 const rateLimiter = new RateLimiter();
 
+function getClientIp(c: Context): string {
+  // Vercel's edge must overwrite/sanitize forwarded headers; see RATE_LIMITING.md.
+  if (process.env.VERCEL === '1') {
+    return c.req.header('x-forwarded-for')?.split(',')[0]?.trim() ||
+      c.req.header('x-real-ip') ||
+      'unknown';
+  }
+
+  const incoming = (c.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming;
+  return incoming?.socket?.remoteAddress || 'unknown';
+}
+
 export const rateLimitMiddleware = async (c: Context, next: Next) => {
-  // Get client IP (handle forwarded headers)
-  const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || 
-              c.req.header('x-real-ip') || 
-              'unknown';
-  
-  // Get user ID if available (after auth middleware)
+  const pathSegments = c.req.path.split('/').filter(Boolean);
   const userId = c.get('userId');
   const isAuthenticated = !!userId;
-  
-  // Create unique key per IP, and per user if authenticated
-  const key = `rate_limit_${isAuthenticated ? `user_${userId}` : `anon_${ip}`}`;
-  const path = c.req.path;
-  
-  // Determine rate limit category
-  let rateLimit = '500/hour'; // default
-  if (path.includes('/auth/')) {
+
+  let category = 'general';
+  let rateLimit = '500/hour';
+  if (pathSegments.includes('auth')) {
+    category = 'auth';
     rateLimit = isAuthenticated ? config.rateLimiting.auth.user : config.rateLimiting.auth.anon;
-  } else if (path.includes('/calculate/') || path.includes('/journal/') || path.includes('/profile/')) {
+  } else if (['calculate', 'journal', 'profile', 'tags'].some((segment) => pathSegments.includes(segment))) {
+    category = 'data';
     rateLimit = isAuthenticated ? config.rateLimiting.dataOperations.user : config.rateLimiting.dataOperations.anon;
   } else {
     rateLimit = isAuthenticated ? config.rateLimiting.general.user : config.rateLimiting.general.anon;
   }
-  
-  // Map time units to milliseconds
+
+  const identity = isAuthenticated ? `user_${userId}` : `anon_${getClientIp(c)}`;
+  const key = `rate_limit_${category}_${identity}`;
   const unitToMs: Record<string, number> = {
-    'sec': 1000,
-    'min': 60 * 1000,
-    'hour': 60 * 60 * 1000,
-    'day': 24 * 60 * 60 * 1000
+    sec: 1000,
+    min: 60 * 1000,
+    hour: 60 * 60 * 1000,
+    day: 24 * 60 * 60 * 1000
   };
-  
-  const [limit, windowUnit] = rateLimit.split('/');
-  const windowMs = unitToMs[windowUnit] || 60 * 1000; // Default to 1 minute if unknown
-  
-  if (!rateLimiter.isAllowed(key, limit, windowMs)) {
-    const retryAfter = Math.ceil(windowMs / 1000);
+
+  const [limitValue, windowUnit] = rateLimit.split('/');
+  const limit = Number.parseInt(limitValue, 10);
+  const windowMs = unitToMs[windowUnit] || 60 * 1000;
+  const result = rateLimiter.isAllowed(key, limit, windowMs);
+
+  if (!result.allowed) {
+    const retryAfter = Math.max(1, Math.ceil((result.retryAfterMs ?? windowMs) / 1000));
+    c.header('Retry-After', String(retryAfter));
     return c.json({
       error: true,
       error_id: `rl_${Date.now()}`,
@@ -69,6 +220,6 @@ export const rateLimitMiddleware = async (c: Context, next: Next) => {
       timestamp: Date.now()
     }, 429);
   }
-  
+
   await next();
 };
