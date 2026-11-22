@@ -1,21 +1,40 @@
 # Account authentication release gate
 
-Keep account operations on the Hono API. Do not use Production or Preview for
-destructive validation, change provider settings there, weaken authentication
-policy to make a test pass, or set up destructive fixtures there. Run
-production schema migrations only through the approved deployment process.
-Production and Preview currently share configuration, and there is no isolated
-hosted target. Keep the release blocked until an isolated disposable Supabase
-project and empty disposable PostgreSQL database are available.
+Keep account operations on the Hono API. For a shared Supabase target, run
+hosted smoke checks only after the target owner authorizes the scope, using
+newly created disposable app accounts and their own rows. Do not run local SQL
+fixture scripts, seeds, drops, truncates, or broad cleanup there. Never weaken
+RLS, MFA, or other provider security to make a test pass. Apply release
+migrations only through the approved deployment process; run SQL fixtures
+only against a separate empty local PostgreSQL database.
+
+## Journal RLS rollout
+
+The existing journal-write and account-lifecycle migrations do not add the
+three journal owner policies; `202611220003_journal_owner_policies.sql` does.
+Use this order: (1) stage compatible Hono traffic and route all protected
+journal consumers to it, or pause incompatible consumers during a maintenance
+window; (2) enable owner policies through the approved release process; (3)
+compare catalog policy definitions and roles with the migration, then use
+ordinary caller sessions and known fixture table/link IDs to verify Data API
+read isolation; separately check Hono owner read/write and confirm the other
+fixture data is unchanged. Direct DML write enforcement is tested by the
+disposable PostgreSQL fixtures, so do not add direct DML to the hosted smoke.
+If migration preconditions refuse to apply, investigate policy/sequence state
+instead of removing policies. If smoke checks fail, keep journal traffic off
+the incompatible backend until corrected. Use ordinary caller sessions and
+bounded fixture IDs for Data API checks, not service-role credentials or
+unbounded row queries. Keep the service-role key for admin operations only;
+never weaken owner policies for rollback.
 
 ## Password and MFA checks
 
-On the disposable project, record the approved email confirmation, **Require
+On the approved target, record the email confirmation, **Require
 current password**, secure password change, and MFA assurance settings.
 Synthetic username addresses under
 `users.tradesmart.local` have no inbox, so the current username-signup flow
-depends on email confirmation not being required. Verify that existing policy
-on the disposable project. Treat signup that cannot complete under the
+depends on email confirmation not being required. Verify the approved policy
+using a disposable account. Treat signup that cannot complete under the
 approved policy as an open release issue.
 
 For a password change, the fresh password grant proves the supplied current
@@ -39,12 +58,14 @@ current handler, document it as a release blocker. Keep a redacted record of
 the tested policy, assurance, and outcome.
 
 Use two disposable users to verify that deleting one account removes only
-that user's journal data and leaves the other user's records intact. With two
-browser sessions for one fixture account, test global revocation, local
-cleanup on the initiating device, and refresh-token rejection on the other.
-Existing access JWTs may remain usable until expiry. Keep provider behavior
-and two-device results as release evidence; mocked local tests do not replace
-them. The mocked account cases are in
+that user's journal data and leaves the other user's records intact. Perform
+account removal only for a newly created disposable fixture account within
+the authorized smoke-test scope. With two browser sessions for one fixture
+account, test global revocation, local cleanup on the initiating device, and
+refresh-token rejection on the other. Existing access JWTs may remain usable
+until expiry. Keep provider behavior and two-device results as release
+evidence; mocked local tests do not replace them. The mocked account cases
+are in
 [`account.test.js`](../tests/account.test.js).
 
 The local PostgreSQL account fixture verifies ownership, cascade rollback,
