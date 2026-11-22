@@ -275,7 +275,7 @@ export default function JournalPage() {
       tags: selectedTagIds,
       companies: selectedCompanies,
     }), requestId, true)
-  }, [searchQuery, searchResults, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setIsSearching, runSearch, buildSearchFilters]);
+  }, [searchQuery, searchResults, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching, runSearch, buildSearchFilters]);
 
   // Format trade data for form
   const getInitialFormData = useCallback((): TradeJournalCreate | undefined => {
