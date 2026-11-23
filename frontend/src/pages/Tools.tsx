@@ -8,7 +8,7 @@ import { ProfitTargetCalculatorContainer } from "@/components/calculators/Profit
 import { NetPLCalculatorContainer } from "@/components/calculators/NetPLCalculatorContainer"
 import { PositionSizingCalculatorContainer } from "@/components/calculators/PositionSizingCalculatorContainer"
 import { BrokerTradeTypeSelector } from "@/components/shared/BrokerTradeTypeSelector"
-import { TrendingUp, Settings } from "lucide-react"
+import { TrendingUp } from "lucide-react"
 
 const Tools = () => {
   const navigate = useNavigate()
@@ -25,7 +25,7 @@ const Tools = () => {
   const exchange = "NSE" // Fixed to NSE as in original
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-[#060a12] dark:via-[#080d18] dark:to-[#060a12]">
       <Header />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -41,83 +41,57 @@ const Tools = () => {
           />
         </div>
 
-        {/* P&L Calculators Section - Enhanced Design */}
-        <div className="space-y-6">
-          {/* Section Header */}
-          <div className="text-center space-y-3">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/25">
-              <TrendingUp className="w-7 h-7 text-white" />
+        {/* P&L Calculators Section */}
+        <div className="rounded-2xl border border-border/50 bg-white/50 dark:bg-card/50 backdrop-blur-sm overflow-hidden">
+
+          {/* Settings strip — top zone of the unified container */}
+          <div className="px-5 pt-4 pb-4 border-b border-border/50">
+            {/* Title row */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                  <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-slate-800 dark:text-slate-100 leading-tight">
+                    P&L Calculators
+                  </h2>
+                  <p className="text-xs text-slate-400 dark:text-muted-foreground leading-tight">
+                    Shared settings apply to both calculators
+                  </p>
+                </div>
+              </div>
+              <span className="px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-700/40">
+                {exchange}
+              </span>
             </div>
-            <div className="space-y-1">
-              <h2 className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-slate-600 dark:from-slate-100 dark:to-slate-300 bg-clip-text text-transparent">
-                P&L Calculators
-              </h2>
-              <p className="text-base text-slate-600 dark:text-slate-400 max-w-xl mx-auto">
-                Calculate profit and loss scenarios with precision
-              </p>
-            </div>
+
+            {/* Selector */}
+            <BrokerTradeTypeSelector
+              selectedBroker={sharedState.selectedBroker}
+              selectedTradeType={sharedState.selectedTradeType}
+              onBrokerChange={sharedState.setSelectedBroker}
+              onTradeTypeChange={sharedState.setSelectedTradeType}
+              positionType={sharedState.positionType}
+              onPositionTypeChange={sharedState.setPositionType}
+            />
           </div>
 
-          {/* Compact Settings Panel */}
-          <div className="max-w-4xl mx-auto">
-            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-xl border border-slate-200/50 dark:border-slate-700/50 shadow-lg overflow-hidden">
-              {/* Compact Settings Header */}
-              <div className="px-4 py-3 bg-gradient-to-r from-slate-50/80 to-white/80 dark:from-slate-800/80 dark:to-slate-700/80 border-b border-slate-200/50 dark:border-slate-700/50">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-2">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 shadow-md shadow-blue-500/25">
-                      <Settings className="w-4 h-4 text-white" />
-                    </div>
-                    <div>
-                      <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">Settings</h3>
-                    </div>
-                  </div>
-
-                  {/* Exchange Badge */}
-                  <div className="px-2.5 py-1 bg-gradient-to-r from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 text-emerald-700 dark:text-emerald-300 text-sm font-medium rounded-lg border border-emerald-200/50 dark:border-emerald-700/50">
-                    {sharedState.exchange}
-                  </div>
-                </div>
-              </div>
-
-              {/* Compact Settings Content */}
-              <div className="p-4">
-                <BrokerTradeTypeSelector
-                  selectedBroker={sharedState.selectedBroker}
-                  selectedTradeType={sharedState.selectedTradeType}
-                  onBrokerChange={sharedState.setSelectedBroker}
-                  onTradeTypeChange={sharedState.setSelectedTradeType}
-                  positionType={sharedState.positionType}
-                  onPositionTypeChange={sharedState.setPositionType}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Enhanced P&L Calculators Grid */}
-          <div className="max-w-6xl mx-auto">
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div className="group">
-                <div className="transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-200/25 dark:hover:shadow-slate-900/25">
-                  <ProfitTargetCalculatorContainer
-                    sharedState={sharedState}
-                    onPositionTypeChange={sharedState.setPositionType}
-                    onBrokerChange={sharedState.setSelectedBroker}
-                    onTradeTypeChange={sharedState.setSelectedTradeType}
-                  />
-                </div>
-              </div>
-
-              <div className="group">
-                <div className="transform transition-all duration-300 hover:scale-[1.01] hover:shadow-xl hover:shadow-slate-200/25 dark:hover:shadow-slate-900/25">
-                  <NetPLCalculatorContainer
-                    sharedState={sharedState}
-                    onPositionTypeChange={sharedState.setPositionType}
-                    onBrokerChange={sharedState.setSelectedBroker}
-                    onTradeTypeChange={sharedState.setSelectedTradeType}
-                  />
-                </div>
-              </div>
+          {/* Calculators grid */}
+          <div className="p-4 sm:p-5">
+            <div className="grid lg:grid-cols-2 gap-5">
+              <ProfitTargetCalculatorContainer
+                sharedState={sharedState}
+                onPositionTypeChange={sharedState.setPositionType}
+                onBrokerChange={sharedState.setSelectedBroker}
+                onTradeTypeChange={sharedState.setSelectedTradeType}
+              />
+              <NetPLCalculatorContainer
+                sharedState={sharedState}
+                onPositionTypeChange={sharedState.setPositionType}
+                onBrokerChange={sharedState.setSelectedBroker}
+                onTradeTypeChange={sharedState.setSelectedTradeType}
+              />
             </div>
           </div>
         </div>

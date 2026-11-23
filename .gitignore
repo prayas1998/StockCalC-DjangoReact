@@ -8,7 +8,7 @@ frontend/.env.production
 frontend/.env.development
 frontend/.vercel
 .rovodev/
-
+backend/
 # Build artifacts
 /dist
 frontend/dist

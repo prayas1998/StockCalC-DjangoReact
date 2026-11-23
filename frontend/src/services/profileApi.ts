@@ -1,5 +1,4 @@
 import { api } from './api';
-import { supabase } from '../lib/supabase';
 import { handleApiError, handleAuthenticationError } from '../utils/frontendErrorHandler';
 
 export interface ProfileData {
@@ -12,6 +11,7 @@ export interface ProfileData {
 }
 
 export interface ProfileUpdateData {
+  username?: string;
   email?: string;
   first_name?: string;
   last_name?: string;
@@ -48,7 +48,21 @@ export const profileApi = {
   async updateProfile(data: ProfileUpdateData): Promise<{ message: string; updated_fields: string[]; profile: ProfileData }> {
     try {
       const response = await api.patch('/profile/', data);
-      return response.data;
+      const payload = response.data as { message?: string; updated_fields?: string[]; profile?: ProfileData } | ProfileData;
+
+      if ('profile' in payload && payload.profile) {
+        return {
+          message: payload.message || 'Profile updated successfully',
+          updated_fields: payload.updated_fields || Object.keys(data),
+          profile: payload.profile
+        };
+      }
+
+      return {
+        message: 'Profile updated successfully',
+        updated_fields: Object.keys(data),
+        profile: payload as ProfileData
+      };
     } catch (error: unknown) {
       if ((error as { response?: { status?: number } })?.response?.status === 401 || (error as { response?: { status?: number } })?.response?.status === 403) {
         handleAuthenticationError(error, { operation: 'updateProfile' });
@@ -106,7 +120,7 @@ export const profileApi = {
       return {
         message: response.data.message,
         cleanup_summary: response.data.cleanup_summary,
-        success: response.data.success,
+        success: response.data.success ?? true,
         support_needed: response.data.support_needed
       };
       

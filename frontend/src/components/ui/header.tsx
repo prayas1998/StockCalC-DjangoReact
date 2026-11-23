@@ -42,9 +42,9 @@ const Header = () => {
   }, [darkMode])
 
   return (
-    <nav className="relative border-b bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 shadow-lg backdrop-blur-md">
-      <div className="absolute inset-0 bg-white/60 dark:bg-black/20 backdrop-blur-sm" />
-      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-purple-500/5" />
+    <nav className="relative border-b border-slate-200 dark:border-slate-800/60 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 dark:from-[#080d18] dark:via-[#0a1020] dark:to-[#080d18] shadow-lg dark:shadow-[0_1px_0_0_rgba(96,165,250,0.1),0_4px_24px_rgba(59,130,246,0.04)] backdrop-blur-md">
+      <div className="absolute inset-0 bg-white/60 dark:bg-black/10 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 via-indigo-500/5 to-purple-500/5 dark:from-blue-500/[0.03] dark:via-indigo-500/[0.02] dark:to-purple-500/[0.03]" />
 
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <div className="flex items-center gap-2">
