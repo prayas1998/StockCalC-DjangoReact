@@ -9,6 +9,7 @@ import {
   TradeJournalResponse
 } from '../types/journal';
 import { CalculationError } from '../types/api';
+import { withCompanyApiFilters } from '../utils/journalCompanyFilters';
 
 /**
  * Get a list of journal trades with optional filtering
@@ -30,7 +31,7 @@ export const getJournalTrades = async (
     
     // Add filters as query parameters if provided
     if (filters) {
-      url = createUrlWithParams(API_ENDPOINTS.JOURNAL, filters as Record<string, string | number | boolean | (string | number | boolean)[]>);
+      url = createUrlWithParams(API_ENDPOINTS.JOURNAL, withCompanyApiFilters(filters) as Record<string, string | number | boolean | (string | number | boolean)[]>);
     }
     
     const options = await addAuthHeader({

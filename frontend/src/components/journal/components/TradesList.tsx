@@ -13,6 +13,7 @@ interface TradesListProps {
   trades: TradeJournal[];
   searchResults: TradeJournal[] | null;
   searchQuery: string;
+  isSearching: boolean;
   isLoading: boolean;
   isError: boolean;
   hasNextPage: boolean;
@@ -26,6 +27,7 @@ export const TradesList = memo<TradesListProps>(({
   trades,
   searchResults,
   searchQuery,
+  isSearching,
   isLoading,
   isError,
   hasNextPage,
@@ -57,6 +59,14 @@ export const TradesList = memo<TradesListProps>(({
     return (
       <div className="text-center py-20 text-muted-foreground">
         Failed to load trades. Please try again later.
+      </div>
+    );
+  }
+
+  if (searchQuery && isSearching && searchResults === null) {
+    return (
+      <div role="status" aria-live="polite" className="flex justify-center items-center py-20 text-muted-foreground">
+        Searching trades...
       </div>
     );
   }

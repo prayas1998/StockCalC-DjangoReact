@@ -3,15 +3,24 @@
  * Replaces complex search system with basic debounced API calls
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useLayoutEffect, useCallback, useRef } from 'react';
 import { getSearchSuggestions } from '@/services/journalApi';
 
-interface SearchSuggestion {
+interface SearchSuggestion extends Record<string, unknown> {
   id: string;
   text: string;
   type: 'company' | 'tag';
   score: number;
 }
+
+const isSearchSuggestion = (value: unknown): value is SearchSuggestion => {
+  if (typeof value !== 'object' || value === null) return false;
+  const suggestion = value as Record<string, unknown>;
+  return typeof suggestion.id === 'string' &&
+    typeof suggestion.text === 'string' &&
+    (suggestion.type === 'company' || suggestion.type === 'tag') &&
+    typeof suggestion.score === 'number';
+};
 
 interface UseSimpleSearchProps {
   searchQuery: string;
@@ -27,39 +36,48 @@ export const useSimpleSearch = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [lastSelectedQuery, setLastSelectedQuery] = useState<string>('');
+  const requestIdRef = useRef(0);
 
   // Fetch suggestions from backend
   const fetchSuggestions = useCallback(async (query: string) => {
+    const requestId = ++requestIdRef.current;
     if (query.length < minCharacters) {
       setSuggestions([]);
       setShowSuggestions(false);
+      setIsLoading(false);
       return;
     }
 
     setIsLoading(true);
     try {
       const result = await getSearchSuggestions(query.trim());
+      if (requestId !== requestIdRef.current) return;
       if (Array.isArray(result)) {
-        setSuggestions(result);
-        setShowSuggestions(result.length > 0);
+        const validSuggestions = result.filter(isSearchSuggestion);
+        setSuggestions(validSuggestions);
+        setShowSuggestions(validSuggestions.length > 0);
       } else {
         setSuggestions([]);
         setShowSuggestions(false);
       }
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
       setSuggestions([]);
       setShowSuggestions(false);
     } finally {
-      setIsLoading(false);
+      if (requestId === requestIdRef.current) setIsLoading(false);
     }
   }, [minCharacters]);
 
   // Debounced search effect (200ms)
-  useEffect(() => {
+  useLayoutEffect(() => {
+    requestIdRef.current++;
+    setSuggestions([]);
+    setShowSuggestions(false);
+    setSelectedIndex(-1);
+    setIsLoading(false);
     // Don't fetch suggestions if this query was just selected
     if (searchQuery === lastSelectedQuery) {
-      setSuggestions([]);
-      setShowSuggestions(false);
       return;
     }
 
@@ -67,7 +85,9 @@ export const useSimpleSearch = ({
       fetchSuggestions(searchQuery);
     }, 200);
 
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [searchQuery, fetchSuggestions, lastSelectedQuery]);
 
   // Keyboard navigation

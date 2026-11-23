@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo } from "react"
+import { useCallback, useEffect, useMemo, useRef } from "react"
 import { Plus, BarChart3, Tag } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
@@ -17,17 +17,24 @@ import { useJournalFilters } from "@/hooks/useJournalFilters"
 import type { TradeJournalCreate, TradeStatus, TradeType, JournalFilters } from "@/types/journal"
 import { isTagsArray } from "@/components/journal/utils"
 import { toast } from "sonner"
+import { useLocation, useNavigationType } from "react-router-dom"
+import { filtersFromParams } from "@/utils/journalFilterUrlState"
+import { withCompanyApiFilters } from "@/utils/journalCompanyFilters"
 
 export default function JournalPage() {
+  const location = useLocation()
+  const navigationType = useNavigationType()
+  const searchRequestIdRef = useRef(0)
+  const activeSearchRef = useRef(false)
+  useEffect(() => () => { searchRequestIdRef.current++ }, [])
   // URL-synced filter state
-  const { filters, updateFilter, resetFilters } = useJournalFilters()
+  const { filters, searchQuery, setSearchQuery: setSearchQueryState, updateFilter, resetFilters } = useJournalFilters()
   
   // Local UI state management
   const {
     formDialogOpen,
     editingTrade,
     formMode,
-    searchQuery,
     isSearching,
     searchResults,
     selectedCompany,
@@ -36,15 +43,29 @@ export default function JournalPage() {
     openAddTradeDialog,
     openEditTradeDialog,
     closeFormDialog,
-    setSearchQuery,
     setIsSearching,
     setSearchResults,
     setSelectedCompany,
-    clearSearch,
+    clearSearch: clearLocalSearch,
     openFilterDialog,
     closeFilterDialog,
     setActiveTab,
   } = useJournalState()
+
+  const setSearchQuery = useCallback((query: string) => {
+    searchRequestIdRef.current++
+    activeSearchRef.current = false
+    setSearchResults(null)
+    setIsSearching(false)
+    setSearchQueryState(query)
+  }, [setSearchQueryState, setSearchResults, setIsSearching])
+
+  const clearSearch = useCallback(() => {
+    searchRequestIdRef.current++
+    activeSearchRef.current = false
+    clearLocalSearch()
+    setSearchQueryState('')
+  }, [clearLocalSearch, setSearchQueryState])
 
   // Extract filter values from URL-synced filters with proper typing
   const selectedStatuses = useMemo(() => {
@@ -69,34 +90,13 @@ export default function JournalPage() {
     return filters.companies || []
   }, [filters.companies])
 
-  // Filter update handlers that sync to URL
-  const setSelectedStatuses = useCallback((statuses: TradeStatus[]) => {
-    updateFilter('status', statuses)
-  }, [updateFilter])
-
-  const setSelectedTypes = useCallback((types: TradeType[]) => {
-    updateFilter('trade_type', types)
-  }, [updateFilter])
-
-  const setSelectedTagIds = useCallback((tagIds: number[]) => {
-    updateFilter('tags', tagIds)
-  }, [updateFilter])
-
-  const setSelectedCompanies = useCallback((companies: string[]) => {
-    updateFilter('companies', companies)
-  }, [updateFilter])
-
-  const clearAllFilters = useCallback(() => {
-    resetFilters()
-  }, [resetFilters])
-
   // Get journal data and mutations
-  const { trades, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage, deleteTrade } = useJournal({
+  const { trades, isLoading, isError, fetchNextPage, hasNextPage, isFetchingNextPage, deleteTrade } = useJournal(withCompanyApiFilters({
     status: selectedStatuses,
     trade_type: selectedTypes,
     tags: selectedTagIds,
     companies: selectedCompanies,
-  })
+  }))
 
   // Get tags
   const { tags } = useTradeTags()
@@ -117,101 +117,144 @@ export default function JournalPage() {
     [deleteTrade],
   )
 
-  // Handle search - always use server-side search with current filters
-  const handleSearch = useCallback(async () => {
-    if (!searchQuery.trim()) {
+  const buildSearchFilters = useCallback((source: Partial<JournalFilters>): Partial<JournalFilters> => {
+    const searchFilters: Partial<JournalFilters> = {}
+    if (source.status?.length) searchFilters.status = source.status
+    if (source.trade_type?.length) searchFilters.trade_type = source.trade_type
+    if (source.tags?.length) searchFilters.tags = source.tags
+    if (source.companies?.length) searchFilters.companies = source.companies
+    return withCompanyApiFilters(searchFilters)
+  }, [])
+
+  const runSearch = useCallback(async (query: string, searchFilters: Partial<JournalFilters>, requestId: number, quietErrors = false) => {
+    try {
+      const { searchJournalTrades } = await import("@/services/journalApi")
+      const result = await searchJournalTrades(query, searchFilters)
+      if (requestId !== searchRequestIdRef.current) return
+      if ("error" in result) {
+        if (quietErrors) console.error(`Search failed: ${result.detail || result.error}`)
+        else toast.error(`Search failed: ${result.detail || result.error}`)
+        setSearchResults([])
+        return
+      }
+      const results = result.results || []
+      if (!quietErrors && results.length === 0) {
+        const hasActiveFilters = Object.values(searchFilters).some(value => Array.isArray(value) ? value.length > 0 : value !== undefined)
+        toast.info(hasActiveFilters
+          ? `No trades found matching "${query}" in your current filters. Try clearing filters or adjusting your search.`
+          : `No trades found matching "${query}".`)
+      }
+      setSearchResults(results)
+    } catch (error) {
+      if (requestId !== searchRequestIdRef.current) return
+      if (quietErrors) console.error(`Search failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      else toast.error(`Search failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      setSearchResults([])
+    } finally {
+      if (requestId === searchRequestIdRef.current) setIsSearching(false)
+    }
+  }, [setSearchResults, setIsSearching])
+
+  const searchWithUpdatedFilters = useCallback((nextFilters: Partial<JournalFilters>) => {
+    const requestId = ++searchRequestIdRef.current
+    if (!activeSearchRef.current || !searchQuery.trim()) {
       setSearchResults(null)
       setIsSearching(false)
       return
     }
-
+    setSearchResults(null)
     setIsSearching(true)
+    void runSearch(searchQuery, buildSearchFilters({
+      status: selectedStatuses,
+      trade_type: selectedTypes,
+      tags: selectedTagIds,
+      companies: selectedCompanies,
+      ...nextFilters,
+    }), requestId)
+  }, [searchQuery, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching, runSearch, buildSearchFilters])
 
-    try {
-      // Always use server-side search, but pass current filters to backend
-      const { searchJournalTrades } = await import("@/services/journalApi")
-      
-      // Build filter parameters to send to backend
-      const searchFilters: Partial<JournalFilters> = {}
-      if (selectedStatuses.length > 0) searchFilters.status = selectedStatuses
-      if (selectedTypes.length > 0) searchFilters.trade_type = selectedTypes
-      if (selectedTagIds.length > 0) searchFilters.tags = selectedTagIds
-      if (selectedCompanies.length > 0) searchFilters.companies = selectedCompanies
-      
-      const result = await searchJournalTrades(searchQuery, searchFilters)
+  // Filter update handlers sync the URL and refresh an active server search.
+  const setSelectedStatuses = useCallback((statuses: TradeStatus[]) => {
+    updateFilter('status', statuses)
+    searchWithUpdatedFilters({ status: statuses })
+  }, [updateFilter, searchWithUpdatedFilters])
 
-      if ("error" in result) {
-        toast.error(`Search failed: ${result.detail || result.error}`)
-        setSearchResults([])
-      } else {
-        const results = result.results || []
-        if (results.length === 0) {
-          const hasActiveFilters = selectedStatuses.length > 0 || selectedTypes.length > 0 || selectedTagIds.length > 0 || selectedCompanies.length > 0
-          if (hasActiveFilters) {
-            toast.info(`No trades found matching "${searchQuery}" in your current filters. Try clearing filters or adjusting your search.`)
-          } else {
-            toast.info(`No trades found matching "${searchQuery}".`)
-          }
-        }
-        setSearchResults(results)
-      }
-    } catch (error) {
-      toast.error(`Search failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-      setSearchResults([])
-    } finally {
+  const setSelectedTypes = useCallback((types: TradeType[]) => {
+    updateFilter('trade_type', types)
+    searchWithUpdatedFilters({ trade_type: types })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const setSelectedTagIds = useCallback((tagIds: number[]) => {
+    updateFilter('tags', tagIds)
+    searchWithUpdatedFilters({ tags: tagIds })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const setSelectedCompanies = useCallback((companies: string[]) => {
+    updateFilter('companies', companies)
+    searchWithUpdatedFilters({ companies })
+  }, [updateFilter, searchWithUpdatedFilters])
+
+  const clearAllFilters = useCallback(() => {
+    searchRequestIdRef.current++
+    activeSearchRef.current = false
+    setSearchResults(null)
+    setIsSearching(false)
+    resetFilters()
+  }, [resetFilters, setSearchResults, setIsSearching])
+
+  // Handle search - always use server-side search with current filters.
+  const handleSearch = useCallback(() => {
+    const requestId = ++searchRequestIdRef.current
+    if (!searchQuery.trim()) {
+      activeSearchRef.current = false
+      setSearchResults(null)
       setIsSearching(false)
+      return
     }
-  }, [searchQuery, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching])
+    activeSearchRef.current = true
+    setSearchResults(null)
+    setIsSearching(true)
+    void runSearch(searchQuery, buildSearchFilters({
+      status: selectedStatuses,
+      trade_type: selectedTypes,
+      tags: selectedTagIds,
+      companies: selectedCompanies,
+    }), requestId)
+  }, [searchQuery, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching, runSearch, buildSearchFilters])
+
+  // Restore only on an actual POP navigation, using that entry's URL as the source of truth.
+  useEffect(() => {
+    if (navigationType !== "POP") return
+    const params = new URLSearchParams(location.search)
+    const query = params.get('query') || ''
+    const requestId = ++searchRequestIdRef.current
+    setSearchResults(null)
+    if (!query.trim()) {
+      activeSearchRef.current = false
+      setIsSearching(false)
+      return
+    }
+    activeSearchRef.current = true
+    setIsSearching(true)
+    void runSearch(query, buildSearchFilters(filtersFromParams(params)), requestId)
+  }, [location.key, navigationType, location.search, runSearch, buildSearchFilters, setSearchResults, setIsSearching])
 
   // Handle suggestion selection - always use server-side search with current filters
   const handleSuggestionSelect = useCallback(
-    async (suggestion: { text: string; type: string }) => {
+    (suggestion: { text: string; type: string }) => {
       setSelectedCompany(suggestion.text)
       setSearchQuery(suggestion.text)
-
+      activeSearchRef.current = true
+      const requestId = ++searchRequestIdRef.current
       setIsSearching(true)
-
-      try {
-        // Always use server-side search, but pass current filters to backend
-        const { searchJournalTrades } = await import("@/services/journalApi")
-        
-        // Build filter parameters to send to backend
-        const searchFilters: Partial<JournalFilters> = {}
-        if (selectedStatuses.length > 0) searchFilters.status = selectedStatuses
-        if (selectedTypes.length > 0) searchFilters.trade_type = selectedTypes
-        if (selectedTagIds.length > 0) searchFilters.tags = selectedTagIds
-        if (selectedCompanies.length > 0) searchFilters.companies = selectedCompanies
-        
-        const result = await searchJournalTrades(suggestion.text, searchFilters)
-
-        if ("error" in result) {
-          toast.error(`Search failed: ${result.detail || result.error}`)
-          setSearchResults([])
-        } else {
-          const results = result.results || []
-
-          // Don't apply additional filtering - the backend already handles the search properly
-          // The backend's 3-tier scoring system will prioritize exact matches appropriately
-          
-          if (results.length === 0) {
-            const hasActiveFilters = selectedStatuses.length > 0 || selectedTypes.length > 0 || selectedTagIds.length > 0 || selectedCompanies.length > 0
-            if (hasActiveFilters) {
-              toast.info(`No trades found for "${suggestion.text}" in your current filters. Try clearing filters or adjusting your search.`)
-            } else {
-              toast.info(`No trades found for "${suggestion.text}".`)
-            }
-          }
-
-          setSearchResults(results)
-        }
-      } catch (error) {
-        toast.error(`Search failed: ${error instanceof Error ? error.message : "Unknown error"}`)
-        setSearchResults([])
-      } finally {
-        setIsSearching(false)
-      }
+      void runSearch(suggestion.text, buildSearchFilters({
+        status: selectedStatuses,
+        trade_type: selectedTypes,
+        tags: selectedTagIds,
+        companies: selectedCompanies,
+      }), requestId)
     },
-    [selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSelectedCompany, setSearchQuery, setIsSearching, setSearchResults],
+    [selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSelectedCompany, setSearchQuery, setIsSearching, runSearch, buildSearchFilters],
   )
 
   // Refresh search results after trade update
@@ -220,32 +263,19 @@ export default function JournalPage() {
     if (!searchQuery.trim() || !searchResults) {
       return;
     }
-
+    const requestId = ++searchRequestIdRef.current
+    setSearchResults(null)
+    setIsSearching(true)
     // Add a small delay to ensure backend has processed the update
     await new Promise(resolve => setTimeout(resolve, 100));
-
-    try {
-      // Always use server-side search to get fresh results with current filters
-      const { searchJournalTrades } = await import("@/services/journalApi");
-      
-      // Build filter parameters to send to backend
-      const searchFilters: Partial<JournalFilters> = {}
-      if (selectedStatuses.length > 0) searchFilters.status = selectedStatuses
-      if (selectedTypes.length > 0) searchFilters.trade_type = selectedTypes
-      if (selectedTagIds.length > 0) searchFilters.tags = selectedTagIds
-      if (selectedCompanies.length > 0) searchFilters.companies = selectedCompanies
-      
-      const result = await searchJournalTrades(searchQuery, searchFilters);
-
-      if ("error" in result) {
-        console.error(`Search refresh failed: ${result.detail || result.error}`);
-      } else {
-        setSearchResults(result.results || []);
-      }
-    } catch (error) {
-      console.error(`Search refresh failed: ${error instanceof Error ? error.message : "Unknown error"}`);
-    }
-  }, [searchQuery, searchResults, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults]);
+    if (requestId !== searchRequestIdRef.current) return
+    await runSearch(searchQuery, buildSearchFilters({
+      status: selectedStatuses,
+      trade_type: selectedTypes,
+      tags: selectedTagIds,
+      companies: selectedCompanies,
+    }), requestId, true)
+  }, [searchQuery, searchResults, selectedStatuses, selectedTypes, selectedTagIds, selectedCompanies, setSearchResults, setIsSearching, runSearch, buildSearchFilters]);
 
   // Format trade data for form
   const getInitialFormData = useCallback((): TradeJournalCreate | undefined => {
@@ -343,6 +373,7 @@ export default function JournalPage() {
               trades={trades}
               searchResults={searchResults}
               searchQuery={searchQuery}
+              isSearching={isSearching}
               isLoading={isLoading}
               isError={isError}
               hasNextPage={hasNextPage}

@@ -92,10 +92,8 @@ class TradeJournalViewSet(viewsets.ModelViewSet):
             queryset = queryset.distinct()
 
         # Filter by company names
-        companies = self.request.query_params.getlist('companies') or self.request.query_params.get('companies')
+        companies = self.request.query_params.getlist('company') or self.request.query_params.getlist('companies')
         if companies:
-            if isinstance(companies, str):
-                companies = [companies]
             queryset = queryset.filter(company_name__in=companies)
 
         return queryset
