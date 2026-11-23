@@ -120,6 +120,8 @@ export function TradeForm({
     initialData?.direction === TradeDirection.SHORT ? "short" : "long",
   )
 
+  const unsupportedDeliveryShort = selectedTradeType === "equity-delivery" && selectedPositionType === "short"
+
   // Helper function to extract tag IDs from initialData
   const getInitialTagIds = () => {
     if (!initialData?.tags) return []
@@ -187,6 +189,7 @@ export function TradeForm({
   }
 
   const handleTradeTypeChange = (newTradeType: CalculatorTradeType) => {
+    if (newTradeType === "equity-delivery") setSelectedPositionType("long")
     setSelectedTradeType(newTradeType)
   }
 
@@ -339,6 +342,7 @@ export function TradeForm({
 
   // Handle form submission
   function handleSubmit(values: TradeFormValues) {
+    if (unsupportedDeliveryShort) return
     // Re-validate the current form state before submission
     const entryVal = parseFloat(values.entry_price)
     const targetVal = values.target_price ? parseFloat(values.target_price) : null
@@ -506,6 +510,11 @@ export function TradeForm({
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {unsupportedDeliveryShort && (
+                <p role="alert" className="text-sm text-destructive">
+                  This saved trade combines Delivery and Short. Choose an applicable trade type and direction to save it.
+                </p>
+              )}
               {/* Broker Selector with Exchange Toggle */}
               <div className="space-y-2">
                 <FormLabel className="text-sm font-medium">Broker & Exchange</FormLabel>
@@ -1048,7 +1057,7 @@ export function TradeForm({
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="min-w-[120px] bg-primary hover:bg-primary/90">
+              <Button type="submit" disabled={isSubmitting || unsupportedDeliveryShort} className="min-w-[120px] bg-primary hover:bg-primary/90">
                 {isSubmitting ? (
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>

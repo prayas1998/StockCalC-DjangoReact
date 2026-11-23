@@ -1,74 +1,17 @@
 import Decimal from 'decimal.js';
 
-/**
- * This module is the TypeScript port of the Django calculators in `backend/`.
- * It is the source of truth for server-side calculation parity.
- */
-
-// Django parity: Python Decimal default context is precision=28 and rounding=ROUND_HALF_EVEN.
-// Apply the same globally for decimal.js so divisions/intermediate ops behave the same.
+// Match Python Decimal precision and keep the calculator's existing rounding conventions.
 Decimal.set({ precision: 28, rounding: Decimal.ROUND_HALF_EVEN });
-
-// ----------------------------
-// Decimal / formatting helpers
-// ----------------------------
-export abstract class BaseTradeCalculator {
-  protected platform: string;
-  protected exchange: string;
-  protected tradeType: string;
-  protected broker: BaseBroker;
-  protected govtCharges: EquityDeliveryCharges | EquityIntradayCharges;
-
-  constructor(platform: string, exchange: string, tradeType: string) {
-    this.platform = platform;
-    this.exchange = exchange;
-    this.tradeType = tradeType;
-    this.broker = this._get_broker();
-    this.govtCharges = get_government_charges(tradeType, exchange);
-  }
-
-  abstract calculate_transaction_charges(transactions: any[], positionType?: string): any;
-
-  protected _get_broker(): BaseBroker {
-    const brokers: Record<string, any> = {
-      'groww': GrowwCalculator,
-      'dhan': DhanCalculator,
-    };
-
-    if (!brokers[this.platform]) {
-      throw new Error(`Unsupported platform: ${this.platform}`);
-    }
-    
-    return new brokers[this.platform](this.exchange, this.tradeType);
-  }
-}
 
 // Decimal utility functions (preserving Django precision)
 export const DecimalUtils = {
-  // Django parity:
-  // - When Django calls `Decimal.quantize(...)` WITHOUT an explicit rounding mode, it uses the
-  //   current Decimal context default which is ROUND_HALF_EVEN by default.
-  // - When Django passes ROUND_HALF_UP explicitly (e.g. levies/brokerage), we must match that too.
-  quantizeHalfEven: (value: Decimal, places: number = 2): Decimal =>
-    value.toDecimalPlaces(places, Decimal.ROUND_HALF_EVEN),
-  quantizeHalfUp: (value: Decimal, places: number = 2): Decimal =>
+  quantizeHalfUp: (value: Decimal, places = 2): Decimal =>
     value.toDecimalPlaces(places, Decimal.ROUND_HALF_UP),
+  quantizeToString: (value: Decimal, places = 2): string =>
+    value.toFixed(places, Decimal.ROUND_HALF_EVEN),
+  zero: () => new Decimal(0),
+  one: () => new Decimal(1),
 
-  quantizeToStringHalfEven: (value: Decimal, places: number = 2): string =>
-    value.toDecimalPlaces(places, Decimal.ROUND_HALF_EVEN).toFixed(places),
-  quantizeToStringHalfUp: (value: Decimal, places: number = 2): string =>
-    value.toDecimalPlaces(places, Decimal.ROUND_HALF_UP).toFixed(places),
-
-  // Back-compat helpers: default to Django's implicit quantize behavior (half-even).
-  quantize: (value: Decimal, places: number = 2): Decimal =>
-    value.toDecimalPlaces(places, Decimal.ROUND_HALF_EVEN),
-  quantizeToString: (value: Decimal, places: number = 2): string =>
-    value.toDecimalPlaces(places, Decimal.ROUND_HALF_EVEN).toFixed(places),
-  
-  zero: () => new Decimal('0'),
-  one: () => new Decimal('1'),
-  two: () => new Decimal('2'),
-  
   // Parse string to Decimal safely
   parse: (value: string | number): Decimal => {
     return new Decimal(String(value));
@@ -94,19 +37,19 @@ export const DecimalUtils = {
     const mantissaDecimals = dot === -1 ? 0 : mantissa.length - dot - 1;
 
     if (expRaw === undefined) {
-      return mantissaDecimals;
+      return Math.min(28, mantissaDecimals);
     }
 
     const exp = Number(expRaw);
-    if (!Number.isFinite(exp)) return mantissaDecimals;
+    if (!Number.isFinite(exp)) return Math.min(28, mantissaDecimals);
 
     // Shift decimal point by exponent.
     // - Positive exponent reduces decimal places (or eliminates them).
     // - Negative exponent increases decimal places.
     if (exp >= 0) {
-      return Math.max(0, mantissaDecimals - exp);
+      return Math.min(28, Math.max(0, mantissaDecimals - exp));
     }
-    return mantissaDecimals + Math.abs(exp);
+    return Math.min(28, mantissaDecimals + Math.abs(exp));
   },
   toPythonStringFromInput: (input: string | number, value: Decimal): string => {
     const places = DecimalUtils.decimalPlacesFromInput(input);
@@ -118,179 +61,72 @@ export const DecimalUtils = {
   }
 };
 
-// ----------------------------
-// Broker implementations (Django parity)
-// ----------------------------
+export type GrowwDpRate = 'standard' | 'female';
 
-export class BaseBroker {
-  protected exchange: string;
-  protected tradeType: string;
-
-  constructor(exchange: string, tradeType: string) {
-    this.exchange = exchange;
-    this.tradeType = tradeType;
-  }
-
-  calculate_brokerage(_buyValue: Decimal, _sellValue: Decimal): Decimal {
-    return DecimalUtils.zero();
-  }
-
-  get_dp_charge(): Decimal {
-    if (this.tradeType === 'equity-delivery') {
-      return this._get_delivery_dp_charge();
-    }
-    return DecimalUtils.zero();
-  }
-
-  protected _get_delivery_dp_charge(): Decimal {
-    return DecimalUtils.zero();
-  }
+export interface FeeOptions {
+  tradeDate?: string;
+  growwDpRate?: GrowwDpRate;
 }
 
-export class GrowwCalculator extends BaseBroker {
-  calculate_brokerage(buyValue: Decimal, sellValue: Decimal): Decimal {
-    // Groww brokerage: 0.1% per leg, min ₹5 max ₹20.
-    if (this.tradeType !== 'equity-delivery' && this.tradeType !== 'equity-intraday') {
-      return DecimalUtils.zero();
-    }
-
-    let total = DecimalUtils.zero();
-    const minFee = DecimalUtils.parse('5');
-    const maxFee = DecimalUtils.parse('20');
-
-    if (buyValue.greaterThan(DecimalUtils.zero())) {
-      const raw = buyValue.mul(DecimalUtils.parse('0.001'));
-      const rounded = DecimalUtils.quantizeHalfUp(raw, 2);
-      total = total.add(Decimal.max(Decimal.min(rounded, maxFee), minFee));
-    }
-
-    if (sellValue.greaterThan(DecimalUtils.zero())) {
-      const raw = sellValue.mul(DecimalUtils.parse('0.001'));
-      const rounded = DecimalUtils.quantizeHalfUp(raw, 2);
-      total = total.add(Decimal.max(Decimal.min(rounded, maxFee), minFee));
-    }
-
-    return total;
-  }
-
-  protected _get_delivery_dp_charge(): Decimal {
-    return DecimalUtils.parse('21.54');
-  }
+export interface SideTotals {
+  quantity: Decimal;
+  value: Decimal;
+  brokerage: Decimal;
 }
 
-export class DhanCalculator extends BaseBroker {
-  calculate_brokerage(buyValue: Decimal, sellValue: Decimal): Decimal {
-    // Django: Delivery brokerage is 0; Intraday is 0.03% per leg capped at ₹20.
-    if (this.tradeType === 'equity-delivery') {
-      return DecimalUtils.zero();
-    }
-    if (this.tradeType !== 'equity-intraday') {
-      return DecimalUtils.zero();
-    }
-
-    const cap = DecimalUtils.parse('20');
-
-    const buyBrokerage = buyValue.greaterThan(DecimalUtils.zero())
-      ? DecimalUtils.quantizeHalfUp(Decimal.min(cap, buyValue.mul(DecimalUtils.parse('0.0003'))), 2)
-      : DecimalUtils.zero();
-    const sellBrokerage = sellValue.greaterThan(DecimalUtils.zero())
-      ? DecimalUtils.quantizeHalfUp(Decimal.min(cap, sellValue.mul(DecimalUtils.parse('0.0003'))), 2)
-      : DecimalUtils.zero();
-
-    return buyBrokerage.add(sellBrokerage);
+export function calculateBrokerage(value: Decimal, platform: string, delivery: boolean): Decimal {
+  if (platform === 'groww') {
+    const minimum = Decimal.min(5, value.mul('0.025'));
+    return DecimalUtils.quantizeHalfUp(Decimal.min(20, Decimal.max(minimum, value.mul('0.001'))));
   }
-
-  protected _get_delivery_dp_charge(): Decimal {
-    return DecimalUtils.parse('14.75');
-  }
+  return delivery ? DecimalUtils.zero() : DecimalUtils.quantizeHalfUp(Decimal.min(20, value.mul('0.0003')));
 }
 
-// ----------------------------
-// Govt levies (Django parity)
-// ----------------------------
-
-export class EquityDeliveryCharges {
-  private exchange: string;
-  private exchangeRate: Decimal;
-
-  constructor(exchange: string) {
-    this.exchange = exchange;
-    this.exchangeRate = exchange === 'NSE'
-      ? DecimalUtils.parse('0.0000297')
-      : DecimalUtils.parse('0.0000375');
-  }
-
-  calculate_stt(totalTurnover: Decimal): Decimal {
-    // Rounded to nearest rupee (0 dp), then later represented as 2dp in response.
-    return totalTurnover.mul(DecimalUtils.parse('0.001')).toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_exchange_charges(totalTurnover: Decimal): Decimal {
-    return totalTurnover.mul(this.exchangeRate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_stamp_duty(buyValue: Decimal): Decimal {
-    if (buyValue.lessThanOrEqualTo(DecimalUtils.zero())) return DecimalUtils.zero();
-    return buyValue.mul(DecimalUtils.parse('0.00015')).toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_sebi_fee(totalTurnover: Decimal): Decimal {
-    return totalTurnover.mul(DecimalUtils.parse('0.000001')).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_ipft(totalTurnover: Decimal): Decimal {
-    if (this.exchange !== 'NSE') return DecimalUtils.zero();
-    return totalTurnover.mul(DecimalUtils.parse('0.000001')).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_gst(taxableComponents: Decimal): Decimal {
-    return taxableComponents.mul(DecimalUtils.parse('0.18')).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
+export function calculateDeliveryDebit(value: Decimal, platform: string, rate: GrowwDpRate = 'standard'): Decimal {
+  if (platform === 'dhan') return DecimalUtils.parse('14.75');
+  const depositoryCharge = DecimalUtils.parse(rate === 'female' ? '3.25' : '3.50');
+  return DecimalUtils.quantizeHalfUp(depositoryCharge.add(value.lt(100) ? 0 : '16.50').mul('1.18'));
 }
 
-export class EquityIntradayCharges {
-  private exchange: string;
-  private exchangeRate: Decimal;
+export function calculateFees(
+  buy: SideTotals,
+  sell: SideTotals,
+  dpCharges: Decimal,
+  platform: string,
+  exchange: string,
+  delivery: boolean,
+  tradeDate?: string
+) {
+  const turnover = buy.value.add(sell.value);
+  const brokerage = buy.brokerage.add(sell.brokerage);
+  const nse = exchange === 'NSE';
+  const totalQuantity = buy.quantity.add(sell.quantity);
+  // STT Rule 3 uses the rounded VWAP of all executions for the same security and day.
+  const matchedTurnover = !delivery && totalQuantity.gt(0)
+    ? Decimal.min(buy.quantity, sell.quantity).mul(DecimalUtils.quantizeHalfUp(turnover.div(totalQuantity)))
+    : DecimalUtils.zero();
+  // Round the intraday STT component to paise before rounding this isolated estimate to rupees.
+  const rawStt = delivery ? turnover.mul('0.001') : DecimalUtils.quantizeHalfUp(matchedTurnover.mul('0.00025'));
+  const stt = DecimalUtils.quantizeHalfUp(rawStt, 0);
+  const stampDuty = DecimalUtils.quantizeHalfUp(buy.value.mul(delivery ? '0.00015' : '0.00003'), 0);
+  const sebiFee = DecimalUtils.quantizeHalfUp(turnover.mul('0.000001'));
 
-  constructor(exchange: string) {
-    this.exchange = exchange;
-    this.exchangeRate = exchange === 'NSE'
-      ? DecimalUtils.parse('0.0000297')
-      : DecimalUtils.parse('0.0000375');
-  }
-
-  calculate_stt(sellValue: Decimal): Decimal {
-    return sellValue.mul(DecimalUtils.parse('0.00025')).toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_exchange_charges(totalTurnover: Decimal): Decimal {
-    return totalTurnover.mul(this.exchangeRate).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_stamp_duty(buyValue: Decimal): Decimal {
-    if (buyValue.lessThanOrEqualTo(DecimalUtils.zero())) return DecimalUtils.zero();
-    // Django: intraday stamp duty is 0.003% (0.00003) on buy side only, rounded to rupee.
-    return buyValue.mul(DecimalUtils.parse('0.00003')).toDecimalPlaces(0, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_sebi_fee(totalTurnover: Decimal): Decimal {
-    return totalTurnover.mul(DecimalUtils.parse('0.000001')).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_ipft(totalTurnover: Decimal): Decimal {
-    if (this.exchange !== 'NSE') return DecimalUtils.zero();
-    return totalTurnover.mul(DecimalUtils.parse('0.000001')).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
-
-  calculate_gst(taxableComponents: Decimal): Decimal {
-    return taxableComponents.mul(DecimalUtils.parse('0.18')).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
-  }
+  // NSE/FA/73061 moved ₹9.99 per crore from IPFT to exchange fees on 1 March 2026.
+  const historical = tradeDate !== undefined && tradeDate < '2026-03-01';
+  const combined = nse && !historical && platform === 'groww';
+  const exchangeRate = !nse ? '0.0000375' : historical ? '0.0000297' : '0.000030699';
+  const exchangeCharges = combined ? DecimalUtils.zero() : DecimalUtils.quantizeHalfUp(turnover.mul(exchangeRate));
+  const ipft = combined || !nse
+    ? DecimalUtils.zero()
+    : DecimalUtils.quantizeHalfUp(turnover.mul(historical ? '0.000001' : '0.000000001'));
+  // Groww publishes conflicting components. Use the NSE combined amount until reconciled.
+  const exchangeAndIpft = combined ? DecimalUtils.quantizeHalfUp(turnover.mul('0.0000307')) : null;
+  const turnoverFees = (exchangeAndIpft ?? exchangeCharges.add(ipft)).add(sebiFee);
+  const gst = DecimalUtils.quantizeHalfUp(brokerage.add(turnoverFees).mul('0.18'));
+  const totalCharges = brokerage.add(stt).add(stampDuty).add(turnoverFees).add(gst).add(dpCharges);
+  return {
+    brokerage, stt, stampDuty, sebiFee, exchangeAndIpft, gst, dpCharges, totalCharges, turnoverFees,
+    exchangeCharges: combined ? null : exchangeCharges,
+    ipft: combined ? null : ipft
+  };
 }
-
-export const get_government_charges = (tradeType: string, exchange: string) => {
-  if (tradeType === 'equity-delivery') return new EquityDeliveryCharges(exchange);
-  if (tradeType === 'equity-intraday') return new EquityIntradayCharges(exchange);
-  throw new Error(`Unsupported trade type: ${tradeType}`);
-};
-
-// Note: Specific calculator classes are exported separately to avoid circular imports.

@@ -1,31 +1,39 @@
+import Decimal from 'decimal.js';
 import { z } from 'zod';
 
-// Calculation request validation
+// The calculator accepts the existing decimal string and number inputs.
+const calculationDecimal = z.union([z.string().trim(), z.number()]).transform(String)
+  .refine((value) => {
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) return false;
+    return Number.isFinite(Number(value)) && Math.abs(Number(value)) <= Number.MAX_SAFE_INTEGER;
+  }, 'Enter a finite numeric value within the supported range');
+const calculationPrice = calculationDecimal.pipe(z.string().refine((value) => new Decimal(value).gte(0), 'Price must be nonnegative'));
+const calculationQuantity = calculationDecimal.pipe(z.string().refine((value) => {
+  const quantity = new Decimal(value);
+  return quantity.isInteger() && quantity.gt(0);
+}, 'Quantity must be a positive whole number'));
+const orderId = z.string().trim().min(1).max(100).optional();
+
 export const calculationRequestSchema = z.object({
-  // Django parity: calculation view normalizes platform/exchange casing.
-  platform: z.string().min(1, 'Platform is required').default('groww').transform((v) => v.toLowerCase()),
-  exchange: z.string().min(1, 'Exchange is required').default('NSE').transform((v) => v.toUpperCase()),
-  tradeType: z.string().min(1, 'Trade type is required').default('equity-delivery'),
+  platform: z.string().default('groww').transform((value) => value.toLowerCase()).pipe(z.enum(['dhan', 'groww'])),
+  exchange: z.string().default('NSE').transform((value) => value.toUpperCase()).pipe(z.enum(['NSE', 'BSE'])),
+  tradeType: z.enum(['equity-delivery', 'equity-intraday']).default('equity-delivery'),
   transactions: z.array(z.object({
-    // Django parity: Django accepts numbers and many valid Decimal(str(x)) string forms
-    // (e.g. ".5", "10.", "1e-2"). Accept those here too.
-    quantity: z.union([z.string(), z.number()])
-      .transform((v) => typeof v === 'number' ? String(v) : v.trim())
-      .refine((v) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(v), {
-        message: 'Quantity must be a numeric value'
-      }),
-    buyPrice: z.union([z.string(), z.number()])
-      .transform((v) => typeof v === 'number' ? String(v) : v.trim())
-      .refine((v) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(v), {
-        message: 'Buy price must be a numeric value'
-      }),
-    sellPrice: z.union([z.string(), z.number()])
-      .transform((v) => typeof v === 'number' ? String(v) : v.trim())
-      .refine((v) => /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(v), {
-        message: 'Sell price must be a numeric value'
-      })
+    quantity: calculationQuantity,
+    buyPrice: calculationPrice,
+    sellPrice: calculationPrice,
+    buyOrderId: orderId,
+    sellOrderId: orderId,
+    debitInstructionId: orderId,
+  }).refine((row) => Number(row.buyPrice) > 0 || Number(row.sellPrice) > 0, {
+    message: 'Enter at least one positive price for each transaction'
   })).min(1, 'At least one transaction is required'),
-  positionType: z.enum(['long', 'short']).default('long')
+  positionType: z.enum(['long', 'short']).default('long'),
+  tradeDate: z.string().date().optional(),
+  growwDpRate: z.enum(['standard', 'female']).default('standard'),
+}).refine((data) => data.tradeType !== 'equity-delivery' || data.positionType === 'long', {
+  path: ['positionType'],
+  message: 'Delivery calculations only support long positions'
 });
 
 // Profile update validation
