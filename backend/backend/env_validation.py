@@ -14,6 +14,8 @@ from typing import Dict, List, Optional, Any, Callable, Union
 from urllib.parse import urlparse
 from pathlib import Path
 
+import jwt
+
 
 class EnvironmentValidationError(Exception):
     """Custom exception for environment validation errors."""
@@ -295,6 +297,21 @@ class EnvironmentValidator:
             min_length=50,  # Django recommends 50+ characters
             description=description or "Django secret key for cryptographic signing"
         )
+
+    def validate_supabase_public_key(self) -> Optional[str]:
+        key = self.validate_optional('SUPABASE_PUBLISHABLE_KEY') or self.validate_optional('SUPABASE_ANON_KEY')
+        if not key or key.startswith('sb_publishable_'):
+            return key
+
+        # This checks configured key type only. Supabase authenticates the key.
+        try:
+            if not key.endswith('.') and jwt.decode(key, options={"verify_signature": False}).get('role') == 'anon':
+                return key
+        except jwt.PyJWTError:
+            pass
+
+        self.errors.append("SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY must be a Supabase publishable or legacy anon key")
+        return None
     
     def validate_allowed_hosts(self, var_name: str = 'DJANGO_ALLOWED_HOSTS',
                               description: str = None) -> List[str]:
@@ -402,44 +419,29 @@ class EnvironmentValidator:
                 description="Development database connection string"
             )
         
-        # Authentication settings
-        config['jwt_secret'] = self.validate_jwt_secret(
-            'SUPABASE_JWT_SECRET',
-            description="Supabase JWT secret for token validation"
-        )
-        
-        # Supabase admin settings for server-side user management
+        production = self.environment in ('prod', 'production')
         config['supabase_url'] = self.validate_url(
             'SUPABASE_URL',
             schemes=['https'],
-            required=self.environment == 'prod',
-            description="Supabase project URL for admin operations"
+            required=production,
+            description="Supabase project URL for authentication"
         )
-        
-        # Service role key is required for production, optional for development
-        if self.environment == 'prod':
-            config['supabase_service_role_key'] = self.validate_required(
-                'SUPABASE_SERVICE_ROLE_KEY',
-                description="Supabase service role key for admin operations"
-            )
-        else:
-            # In development, still validate if present but don't require it
-            service_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-            if service_key and service_key.strip():
-                config['supabase_service_role_key'] = service_key.strip()
-            else:
-                config['supabase_service_role_key'] = None
-                self.warnings.append("SUPABASE_SERVICE_ROLE_KEY not set - account deletion will only clean Django data")
-        
+        config['supabase_publishable_key'] = self.validate_supabase_public_key()
+
+        # The pinned Python admin client only accepts legacy service-role JWTs.
+        service_key = self.validate_optional('SUPABASE_SERVICE_ROLE_KEY')
+        if not service_key or not service_key.startswith('eyJ'):
+            service_key = None
+            self.warnings.append("Django admin operations require a legacy JWT in SUPABASE_SERVICE_ROLE_KEY")
+        config['supabase_service_role_key'] = service_key
+
         # CORS settings
         config['cors_origins'] = self.validate_cors_origins()
         
         # Environment-specific settings
-        if self.environment == 'prod':
+        if production:
             self._validate_production_settings(config)
-        else:
-            self._validate_development_settings(config)
-        
+
         return config
     
     def _validate_production_settings(self, config: Dict[str, Any]) -> None:
@@ -456,30 +458,22 @@ class EnvironmentValidator:
         required_prod_vars = [
             ('DATABASE_URL', 'Production database URL'),
             ('DJANGO_SECRET_KEY', 'Django secret key'),
-            ('SUPABASE_JWT_SECRET', 'Supabase JWT secret'),
+            ('SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY', 'Supabase public key'),
             ('SUPABASE_URL', 'Supabase project URL'),
-            ('SUPABASE_SERVICE_ROLE_KEY', 'Supabase service role key'),
         ]
         
         # Map environment variable names to their corresponding config keys
         key_mapping = {
             'DJANGO_SECRET_KEY': 'secret_key',
-            'SUPABASE_JWT_SECRET': 'jwt_secret', 
+            'SUPABASE_PUBLISHABLE_KEY or SUPABASE_ANON_KEY': 'supabase_publishable_key',
             'DATABASE_URL': 'database_url',
             'SUPABASE_URL': 'supabase_url',
-            'SUPABASE_SERVICE_ROLE_KEY': 'supabase_service_role_key'
         }
         
         for var_name, description in required_prod_vars:
             config_key = key_mapping.get(var_name, var_name.lower())
             if not config.get(config_key):
                 self.errors.append(f"Production requires {var_name} ({description})")
-    
-    def _validate_development_settings(self, config: Dict[str, Any]) -> None:
-        """Validate development-specific settings."""
-        # Development can be more lenient but should still have basic security
-        if not config.get('jwt_secret'):
-            self.warnings.append("JWT secret should be set even in development")
     
     def validate_and_report(self) -> Dict[str, Any]:
         """

@@ -1,99 +1,71 @@
 import { Context } from 'hono';
-import { requireAuth } from '../middleware/auth.js';
-import { supabaseAdmin } from '../services/supabase.js';
-import { verifyToken } from '../middleware/auth.js';
+import { z } from 'zod';
+import { getAccessToken, requireAuth, TokenVerificationError, verifyToken, type VerifiedToken } from '../middleware/auth.js';
+import { usernameFromEmail } from '../services/authIdentity.js';
+import { supabaseClient } from '../services/supabase.js';
+
+async function revokeSessions(c: Context, scope: 'local' | 'global') {
+  const user = requireAuth(c);
+  const authHeader = c.req.header('Authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return c.json({
+      error: true,
+      error_id: `revoke_${Date.now()}`,
+      category: 'authentication' as const,
+      message: 'No token provided'
+    }, 400);
+  }
+
+  if (scope === 'global') {
+    const body = await c.req.text();
+    if (body) {
+      const input = z.object({ user_id: z.string().uuid().optional() });
+      const target = input.safeParse(await c.req.json().catch(() => null));
+      if (!target.success || (target.data.user_id && target.data.user_id !== user.id)) {
+        return c.json({
+          error: true,
+          error_id: `revoke_${Date.now()}`,
+          category: 'validation' as const,
+          message: 'Confirm the signed-in account before revoking its sessions.'
+        }, 409);
+      }
+    }
+  }
+
+  try {
+    const { error } = await supabaseClient.auth.admin.signOut(authHeader.slice(7), scope);
+    if (!error) {
+      return scope === 'local'
+        ? c.json({ message: 'Logout successful. Please clear your local tokens.' }, 200)
+        : c.json({
+          message: 'All sessions signed out. Existing access tokens expire on their original schedule.',
+          user_id: user.id,
+          timestamp: new Date().toISOString()
+        }, 200);
+    }
+    console.warn('Supabase rejected session revocation', { scope, code: error.code });
+  } catch {
+    console.warn('Supabase session revocation failed', { scope });
+  }
+
+  return c.json({
+    error: true,
+    error_id: `revoke_${Date.now()}`,
+    category: 'server_error' as const,
+    message: scope === 'local' ? 'Failed to sign out' : 'Failed to revoke sessions'
+  }, 502);
+}
 
 export const authRoutes = [
   {
     method: 'POST' as const,
     path: '/api/auth/logout/',
-    handler: async (c: Context) => {
-      const user = requireAuth(c);
-      const authHeader = c.req.header('Authorization');
-      
-      if (!authHeader?.startsWith('Bearer ')) {
-        return c.json({
-          error: true,
-          error_id: `logout_${Date.now()}`,
-          category: 'authentication' as const,
-          message: 'No token provided'
-        }, 400);
-      }
-
-      try {
-        const token = authHeader.substring(7);
-        
-        // Revoke the current session/token via Supabase Admin
-        const { error } = await supabaseAdmin.auth.admin.signOut(token);
-        
-        if (error) {
-          // Token might be expired or invalid, but that's okay for logout
-          console.warn('Logout warning:', error.message);
-        }
-        
-        return c.json({
-          message: 'Logout successful. Please clear your local tokens.'
-        }, 200);
-      } catch (error) {
-        return c.json({
-          error: true,
-          error_id: `logout_${Date.now()}`,
-          category: 'server_error' as const,
-          message: 'Failed to process logout'
-        }, 500);
-      }
-    }
+    handler: (c: Context) => revokeSessions(c, 'local')
   },
   {
     method: 'POST' as const,
     path: '/api/auth/revoke-all/',
-    handler: async (c: Context) => {
-      const user = requireAuth(c);
-      const authHeader = c.req.header('Authorization');
-      
-      if (!authHeader?.startsWith('Bearer ')) {
-        return c.json({
-          error: true,
-          error_id: `revoke_${Date.now()}`,
-          category: 'authentication' as const,
-          message: 'No token provided'
-        }, 400);
-      }
-
-      try {
-        const currentToken = authHeader.substring(7);
-        
-        // Revoke the current session using the JWT
-        const { error } = await supabaseAdmin.auth.admin.signOut(currentToken);
-        
-        if (error) {
-          console.warn('Revoke warning:', error.message);
-          // Continue even if revoking fails - token might be expired
-        }
-        
-        // For comprehensive revocation, we can also invalidate all user sessions
-        // using the user's ID with the admin API
-        try {
-          await (supabaseAdmin.auth.admin as any).revokeUserSessions(user.id);
-        } catch (revokeError) {
-          console.warn('Session revocation warning:', revokeError);
-          // Non-critical error - main token was already revoked
-        }
-        
-        return c.json({
-          message: 'All tokens revoked successfully.',
-          user_id: user.id,
-          timestamp: new Date().toISOString()
-        }, 200);
-      } catch (error) {
-        return c.json({
-          error: true,
-          error_id: `revoke_${Date.now()}`,
-          category: 'server_error' as const,
-          message: 'Failed to revoke tokens'
-        }, 500);
-      }
-    }
+    handler: (c: Context) => revokeSessions(c, 'global')
   },
   {
     method: 'GET' as const,
@@ -110,24 +82,15 @@ export const authRoutes = [
 
       try {
         const token = authHeader.substring(7);
-        const payload = verifyToken(token);
-        
-        // Get fresh user data from Supabase
-        const { data: authUser, error } = await supabaseAdmin.auth.admin.getUserById(payload.sub);
-        
-        if (error || !authUser.user) {
-          return c.json({
-            valid: false,
-            error: 'User not found'
-          }, 404);
-        }
+        const verified = c.get('verifiedAuth') as VerifiedToken | undefined;
+        const { payload, user } = verified ?? await verifyToken(token);
         
         return c.json({
           valid: true,
           user: {
-            id: authUser.user.id,
-            email: authUser.user.email,
-            username: authUser.user.user_metadata?.username || '',
+            id: user.id,
+            email: user.email,
+            username: usernameFromEmail(user.email),
             is_authenticated: true,
             is_active: true // Supabase doesn't have banned_for_reason in the base user object
           },
@@ -138,6 +101,18 @@ export const authRoutes = [
           }
         }, 200);
       } catch (error) {
+        if (error instanceof TokenVerificationError && error.reason === 'unavailable') {
+          return c.json({
+            valid: false,
+            error: 'Authentication service unavailable'
+          }, 503);
+        }
+        if (error instanceof TokenVerificationError && error.reason === 'not_found') {
+          return c.json({
+            valid: false,
+            error: 'User not found'
+          }, 404);
+        }
         return c.json({
           valid: false,
           error: 'Invalid token'
@@ -153,9 +128,9 @@ export const authRoutes = [
       
       try {
         // Get user details including authentication factors
-        const { data: authUser, error } = await supabaseAdmin.auth.admin.getUserById(user.id);
+        const { data: authUser, error } = await supabaseClient.auth.getUser(getAccessToken(c));
         
-        if (error || !authUser.user) {
+        if (error || authUser.user?.id !== user.id) {
           return c.json({
             error: true,
             error_id: `security_${Date.now()}`,
@@ -164,17 +139,6 @@ export const authRoutes = [
           }, 500);
         }
 
-        // Get session information - listUserSessions might not be available
-        let activeSessions = 0;
-        try {
-          // Note: listUserSessions may not be available in all Supabase versions
-          const { data: sessions } = await (supabaseAdmin.auth.admin as any).listUserSessions(user.id);
-          activeSessions = sessions?.sessions?.length || 0;
-        } catch (e) {
-          console.warn('Session listing not available:', e);
-          activeSessions = 0;
-        }
-        
         const securityFlags: string[] = [];
         if (!authUser.user.email_confirmed_at) {
           securityFlags.push('email_not_verified');
@@ -186,11 +150,11 @@ export const authRoutes = [
           email: authUser.user.email,
           last_login: authUser.user.last_sign_in_at || authUser.user.created_at,
           email_verified: !!authUser.user.email_confirmed_at,
-          active_sessions: activeSessions,
+          // The Auth Admin SDK does not expose session enumeration.
+          active_sessions: null,
           security_flags: securityFlags,
           recommendations: [
             'Enable two-factor authentication for enhanced security',
-            'Regularly review your active sessions',
             ...(!authUser.user.email_confirmed_at ? ['Verify your email address'] : [])
           ]
         }, 200);

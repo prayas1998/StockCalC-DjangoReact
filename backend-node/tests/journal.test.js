@@ -6,11 +6,11 @@ process.env.VERCEL = '1';
 process.env.SUPABASE_URL = 'https://journal-fixture.invalid';
 process.env.SUPABASE_ANON_KEY = 'fixture-anon';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'fixture-service';
-process.env.SUPABASE_JWT_SECRET = 'fixture-journal-secret';
+const fixtureSigningSecret = 'fixture-journal-secret';
 
 const owner = '00000000-0000-4000-8000-000000000001';
 const otherOwner = '00000000-0000-4000-8000-000000000002';
-const sign = (sub) => jwt.sign({ sub, email: `fixture-${sub}@example.com` }, process.env.SUPABASE_JWT_SECRET);
+const sign = (sub) => jwt.sign({ sub, email: `fixture-${sub}@example.com` }, fixtureSigningSecret, { expiresIn: '1h' });
 const ownerToken = sign(owner);
 const otherToken = sign(otherOwner);
 const usersByToken = new Map([[ownerToken, owner], [otherToken, otherOwner]]);
@@ -59,6 +59,12 @@ let rowCap = 2;
 globalThis.fetch = async (input, options) => {
   const request = new Request(input, options);
   const url = new URL(request.url);
+  if (url.pathname === '/auth/v1/user') {
+    const authToken = request.headers.get('authorization')?.replace('Bearer ', '');
+    const userId = usersByToken.get(authToken);
+    if (!userId) return Response.json({ code: 'bad_jwt', message: 'Invalid token' }, { status: 401 });
+    return Response.json({ id: userId, email: `fixture-${userId}@example.com`, user_metadata: {} });
+  }
   const caller = usersByToken.get(request.headers.get('authorization')?.replace('Bearer ', ''));
   const call = { caller, url, method: request.method };
   calls.push(call);

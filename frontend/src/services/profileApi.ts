@@ -1,3 +1,6 @@
+import { getApiUrl } from '../config';
+import type { SessionIdentity } from '../lib/authSession';
+import { supabase } from '../lib/supabase';
 import { api } from './api';
 import { handleApiError, handleAuthenticationError } from '../utils/frontendErrorHandler';
 
@@ -10,17 +13,37 @@ export interface ProfileData {
   last_login: string | null;
 }
 
-export interface ProfileUpdateData {
-  username?: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-}
-
 export interface PasswordChangeData {
   current_password: string;
   new_password: string;
   confirm_password: string;
+}
+
+export interface PasswordChangeResponse {
+  message: string;
+  password_changed?: boolean;
+  caller_session_revoked?: boolean;
+  temporary_session_revoked?: boolean;
+  action?: string;
+}
+
+async function accountRequest<T>(userId: string, path: string, method: string, body: object = {}): Promise<{ data: T; caller: SessionIdentity }> {
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error || session?.user.id !== userId) {
+    throw new Error('The signed-in account changed. Open the form again to continue.');
+  }
+
+  // Use the captured account token for this request without replay on another session.
+  const response = await fetch(getApiUrl(`/api${path}`), {
+    method,
+    headers: { Authorization: `Bearer ${session.access_token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ...body, user_id: userId })
+  });
+  const data = await response.json().catch(() => null);
+  if (!response.ok || !data) {
+    throw new Error(data?.message || 'The account request could not be completed.');
+  }
+  return { data, caller: { userId, accessToken: session.access_token } };
 }
 
 export const profileApi = {
@@ -42,110 +65,20 @@ export const profileApi = {
     }
   },
 
-  /**
-   * Update user profile information
-   */
-  async updateProfile(data: ProfileUpdateData): Promise<{ message: string; updated_fields: string[]; profile: ProfileData }> {
-    try {
-      const response = await api.patch('/profile/', data);
-      const payload = response.data as { message?: string; updated_fields?: string[]; profile?: ProfileData } | ProfileData;
-
-      if ('profile' in payload && payload.profile) {
-        return {
-          message: payload.message || 'Profile updated successfully',
-          updated_fields: payload.updated_fields || Object.keys(data),
-          profile: payload.profile
-        };
-      }
-
-      return {
-        message: 'Profile updated successfully',
-        updated_fields: Object.keys(data),
-        profile: payload as ProfileData
-      };
-    } catch (error: unknown) {
-      if ((error as { response?: { status?: number } })?.response?.status === 401 || (error as { response?: { status?: number } })?.response?.status === 403) {
-        handleAuthenticationError(error, { operation: 'updateProfile' });
-      } else {
-        handleApiError(error, { operation: 'updateProfile' });
-      }
-      throw error;
-    }
+  async getSecurityStatus(): Promise<{ active_sessions: number | null }> {
+    const { data } = await api.get('/auth/security-status/');
+    return data;
   },
 
-  /**
-   * Change user password
-   */
-  async changePassword(data: PasswordChangeData): Promise<{ message: string }> {
-    try {
-      // First check if backend supports password change
-      const response = await api.post('/profile/change-password/', data);
-      
-      // If backend returns action to use Supabase client, handle it on frontend
-      if (response.data.action === 'use_supabase_client') {
-        // Import Supabase client dynamically to avoid circular imports
-        const { supabase } = await import('../lib/supabase');
-        
-        // Use Supabase to change password
-        const { error } = await supabase.auth.updateUser({
-          password: data.new_password
-        });
-        
-        if (error) {
-          throw new Error(error.message);
-        }
-        
-        return { message: 'Password changed successfully' };
-      }
-      
-      return response.data;
-    } catch (error: unknown) {
-      console.error('Profile API - Change password error:', error);
-      throw error;
-    }
+  revokeAllSessions(userId: string) {
+    return accountRequest<{ message: string }>(userId, '/auth/revoke-all/', 'POST');
   },
 
-  /**
-   * Delete user account with complete backend handling.
-   * Backend handles both Django data cleanup and Supabase user deletion.
-   */
-  async deleteAccount(password: string): Promise<{ message: string; cleanup_summary?: Record<string, unknown>; success: boolean; support_needed?: boolean }> {
-    try {
-      // Call backend to handle complete account deletion
-      const response = await api.delete('/profile/delete-account/', {
-        data: { password }
-      });
-      
-      // Backend handles everything - just return the response
-      return {
-        message: response.data.message,
-        cleanup_summary: response.data.cleanup_summary,
-        success: response.data.success ?? true,
-        support_needed: response.data.support_needed
-      };
-      
-    } catch (error: unknown) {
-      console.error('Profile API - Delete account error:', error);
-      
-      // Handle specific error responses
-      if ((error as { response?: { status?: number } })?.response?.status === 401) {
-        throw new Error('Please log in again to delete your account');
-      } else if ((error as { response?: { status?: number } })?.response?.status === 403) {
-        throw new Error('You do not have permission to delete this account');
-      } else if ((error as { response?: { status?: number } })?.response?.status === 500) {
-        // Server error during deletion
-        const errorData = (error as { response?: { data?: { support_needed?: boolean; message?: string } } })?.response?.data;
-        if (errorData?.support_needed) {
-          throw new Error(errorData.message || 'Account deletion partially failed. Please contact support.');
-        }
-        throw new Error('Server error during account deletion. Please try again or contact support.');
-      } else if ((error as { response?: { data?: { message?: string } } })?.response?.data?.message) {
-        throw new Error((error as { response: { data: { message: string } } }).response.data.message);
-      } else if ((error as { response?: { data?: { detail?: string } } })?.response?.data?.detail) {
-        throw new Error((error as { response: { data: { detail: string } } }).response.data.detail);
-      } else {
-        throw new Error('Failed to delete account. Please try again or contact support.');
-      }
-    }
+  changePassword(userId: string, data: PasswordChangeData) {
+    return accountRequest<PasswordChangeResponse>(userId, '/profile/change-password/', 'POST', data);
+  },
+
+  deleteAccount(userId: string, password: string) {
+    return accountRequest<{ message: string; success: boolean }>(userId, '/profile/delete-account/', 'DELETE', { password });
   }
 };

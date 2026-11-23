@@ -9,6 +9,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import jwt
+
 from .env_validation import EnvironmentValidationError, EnvironmentValidator
 
 
@@ -27,9 +29,9 @@ class DatabaseUrlRedactionTests(unittest.TestCase):
             ),
             "DJANGO_SECRET_KEY": "synthetic-django-secret-" * 3,
             "DJANGO_ALLOWED_HOSTS": "localhost",
-            "SUPABASE_JWT_SECRET": "synthetic-jwt-secret-" * 3,
             "SUPABASE_URL": "https://example.supabase.invalid",
-            "SUPABASE_SERVICE_ROLE_KEY": "synthetic-service-role-key",
+            "SUPABASE_PUBLISHABLE_KEY": "sb_publishable_synthetic",
+            "SUPABASE_SERVICE_ROLE_KEY": "eyJ-synthetic-service-role-key",
             "SECURE_SSL_REDIRECT": "true",
         }, clear=True)
         self.environment.start()
@@ -102,6 +104,40 @@ class DatabaseUrlRedactionTests(unittest.TestCase):
         startup_output = stdout + stderr + formatted_traceback
         self.assertNotIn(SYNTHETIC_PASSWORD, startup_output)
         self.assertNotIn(os.environ["DATABASE_URL"], startup_output)
+
+    def test_production_uses_public_key_without_a_jwt_signing_secret(self):
+        self.assertNotIn("SUPABASE_JWT_SECRET", os.environ)
+        anon_key = jwt.encode({"role": "anon"}, "synthetic-key-type-fixture", algorithm="HS256")
+        for overrides, expected_key in (
+            ({"SUPABASE_ANON_KEY": anon_key}, "sb_publishable_synthetic"),
+            ({"SUPABASE_PUBLISHABLE_KEY": "", "SUPABASE_ANON_KEY": anon_key}, anon_key),
+        ):
+            with self.subTest(legacy=not overrides.get("SUPABASE_PUBLISHABLE_KEY", True)), patch.dict(os.environ, overrides):
+                module, _, _, error, _ = self.load_settings(lambda *args, **kwargs: {})
+                self.assertIsNone(error)
+                self.assertEqual(module.SUPABASE_PUBLISHABLE_KEY, expected_key)
+
+    def test_production_rejects_private_credentials_in_the_public_key_slot(self):
+        legacy_privileged = jwt.encode({"role": "service_role"}, "synthetic-key-type-fixture", algorithm="HS256")
+        for invalid_key in (legacy_privileged, "sb_secret_synthetic"):
+            with patch.dict(os.environ, {"SUPABASE_PUBLISHABLE_KEY": invalid_key}):
+                _, stdout, stderr, error, _ = self.load_settings(lambda *args, **kwargs: {})
+                self.assertIsInstance(error, SystemExit)
+                self.assertIn("must be a Supabase publishable or legacy anon key", stdout + stderr)
+                self.assertNotIn(invalid_key, stdout + stderr)
+
+    def test_production_can_start_without_a_legacy_admin_key(self):
+        secret_key = "sb_secret_synthetic"
+        for overrides in (
+            {"SUPABASE_SERVICE_ROLE_KEY": "", "SUPABASE_SECRET_KEY": secret_key},
+            {"SUPABASE_SERVICE_ROLE_KEY": secret_key},
+        ):
+            with patch.dict(os.environ, overrides):
+                module, stdout, stderr, error, _ = self.load_settings(lambda *args, **kwargs: {})
+                self.assertIsNone(error)
+                self.assertIsNone(module.SUPABASE_SERVICE_ROLE_KEY)
+                self.assertEqual(module.SUPABASE_PUBLISHABLE_KEY, 'sb_publishable_synthetic')
+                self.assertNotIn(secret_key, stdout + stderr)
 
 
 if __name__ == "__main__":

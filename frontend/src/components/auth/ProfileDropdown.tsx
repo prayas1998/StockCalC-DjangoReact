@@ -16,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { usernameFromEmail } from "@/lib/authIdentity";
 import { useAuth } from "@/context/AuthContext";
 import { User, LogOut, Receipt, BookOpen, Settings } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -26,19 +27,19 @@ const ProfileDropdown = () => {
   const navigate = useNavigate();
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   
+  const username = usernameFromEmail(user?.email);
   const displayName =
-    user?.user_metadata?.username ||
+    username ||
     user?.user_metadata?.first_name ||
     (user?.email ? user.email.split("@")[0] : "User");
-  const accountIdentifier = user?.user_metadata?.username || user?.email || "Signed in";
+  const accountIdentifier = username || user?.email || "Signed in";
   
   const handleLogout = () => {
     setShowLogoutConfirm(true);
   };
   
   const confirmLogout = async () => {
-    await signOut();
-    setShowLogoutConfirm(false);
+    if (await signOut()) setShowLogoutConfirm(false);
   };
   
   return (
@@ -53,7 +54,7 @@ const ProfileDropdown = () => {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmLogout}>Log out</AlertDialogAction>
+            <AlertDialogAction onClick={(event) => { event.preventDefault(); void confirmLogout(); }}>Log out</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

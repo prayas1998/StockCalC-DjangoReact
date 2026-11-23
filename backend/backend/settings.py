@@ -30,8 +30,8 @@ DEBUG = env_config['debug']
 ALLOWED_HOSTS = env_config['allowed_hosts']
 
 # Authentication configuration
-SUPABASE_JWT_SECRET = env_config.get('jwt_secret')
 SUPABASE_URL = env_config.get('supabase_url')
+SUPABASE_PUBLISHABLE_KEY = env_config.get('supabase_publishable_key')
 SUPABASE_SERVICE_ROLE_KEY = env_config.get('supabase_service_role_key')
 
 # Authentication configuration loaded from environment
