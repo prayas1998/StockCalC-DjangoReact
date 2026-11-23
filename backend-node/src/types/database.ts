@@ -45,8 +45,8 @@ export interface TradeJournal {
 
 export interface TradeJournalTags {
   id: number;
-  trade: number; // Foreign key to TradeJournal.id
-  tag: number; // Foreign key to TradeTags.id
+  trade_id: number; // Foreign key to TradeJournal.id
+  tag_id: number; // Foreign key to TradeTags.id
 }
 
 // Joined types for convenience

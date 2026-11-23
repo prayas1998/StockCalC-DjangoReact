@@ -1,8 +1,9 @@
 import { Context } from 'hono';
+import { ZodError } from 'zod';
 import { requireAuth, getAccessToken } from '../middleware/auth.js';
-import { tradeJournalCreateSchema, tradeJournalUpdateSchema, tagCreateSchema } from '../validators/schemas.js';
+import { tradeJournalCreateSchema, tradeJournalUpdateSchema, tagCreateSchema, tagUpdateSchema, type TradeJournalUpdate } from '../validators/schemas.js';
 import { PaginatedResponse } from '../types/index.js';
-import { supabaseClient, withUserScope } from '../services/supabase.js';
+import { executeWithUserScope, withUserScope } from '../services/supabase.js';
 
 const CLOSED_STATUSES = ['CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL'] as const;
 const VALID_STATUSES = ['OPEN', 'CLOSED_TARGET', 'CLOSED_STOPLOSS', 'CLOSED_MANUAL', 'CANCELLED'] as const;
@@ -35,7 +36,7 @@ function getTradeTags(trade: any): any[] {
           const rawTag = Array.isArray(relation.journal_tradetags)
             ? relation.journal_tradetags[0]
             : relation.journal_tradetags;
-          if (!rawTag) return null;
+          if (!rawTag || rawTag.user_id !== trade.user_id) return null;
           return {
             id: rawTag.id,
             name: rawTag.name,
@@ -263,87 +264,61 @@ async function decorateTradeForDetail(trade: any): Promise<any> {
   };
 }
 
-function toCreateUpdateTradeResponse(trade: any, tagIds: number[]): any {
-  const { user_id, created_at, updated_at, ...rest } = trade;
-  return {
-    ...rest,
-    tags: tagIds
-  };
+const PAGE_SIZE = 500;
+
+async function fetchAllRows<T extends { id: number | string }>(
+  fetchPage: (afterId: number | string) => PromiseLike<{
+    data: T[] | null;
+    error: unknown;
+  }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  let afterId: number | string = 0;
+
+  // The configured REST row cap can be smaller than PAGE_SIZE.
+  for (;;) {
+    const { data, error } = await fetchPage(afterId);
+    if (error) throw error;
+    if (!data?.length) return rows;
+    rows.push(...data);
+    afterId = data[data.length - 1].id;
+  }
 }
 
-async function fetchTradeTagIds(accessToken: string, tradeId: number): Promise<number[]> {
-  const { data, error } = await withUserScope(accessToken, 'journal_tradejournaltags')
-    .from()
-    .select('tag')
-    .eq('trade', tradeId);
+async function fetchOwnerTrades(accessToken: string, userId: string) {
+  const [trades, relations] = await Promise.all([
+    fetchAllRows((afterId) => withUserScope(accessToken, 'journal_tradejournal')
+      .from()
+      .select('*')
+      .eq('user_id', userId)
+      .gt('id', afterId)
+      .order('id')
+      .limit(PAGE_SIZE)),
+    fetchOwnerTradeTagRelations(accessToken, userId)
+  ]);
 
-  if (error) {
-    throw error;
+  // Page relations separately because the REST cap also applies to embedded rows.
+  const relationsByTrade = new Map<number, typeof relations>();
+  for (const relation of relations) {
+    const existing = relationsByTrade.get(relation.trade_id) ?? [];
+    existing.push(relation);
+    relationsByTrade.set(relation.trade_id, existing);
   }
-
-  return (data || [])
-    .map((relation: any) => Number(relation.tag))
-    .filter((tagId: number) => Number.isFinite(tagId));
-}
-
-async function replaceTradeTags(accessToken: string, tradeId: number, tagIds: number[]): Promise<void> {
-  const deleteResult = await withUserScope(accessToken, 'journal_tradejournaltags')
-    .from()
-    .delete()
-    .eq('trade', tradeId);
-
-  if (deleteResult.error) {
-    throw deleteResult.error;
-  }
-
-  if (tagIds.length === 0) {
-    return;
-  }
-
-  const rows = tagIds.map((tagId) => ({
-    trade: tradeId,
-    tag: tagId
+  return trades.map((trade) => ({
+    ...trade,
+    journal_tradejournaltags: relationsByTrade.get(trade.id) ?? []
   }));
-
-  const insertResult = await withUserScope(accessToken, 'journal_tradejournaltags')
-    .from()
-    .insert(rows);
-
-  if (insertResult.error) {
-    throw insertResult.error;
-  }
 }
 
-async function getTradeIdsMatchingAllTags(accessToken: string, tagFilterValues: string[]): Promise<string[]> {
-  const numericTagIds = tagFilterValues
-    .map((value) => Number(value))
-    .filter((value) => Number.isFinite(value));
-
-  if (numericTagIds.length === 0) {
-    return [];
-  }
-
-  const { data, error } = await withUserScope(accessToken, 'journal_tradejournaltags')
+function fetchOwnerTradeTagRelations(accessToken: string, userId: string) {
+  return fetchAllRows((afterId) => withUserScope(accessToken, 'journal_tradejournaltags')
     .from()
-    .select('trade, tag')
-    .in('tag', numericTagIds);
-
-  if (error) {
-    throw error;
-  }
-
-  const tradeToTags = new Map<string, Set<number>>();
-  for (const relation of data || []) {
-    const tradeId = String(relation.trade);
-    const tagId = Number(relation.tag);
-    const tagSet = tradeToTags.get(tradeId) || new Set<number>();
-    tagSet.add(tagId);
-    tradeToTags.set(tradeId, tagSet);
-  }
-
-  return Array.from(tradeToTags.entries())
-    .filter(([, tagSet]) => numericTagIds.every((tagId) => tagSet.has(tagId)))
-    .map(([tradeId]) => tradeId);
+    .select('id, trade_id, tag_id, journal_tradejournal!inner(user_id), journal_tradetags!inner(id, name, color, user_id, created_at)')
+    .eq('journal_tradejournal.user_id', userId)
+    .eq('journal_tradetags.user_id', userId)
+    .gt('id', afterId)
+    .order('id')
+    .limit(PAGE_SIZE));
 }
 
 async function calculateStockPerformance(closedTrades: any[]): Promise<{ best_performing_stocks: any[]; worst_performing_stocks: any[] }> {
@@ -580,7 +555,7 @@ function getPagination(url: URL): { page: number; pageSize: number; from: number
   const rawPage = Number.parseInt(url.searchParams.get('page') || '1', 10);
   const rawPageSize = Number.parseInt(url.searchParams.get('page_size') || '20', 10);
   const page = Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1;
-  const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? rawPageSize : 20;
+  const pageSize = Number.isFinite(rawPageSize) && rawPageSize > 0 ? Math.min(rawPageSize, 100) : 20;
   const from = (page - 1) * pageSize;
   const to = from + pageSize - 1;
 
@@ -593,6 +568,10 @@ function parseMultiValueParams(url: URL, key: string): string[] {
     .flatMap((value) => value.split(','))
     .map((value) => value.trim())
     .filter(Boolean);
+}
+
+function getCompanyFilters(url: URL): string[] {
+  return [...url.searchParams.getAll('company'), ...parseMultiValueParams(url, 'companies')];
 }
 
 function normalizeTagName(value: string): string {
@@ -615,45 +594,107 @@ function normalizeTagPayload(body: unknown): Record<string, unknown> {
   return payload;
 }
 
-function getSafeErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  if (error && typeof error === 'object' && 'message' in error) {
-    const message = (error as { message?: unknown }).message;
-    if (typeof message === 'string' && message.trim().length > 0) {
-      return message;
-    }
-  }
-
-  return fallback;
+function fetchOwnerTags(accessToken: string, userId: string) {
+  return fetchAllRows((afterId) => withUserScope(accessToken, 'journal_tradetags')
+    .from()
+    .select('*')
+    .eq('user_id', userId)
+    .gt('id', afterId)
+    .order('id')
+    .limit(PAGE_SIZE));
 }
 
-async function findCaseInsensitiveTagForUser(
-  accessToken: string,
-  userId: string,
-  tagName: string,
-  excludeTagId?: string
-): Promise<{ id: number; name: string; color?: string } | null> {
-  const { data: tags, error } = await withUserScope(accessToken, 'journal_tradetags')
-    .from()
-    .select('id, name, color')
-    .eq('user_id', userId);
-
-  if (error) {
-    throw error;
+function journalWriteError(c: Context, resource: 'journal' | 'tags', error: unknown, fallback: string) {
+  if (error instanceof ZodError || error instanceof SyntaxError) {
+    return c.json({
+      error: true,
+      error_id: `${resource}_${Date.now()}`,
+      category: 'validation',
+      message: error instanceof ZodError ? error.message : fallback
+    }, 400);
   }
 
-  const targetKey = normalizeTagNameKey(tagName);
-  if (!targetKey) return null;
+  const databaseError = error as { code?: string; message?: string } | undefined;
+  const code = databaseError?.code;
+  if (code === 'PT400' || code?.startsWith('22') || code === '23514' || code === '23502') {
+    return c.json({
+      error: true,
+      error_id: `${resource}_${Date.now()}`,
+      category: 'validation',
+      message: code === 'PT400' ? databaseError?.message ?? fallback : fallback
+    }, 400);
+  }
 
-  return (tags || []).find((tag: any) => {
-    if (excludeTagId && String(tag.id) === excludeTagId) {
-      return false;
+  console.error(`${resource} write failed:`, code ?? error);
+  return c.json({
+    error: true,
+    error_id: `${resource}_${Date.now()}`,
+    category: 'server_error',
+    message: resource === 'journal' ? 'Failed to save trade journal entry' : 'Failed to save tag'
+  }, 500);
+}
+
+async function persistTrade(accessToken: string, input: TradeJournalUpdate, id?: string) {
+  const { tags, ...trade } = input;
+  const { data, error } = await executeWithUserScope(accessToken, async (client) =>
+    client.rpc('journal_save_trade', {
+      p_trade_id: id ?? null,
+      p_trade: trade,
+      p_tag_ids: tags ?? null
+    }));
+
+  if (error) throw error;
+  return data;
+}
+
+async function saveTrade(c: Context, id?: string): Promise<Response> {
+  try {
+    const accessToken = getAccessToken(c);
+    const body = await c.req.json();
+    const schema = id === undefined ? tradeJournalCreateSchema : tradeJournalUpdateSchema;
+    const data = await persistTrade(accessToken, schema.parse(body), id);
+
+    if (!data) {
+      return c.json({
+        error: true,
+        error_id: `journal_${Date.now()}`,
+        category: 'not_found',
+        message: 'Trade journal entry not found'
+      }, 404);
     }
-    return normalizeTagNameKey(String(tag.name || '')) === targetKey;
-  }) || null;
+
+    const { user_id, created_at, updated_at, journal_tradejournaltags, ...payload } = data;
+    return c.json(payload, id === undefined ? 201 : 200);
+  } catch (error) {
+    return journalWriteError(c, 'journal', error, id === undefined ? 'Invalid trade journal data' : 'Invalid update data');
+  }
+}
+
+async function saveTag(c: Context, id?: string): Promise<Response> {
+  try {
+    const accessToken = getAccessToken(c);
+    const body = normalizeTagPayload(await c.req.json());
+    const schema = id === undefined ? tagCreateSchema : tagUpdateSchema;
+    const { data, error } = await executeWithUserScope(accessToken, async (client) =>
+      client.rpc('journal_save_tag', {
+        p_tag_id: id ?? null,
+        p_tag: schema.parse(body)
+      }));
+
+    if (error) throw error;
+    if (!data) {
+      return c.json({
+        error: true,
+        error_id: `tag_${Date.now()}`,
+        category: 'not_found',
+        message: 'Tag not found'
+      }, 404);
+    }
+
+    return c.json(data, id === undefined ? 201 : 200);
+  } catch (error) {
+    return journalWriteError(c, 'tags', error, 'Invalid tag data');
+  }
 }
 
 function buildPageUrl(c: Context, targetPage: number): string {
@@ -665,37 +706,21 @@ function buildPageUrl(c: Context, targetPage: number): string {
 async function buildTagAnalyticsResponse(c: Context, userId: string, tagName: string): Promise<Response> {
   const accessToken = getAccessToken(c);
 
-  const tag = await findCaseInsensitiveTagForUser(accessToken, userId, tagName);
-
+  const tags = await fetchOwnerTags(accessToken, userId);
+  const tagNameKey = normalizeTagNameKey(tagName);
+  const tag = tags.find((candidate) => normalizeTagNameKey(candidate.name) === tagNameKey);
   if (!tag) {
     return c.json({ error: `Tag "${tagName}" not found` }, 404);
   }
 
-  const { data: relations, error: relationError } = await withUserScope(accessToken, 'journal_tradejournaltags')
+  const tradesWithTag = await fetchAllRows((afterId) => withUserScope(accessToken, 'journal_tradejournal')
     .from()
-    .select('trade')
-    .eq('tag', tag.id);
-
-  if (relationError) {
-    throw relationError;
-  }
-
-  const tradeIds = (relations || []).map((relation: any) => relation.trade);
-  let tradesWithTag: any[] = [];
-
-  if (tradeIds.length > 0) {
-    const tradeQuery = await withUserScope(accessToken, 'journal_tradejournal')
-      .from()
-      .select(TRADE_SELECT_WITH_TAGS)
-      .eq('user_id', userId)
-      .in('id', tradeIds);
-
-    if (tradeQuery.error) {
-      throw tradeQuery.error;
-    }
-
-    tradesWithTag = tradeQuery.data || [];
-  }
+    .select('*, journal_tradejournaltags!inner(tag_id)')
+    .eq('user_id', userId)
+    .eq('journal_tradejournaltags.tag_id', tag.id)
+    .gt('id', afterId)
+    .order('id')
+    .limit(PAGE_SIZE));
 
   const closedTrades = tradesWithTag.filter((trade) => isClosedStatus(trade.status));
   const pnlMetrics = await calculatePnlMetrics(closedTrades);
@@ -728,49 +753,50 @@ export const journalRoutes = [
         const statusFilters = parseMultiValueParams(url, 'status');
         const tradeTypeFilters = parseMultiValueParams(url, 'trade_type');
         const tagFilters = parseMultiValueParams(url, 'tags');
-        const companyFilters = parseMultiValueParams(url, 'companies');
+        const companyFilters = getCompanyFilters(url);
 
-        let query = supabaseClient
-          .from('journal_tradejournal')
-          .select(TRADE_SELECT_WITH_TAGS, { count: 'exact' })
-          .eq('user_id', user.id)
-          .order('entry_date', { ascending: false })
-          .range(from, to);
-
-        if (statusFilters.length > 0) {
-          query = query.in('status', statusFilters);
+        const tagIds = [...new Set(tagFilters.map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))];
+        if (tagFilters.length > 0 && tagIds.length === 0) {
+          return c.json({ count: 0, next: null, previous: null, results: [] }, 200);
         }
 
-        if (tradeTypeFilters.length > 0) {
-          query = query.in('trade_type', tradeTypeFilters);
-        }
+        const { trades, count } = await executeWithUserScope(accessToken, async (client) => {
+          const source = tagIds.length > 0
+            ? client.rpc('journal_trades_with_tags', { p_tag_ids: tagIds }, { count: 'exact' }).select(TRADE_SELECT_WITH_TAGS)
+            : client.from('journal_tradejournal').select(TRADE_SELECT_WITH_TAGS, { count: 'exact' });
+          let query = source
+            .eq('user_id', user.id)
+            .order('entry_date', { ascending: false })
+            .order('id');
 
-        if (companyFilters.length > 0) {
-          query = query.in('company_name', companyFilters);
-        }
-
-        if (tagFilters.length > 0) {
-          const matchingTradeIds = await getTradeIdsMatchingAllTags(accessToken, tagFilters);
-
-          if (matchingTradeIds.length === 0) {
-            return c.json({
-              count: 0,
-              next: null,
-              previous: null,
-              results: []
-            }, 200);
+          if (statusFilters.length > 0) {
+            query = query.in('status', statusFilters);
+          }
+          if (tradeTypeFilters.length > 0) {
+            query = query.in('trade_type', tradeTypeFilters);
+          }
+          if (companyFilters.length > 0) {
+            // PostgREST requires escaping quotes and backslashes inside quoted filter values.
+            const companies = companyFilters.map((name) => JSON.stringify(name)).join(',');
+            query = query.filter('company_name', 'in', `(${companies})`);
           }
 
-          query = query.in('id', matchingTradeIds);
-        }
+          const trades = [];
+          let count = 0;
+          // A single REST response can be shorter than the requested application page.
+          for (let offset = from; offset <= to;) {
+            const { data, error, count: total } = await query.range(offset, to);
+            if (error) throw error;
+            count = total ?? count;
+            if (!data?.length) break;
+            trades.push(...data);
+            offset += data.length;
+            if (offset >= count) break;
+          }
+          return { trades, count };
+        });
 
-        const { data: trades, error, count } = await query;
-
-        if (error) {
-          throw error;
-        }
-
-        const results = await Promise.all((trades || []).map((trade: any) => decorateTradeForList(trade)));
+        const results = await Promise.all(trades.map((trade) => decorateTradeForList(trade)));
 
         const response: PaginatedResponse<any> = {
           count: count || 0,
@@ -794,45 +820,11 @@ export const journalRoutes = [
   {
     method: 'POST' as const,
     path: '/api/journal/',
-    handler: async (c: Context) => {
-      const user = requireAuth(c);
-      const body = await c.req.json();
-
-      try {
-        const accessToken = getAccessToken(c);
-        const validatedData = tradeJournalCreateSchema.parse(body);
-
-        const { tags = [], ...journalData } = validatedData;
-
-        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .insert({
-            ...journalData,
-            user_id: user.id
-          })
-          .select()
-          .single();
-
-        if (error) {
-          throw error;
-        }
-
-        await replaceTradeTags(accessToken, trade.id, tags);
-
-        return c.json(toCreateUpdateTradeResponse(trade, tags), 201);
-      } catch (error) {
-        console.error('Journal creation error:', error);
-        return c.json({
-          error: true,
-          error_id: `journal_${Date.now()}`,
-          category: 'validation' as const,
-          message: error instanceof Error ? error.message : 'Invalid trade journal data'
-        }, 400);
-      }
-    }
+    handler: (c: Context) => saveTrade(c)
   },
   {
     method: 'GET' as const,
-    path: '/api/journal/:id/',
+    path: '/api/journal/:id{[0-9]+}/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
@@ -840,8 +832,8 @@ export const journalRoutes = [
       try {
         const accessToken = getAccessToken(c);
 
-        const { data: trade, error } = await supabaseClient
-          .from('journal_tradejournal')
+        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
           .select(TRADE_SELECT_WITH_TAGS)
           .eq('id', id)
           .eq('user_id', user.id)
@@ -875,61 +867,12 @@ export const journalRoutes = [
   },
   {
     method: 'PATCH' as const,
-    path: '/api/journal/:id/',
-    handler: async (c: Context) => {
-      const user = requireAuth(c);
-      const id = c.req.param('id');
-      const body = await c.req.json();
-
-      try {
-        const accessToken = getAccessToken(c);
-        const validatedData = tradeJournalUpdateSchema.parse(body);
-        const { tags, ...journalData } = validatedData;
-
-        const { data: trade, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .from()
-          .update(journalData)
-          .eq('id', id)
-          .eq('user_id', user.id)
-          .select()
-          .maybeSingle();
-
-        if (error) {
-          throw error;
-        }
-
-        if (!trade) {
-          return c.json({
-            error: true,
-            error_id: `journal_${Date.now()}`,
-            category: 'not_found' as const,
-            message: 'Trade journal entry not found'
-          }, 404);
-        }
-
-        if (tags !== undefined) {
-          await replaceTradeTags(accessToken, trade.id, tags);
-        }
-
-        const outputTagIds = tags !== undefined
-          ? tags
-          : await fetchTradeTagIds(accessToken, trade.id);
-
-        return c.json(toCreateUpdateTradeResponse(trade, outputTagIds), 200);
-      } catch (error) {
-        console.error('Journal update error:', error);
-        return c.json({
-          error: true,
-          error_id: `journal_${Date.now()}`,
-          category: 'validation' as const,
-          message: error instanceof Error ? error.message : 'Invalid update data'
-        }, 400);
-      }
-    }
+    path: '/api/journal/:id{[0-9]+}/',
+    handler: (c: Context) => saveTrade(c, c.req.param('id'))
   },
   {
     method: 'DELETE' as const,
-    path: '/api/journal/:id/',
+    path: '/api/journal/:id{[0-9]+}/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
@@ -981,13 +924,12 @@ export const journalRoutes = [
   },
   {
     method: 'PATCH' as const,
-    path: '/api/journal/:id/update_status/',
+    path: '/api/journal/:id{[0-9]+}/update_status/',
     handler: async (c: Context) => {
-      const user = requireAuth(c);
       const id = c.req.param('id');
-      const body = await c.req.json();
 
       try {
+        const body = await c.req.json();
         const statusValue = body?.status;
         if (!statusValue) {
           return c.json({ error: 'Status is required' }, 400);
@@ -997,23 +939,7 @@ export const journalRoutes = [
           return c.json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` }, 400);
         }
 
-        const accessToken = getAccessToken(c);
-
-        const { data: updatedTrade, error } = await withUserScope(accessToken, 'journal_tradejournal')
-          .from()
-          .update({
-            status: statusValue,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', id)
-          .eq('user_id', user.id)
-          .select(TRADE_SELECT_WITH_TAGS)
-          .maybeSingle();
-
-        if (error) {
-          throw error;
-        }
-
+        const updatedTrade = await persistTrade(getAccessToken(c), { status: statusValue }, id);
         if (!updatedTrade) {
           return c.json({
             error: true,
@@ -1026,13 +952,7 @@ export const journalRoutes = [
         const payload = await decorateTradeForDetail(updatedTrade);
         return c.json(payload, 200);
       } catch (error) {
-        console.error('Journal status update error:', error);
-        return c.json({
-          error: true,
-          error_id: `journal_${Date.now()}`,
-          category: 'server_error' as const,
-          message: 'Failed to update trade status'
-        }, 500);
+        return journalWriteError(c, 'journal', error, 'Invalid status update');
       }
     }
   },
@@ -1044,17 +964,8 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const { data: tags, error } = await supabaseClient
-          .from('journal_tradetags')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('name');
-
-        if (error) {
-          throw error;
-        }
-
-        return c.json(tags || [], 200);
+        const tags = await fetchOwnerTags(accessToken, user.id);
+        return c.json(tags.sort((a, b) => a.name.localeCompare(b.name)), 200);
       } catch (error) {
         console.error('Tags fetch error:', error);
         return c.json({
@@ -1069,62 +980,19 @@ export const journalRoutes = [
   {
     method: 'POST' as const,
     path: '/api/tags/',
-    handler: async (c: Context) => {
-      const user = requireAuth(c);
-      const body = await c.req.json();
-
-      try {
-        const accessToken = getAccessToken(c);
-        const normalizedBody = normalizeTagPayload(body);
-        const validatedData = tagCreateSchema.parse(normalizedBody);
-
-        const existing = await findCaseInsensitiveTagForUser(accessToken, user.id, validatedData.name);
-
-        if (existing) {
-          return c.json({
-            error: true,
-            error_id: `tags_${Date.now()}`,
-            category: 'validation' as const,
-            message: 'Tag with this name already exists'
-          }, 400);
-        }
-
-        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
-          .insert({
-            ...validatedData,
-            user_id: user.id
-          })
-          .select()
-          .single();
-
-        if (error) {
-          throw error;
-        }
-
-        return c.json(tag, 201);
-      } catch (error) {
-        console.error('Tag creation error:', error);
-        return c.json({
-          error: true,
-          error_id: `tags_${Date.now()}`,
-          category: 'validation' as const,
-          message: getSafeErrorMessage(error, 'Invalid tag data')
-        }, 400);
-      }
-    }
+    handler: (c: Context) => saveTag(c)
   },
   {
     method: 'GET' as const,
-    path: '/api/tags/:id/',
+    path: '/api/tags/:id{[0-9]+}/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
 
       try {
         const accessToken = getAccessToken(c);
-        const { data: tag, error } = await supabaseClient
-          .from('journal_tradetags')
+        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
           .select('*')
           .eq('id', id)
           .eq('user_id', user.id)
@@ -1157,65 +1025,12 @@ export const journalRoutes = [
   },
   {
     method: 'PATCH' as const,
-    path: '/api/tags/:id/',
-    handler: async (c: Context) => {
-      const user = requireAuth(c);
-      const id = c.req.param('id');
-      const body = await c.req.json();
-
-      try {
-        const accessToken = getAccessToken(c);
-        const normalizedBody = normalizeTagPayload(body);
-        const validatedData = tagCreateSchema.partial().parse(normalizedBody);
-
-        if (validatedData.name !== undefined) {
-          const existing = await findCaseInsensitiveTagForUser(accessToken, user.id, validatedData.name, id);
-          if (existing) {
-            return c.json({
-              error: true,
-              error_id: `tag_${Date.now()}`,
-              category: 'validation' as const,
-              message: 'Tag with this name already exists'
-            }, 400);
-          }
-        }
-
-        const { data: tag, error } = await withUserScope(accessToken, 'journal_tradetags')
-          .from()
-          .update(validatedData)
-          .eq('id', id)
-          .eq('user_id', user.id)
-          .select()
-          .maybeSingle();
-
-        if (error) {
-          throw error;
-        }
-
-        if (!tag) {
-          return c.json({
-            error: true,
-            error_id: `tag_${Date.now()}`,
-            category: 'not_found' as const,
-            message: 'Tag not found'
-          }, 404);
-        }
-
-        return c.json(tag, 200);
-      } catch (error) {
-        console.error('Tag update error:', error);
-        return c.json({
-          error: true,
-          error_id: `tag_${Date.now()}`,
-          category: 'validation' as const,
-          message: getSafeErrorMessage(error, 'Invalid tag data')
-        }, 400);
-      }
-    }
+    path: '/api/tags/:id{[0-9]+}/',
+    handler: (c: Context) => saveTag(c, c.req.param('id'))
   },
   {
     method: 'DELETE' as const,
-    path: '/api/tags/:id/',
+    path: '/api/tags/:id{[0-9]+}/',
     handler: async (c: Context) => {
       const user = requireAuth(c);
       const id = c.req.param('id');
@@ -1274,32 +1089,14 @@ export const journalRoutes = [
       try {
         const accessToken = getAccessToken(c);
 
-        const { data: tags, error: tagsError } = await supabaseClient
-          .from('journal_tradetags')
-          .select('*')
-          .eq('user_id', user.id);
+        const tags = await fetchOwnerTags(accessToken, user.id);
+        if (tags.length === 0) return c.json([], 200);
 
-        if (tagsError) {
-          throw tagsError;
-        }
-
-        if (!tags || tags.length === 0) {
-          return c.json([], 200);
-        }
-
-        const tagIds = tags.map((tag: any) => tag.id);
-        const { data: relations, error: relationError } = await supabaseClient
-          .from('journal_tradejournaltags')
-          .select('tag')
-          .in('tag', tagIds);
-
-        if (relationError) {
-          throw relationError;
-        }
+        const relations = await fetchOwnerTradeTagRelations(accessToken, user.id);
 
         const counts: Record<string, number> = {};
-        for (const relation of relations || []) {
-          const tagId = String(relation.tag);
+        for (const relation of relations) {
+          const tagId = String(relation.tag_id);
           counts[tagId] = (counts[tagId] || 0) + 1;
         }
 
@@ -1332,16 +1129,7 @@ export const journalRoutes = [
 
       try {
         const accessToken = getAccessToken(c);
-        const { data: trades, error } = await supabaseClient
-          .from('journal_tradejournal')
-          .select(TRADE_SELECT_WITH_TAGS)
-          .eq('user_id', user.id);
-
-        if (error) {
-          throw error;
-        }
-
-        const allTrades = trades || [];
+        const allTrades = await fetchOwnerTrades(accessToken, user.id);
         const closedTrades = allTrades.filter((trade: any) => isClosedStatus(trade.status));
         const openTrades = allTrades.filter((trade: any) => trade.status === 'OPEN');
 
@@ -1401,20 +1189,10 @@ export const journalRoutes = [
         const statusFilters = parseMultiValueParams(url, 'status');
         const tradeTypeFilters = parseMultiValueParams(url, 'trade_type');
         const tagFilters = parseMultiValueParams(url, 'tags');
-        const companyFilters = parseMultiValueParams(url, 'companies');
-
-        const { data: trades, error } = await supabaseClient
-          .from('journal_tradejournal')
-          .select(TRADE_SELECT_WITH_TAGS)
-          .eq('user_id', user.id)
-          .order('entry_date', { ascending: false });
-
-        if (error) {
-          throw error;
-        }
+        const companyFilters = getCompanyFilters(url);
 
         const queryLower = query.toLowerCase();
-        let filteredTrades = trades || [];
+        let filteredTrades = await fetchOwnerTrades(accessToken, user.id);
 
         if (statusFilters.length > 0) {
           filteredTrades = filteredTrades.filter((trade: any) => statusFilters.includes(String(trade.status)));
@@ -1521,8 +1299,8 @@ export const journalRoutes = [
         const queryLower = query.toLowerCase();
         const suggestions: Array<{ id: string; text: string; type: 'company' | 'tag'; score: number }> = [];
 
-        const { data: trades, error: tradeError } = await supabaseClient
-          .from('journal_tradejournal')
+        const { data: trades, error: tradeError } = await withUserScope(accessToken, 'journal_tradejournal')
+          .from()
           .select('company_name')
           .eq('user_id', user.id)
           .ilike('company_name', `%${query}%`)
@@ -1557,8 +1335,8 @@ export const journalRoutes = [
           });
         }
 
-        const { data: tags, error: tagError } = await supabaseClient
-          .from('journal_tradetags')
+        const { data: tags, error: tagError } = await withUserScope(accessToken, 'journal_tradetags')
+          .from()
           .select('id, name')
           .eq('user_id', user.id)
           .ilike('name', `%${query}%`)
@@ -1658,4 +1436,17 @@ export const journalRoutes = [
       }
     }
   }
-];
+].map((route) => ({
+  ...route,
+  handler: (c: Context): Promise<Response> | Response => {
+    if (!c.get('user')?.is_authenticated || !c.get('accessToken')) {
+      return c.json({
+        error: true,
+        error_id: `auth_${Date.now()}`,
+        category: 'authentication',
+        message: 'Authentication required. Please log in.'
+      }, 401);
+    }
+    return route.handler(c);
+  }
+}));
