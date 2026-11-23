@@ -8,9 +8,10 @@
     "build": "npm run type-check && vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
+    "test": "node --experimental-strip-types scripts/run-tests.js",
     "test:ui": "node --experimental-strip-types --test tests/*.test.js",
     "preview": "vite preview",
-    "type-check": "tsc --noEmit",
+    "type-check": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "type-check:watch": "tsc --noEmit --watch",
     "type-check:strict": "tsc --noEmit --strict",
     "check-all": "npm run type-check && npm run lint"

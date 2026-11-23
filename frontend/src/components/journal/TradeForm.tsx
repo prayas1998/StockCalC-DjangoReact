@@ -492,8 +492,13 @@ export function TradeForm({
       onFieldChange()
     }
     // Clear form errors for this field when user changes it
-    if (form.formState.errors[fieldName]) {
-      form.clearErrors(fieldName as keyof TradeFormValues)
+    const formFieldName: keyof TradeFormValues | undefined = fieldName === 'stop_loss'
+      ? 'sl'
+      : fieldName === 'target_price'
+        ? 'target_price'
+        : undefined;
+    if (formFieldName && form.formState.errors[formFieldName]) {
+      form.clearErrors(formFieldName)
     }
   }
 

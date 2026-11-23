@@ -75,14 +75,12 @@ export const formatApiError = (error: unknown): string => {
   if (typeof error === 'string') {
     return error;
   }
-  
-  if (error?.message) {
-    return error.message;
-  }
-  
-  if (error?.detail) {
-    return error.detail;
+
+  if (typeof error === 'object' && error !== null) {
+    const errorRecord = error as Record<string, unknown>;
+    if (typeof errorRecord.message === 'string') return errorRecord.message;
+    if (typeof errorRecord.detail === 'string') return errorRecord.detail;
   }
   
   return 'An unknown error occurred';
-}; 
+};

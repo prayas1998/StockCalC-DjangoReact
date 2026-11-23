@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  credential-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          sparse-checkout: |
+            /*
+            !/backend-node/.env.backup
+          sparse-checkout-cone-mode: false
+      - name: Verify credential backup is absent
+        run: test ! -e backend-node/.env.backup
+      - name: Reject commits containing the credential backup
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          CANDIDATE_SHA: ${{ github.sha }}
+        run: |
+          reject_tracked_path() {
+            local treeish="$1"
+            local label="$2"
+            local tracked_path
+
+            if ! git cat-file -e "${treeish}^{tree}" 2>/dev/null; then
+              echo "::error::Could not inspect the $label tree."
+              return 1
+            fi
+            if ! tracked_path="$(git ls-tree --full-tree --name-only "$treeish" -- backend-node/.env.backup)"; then
+              echo "::error::Could not inspect the $label tree."
+              return 1
+            fi
+            if [[ -n "$tracked_path" ]]; then
+              echo "::error::The $label tree must not contain backend-node/.env.backup."
+              return 1
+            fi
+          }
+
+          reject_tracked_path "$PR_HEAD_SHA" 'PR head'
+          if [[ "$CANDIDATE_SHA" != "$PR_HEAD_SHA" ]]; then
+            reject_tracked_path "$CANDIDATE_SHA" 'prospective merge result'
+          fi
+
+  django-settings-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/backend-node/.env.backup
+          sparse-checkout-cone-mode: false
+      - name: Verify credential backup is absent
+        run: test ! -e backend-node/.env.backup
+      - name: Ensure Django tests cannot read local environment files
+        run: test ! -e .env && test ! -e backend/.env
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned Django dependencies
+        run: python -m pip install -r requirements.txt
+        working-directory: backend
+      - name: Run isolated Django rollback and settings regression tests
+        run: python manage.py test calculator.test_rollback_auth backend.test_database_url_redaction journal.test_search_filters
+        working-directory: backend
+        env:
+          DJANGO_SETTINGS_MODULE: backend.settings
+          DJANGO_ENV: prod
+          DEBUG_VALUE: 'false'
+          DB_ENV: prod
+          DATABASE_URL: 'postgresql://postgres:postgres@127.0.0.1:5432/postgres'
+          DJANGO_SECRET_KEY: synthetic-django-secret-key-for-ci-validation-not-real-000000000000000000000000000000
+          DJANGO_ALLOWED_HOSTS: testserver
+          SUPABASE_URL: https://trusted-project.invalid
+          SUPABASE_PUBLISHABLE_KEY: sb_publishable_fixture
+
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/backend-node/.env.backup
+          sparse-checkout-cone-mode: false
+      - name: Verify credential backup is absent
+        run: test ! -e backend-node/.env.backup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend-node/package-lock.json
+      - run: npm ci
+        working-directory: backend-node
+      - name: Install PostgreSQL client tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpq-dev postgresql-client
+      - name: Add PostgreSQL tools to PATH
+        run: echo "$(pg_config --bindir)" >> "$GITHUB_PATH"
+      - name: Create journal fixture database
+        run: psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE journal_fixture'
+      - name: Run journal database fixture
+        run: psql -X -v ON_ERROR_STOP=1 -d journal_fixture -f tests/journal-writes.sql
+        working-directory: backend-node
+      - name: Run journal concurrency fixture
+        run: bash tests/journal-concurrency.sh
+        working-directory: backend-node
+        env:
+          PGDATABASE: journal_fixture
+      - name: Create account fixture database
+        run: psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE account_fixture'
+      - name: Run account database fixture
+        run: psql -X -v ON_ERROR_STOP=1 -d account_fixture -f tests/account-lifecycle.sql
+        working-directory: backend-node
+      - run: npm run typecheck
+        working-directory: backend-node
+      - run: npm run lint
+        working-directory: backend-node
+      - run: npm test
+        working-directory: backend-node
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/backend-node/.env.backup
+          sparse-checkout-cone-mode: false
+      - name: Verify credential backup is absent
+        run: test ! -e backend-node/.env.backup
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run check-all
+        working-directory: frontend
+      - run: npm test
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
