@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { Charges } from '@/pages/Tools/ChargesUtils';
 import { SharedCalculatorState } from './useSharedCalculatorState';
-import { NetPLCalculatorService } from '@/services/calculators/NetPLCalculatorService';
+import { NetPLCalculatorService, type NetPLCalculation } from '@/services/calculators/NetPLCalculatorService';
 import { CalculatorValidation } from '@/utils/validation/calculatorValidation';
 
 export interface NetPLState {
@@ -10,18 +9,15 @@ export interface NetPLState {
   sellPrice: string;
 }
 
-export interface NetPLResult {
-  grossProfit: number;
-  netProfit: number;
-  profitPercentage: number;
-  isProfit: boolean;
-  charges: Charges;
-  breakevenPrice: number;
+interface NetPLSnapshot {
+  state: NetPLState;
+  settings: SharedCalculatorState;
+  result: NetPLCalculation;
 }
 
 export interface NetPLCalculatorHook {
   state: NetPLState;
-  result: NetPLResult | null;
+  result: NetPLCalculation | null;
   updateField: (field: keyof NetPLState, value: string) => void;
   calculate: () => void;
 }
@@ -34,7 +30,7 @@ const initialState: NetPLState = {
 
 export const useNetPLCalculator = (sharedState: SharedCalculatorState): NetPLCalculatorHook => {
   const [state, setState] = useState<NetPLState>(initialState);
-  const [result, setResult] = useState<NetPLResult | null>(null);
+  const [snapshot, setSnapshot] = useState<NetPLSnapshot | null>(null);
 
   const updateField = useCallback((field: keyof NetPLState, value: string) => {
     setState(prev => ({
@@ -49,16 +45,16 @@ export const useNetPLCalculator = (sharedState: SharedCalculatorState): NetPLCal
       quantity: state.quantity,
       entryPrice: state.buyPrice
     })) {
-      setResult(null);
+      setSnapshot(null);
       return;
     }
 
     const entryPrice = parseFloat(state.buyPrice);
-    const quantity = parseInt(state.quantity);
-    const exitPrice = state.sellPrice ? parseFloat(state.sellPrice) : undefined;
+    const quantity = Number(state.quantity);
+    const exitPrice = state.sellPrice.trim() === "" ? undefined : Number(state.sellPrice);
 
-    if (isNaN(entryPrice) || isNaN(quantity) || entryPrice <= 0 || quantity <= 0) {
-      setResult(null);
+    if (!Number.isFinite(entryPrice) || !Number.isSafeInteger(quantity) || entryPrice <= 0 || quantity <= 0) {
+      setSnapshot(null);
       return;
     }
 
@@ -72,14 +68,21 @@ export const useNetPLCalculator = (sharedState: SharedCalculatorState): NetPLCal
       positionType: sharedState.positionType
     });
 
-    setResult(calculationResult);
+    setSnapshot(calculationResult ? { state, settings: sharedState, result: calculationResult } : null);
   }, [state, sharedState]);
 
-  // Clear results when broker/trade type changes or when form inputs change
-  // This ensures results are cleared when user switches broker but form values are preserved
+  const result = snapshot?.state === state &&
+    snapshot.settings.selectedBroker === sharedState.selectedBroker &&
+    snapshot.settings.selectedTradeType === sharedState.selectedTradeType &&
+    snapshot.settings.positionType === sharedState.positionType &&
+    snapshot.settings.exchange === sharedState.exchange
+    ? snapshot.result
+    : null;
+
+  // Hide a stale result during render and then discard it so switching back does not restore it.
   useEffect(() => {
-    setResult(null);
-  }, [state.buyPrice, state.quantity, state.sellPrice, sharedState.selectedBroker, sharedState.selectedTradeType, sharedState.positionType, sharedState.exchange]);
+    if (snapshot && !result) setSnapshot(null);
+  }, [snapshot, result]);
 
   return {
     state,

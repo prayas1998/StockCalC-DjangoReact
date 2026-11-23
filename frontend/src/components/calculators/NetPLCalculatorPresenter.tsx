@@ -36,10 +36,9 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
 }) => {
   const quantity = Number.parseInt(state.quantity || "0", 10)
   const entryPrice = Number.parseFloat(state.buyPrice || "0")
-  const exitPriceInput = Number.parseFloat(state.sellPrice || "0")
-  const effectiveExitPrice = exitPriceInput > 0 ? exitPriceInput : (result?.breakevenPrice ?? 0)
+  const analysis = result?.exitPrice === null ? null : result
   const tradeEntryValue = Number.isFinite(quantity) && Number.isFinite(entryPrice) ? quantity * entryPrice : 0
-  const tradeExitValue = Number.isFinite(quantity) && Number.isFinite(effectiveExitPrice) ? quantity * effectiveExitPrice : 0
+  const tradeExitValue = Number.isFinite(quantity) && analysis ? quantity * analysis.exitPrice : 0
   const { buyValue, sellValue } = deriveDirectionalBuySellValues({
     tradeEntryValue,
     tradeExitValue,
@@ -53,7 +52,7 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
     exchange: sharedState.exchange,
     broker: sharedState.selectedBroker,
     tradeType: sharedState.selectedTradeType,
-    totalCharges: result?.charges.totalCharges,
+    totalCharges: analysis?.charges.totalCharges,
   })
   const { netPayable, netReceivable } = computeNetCashflow({
     buyValue,
@@ -66,7 +65,7 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
     <CalculatorCard
       title="Net P&L Calculator"
       description="Calculate your net profit or loss after all charges based on your entry and exit prices."
-      icon={result?.isProfit ? TrendingUp : TrendingDown}
+      icon={analysis?.isProfit ? TrendingUp : TrendingDown}
     >
       {/* Compact Header with Clear Button */}
       <div className="flex items-center justify-end mb-4">
@@ -133,6 +132,7 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
             placeholder="Enter exit price"
             value={state.sellPrice}
             onChange={(value) => updateField("sellPrice", value)}
+            clearIncompleteOnBlur={false}
             className="h-11 text-base bg-white/50 dark:bg-slate-800/50 border-slate-300/50 dark:border-slate-600/50 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500/20 dark:focus:ring-blue-400/20 transition-all duration-200"
             allowDecimal={true}
             min={0.01}
@@ -153,18 +153,25 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
         </Button>
       </div>
 
-      {result && (
+      {result?.exitPrice === null && (
+        <p className="mt-4 text-sm text-muted-foreground">
+          {result.reason === "invalid-exit"
+            ? "Enter a positive exit price."
+            : "No breakeven quote is available. Enter an exit price to calculate P&L."}
+        </p>
+      )}
+      {analysis && (
         <ResultsPanel
           title="P&L Analysis"
           results={[
             {
               label: "Gross",
-              value: formatCurrency(Math.abs(result.grossProfit)),
+              value: formatCurrency(Math.abs(analysis.grossProfit)),
               className: "text-slate-700 dark:text-slate-300",
             },
             {
               label: "Total Charges",
-              value: formatCurrency(result.charges.totalCharges),
+              value: formatCurrency(analysis.charges.totalCharges),
               className: "text-slate-600 dark:text-slate-400",
             },
             {
@@ -179,15 +186,15 @@ export const NetPLCalculatorPresenter: React.FC<NetPLCalculatorPresenterProps> =
             },
             {
               label:
-                Math.abs(result.netProfit) < 0.01 ? "Net (Breakeven)" : result.isProfit ? "Net Profit" : "Net Loss",
-              value: `${formatCurrency(Math.abs(result.netProfit))} (${result.profitPercentage.toFixed(2)}%)`,
-              className: `font-semibold text-lg ${Math.abs(result.netProfit) < 0.01 ? "text-slate-500 dark:text-slate-400" : result.isProfit ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`,
-              style: { color: Math.abs(result.netProfit) < 0.01 ? "#6b7280" : result.isProfit ? "#16a34a" : "#dc2626" },
+                Math.abs(analysis.netProfit) < 0.01 ? "Net (Breakeven)" : analysis.isProfit ? "Net Profit" : "Net Loss",
+              value: `${formatCurrency(Math.abs(analysis.netProfit))} (${analysis.profitPercentage.toFixed(2)}%)`,
+              className: `font-semibold text-lg ${Math.abs(analysis.netProfit) < 0.01 ? "text-slate-500 dark:text-slate-400" : analysis.isProfit ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`,
+              style: { color: Math.abs(analysis.netProfit) < 0.01 ? "#6b7280" : analysis.isProfit ? "#16a34a" : "#dc2626" },
             },
           ]}
-          charges={result.charges}
+          charges={analysis.charges}
           exchange={sharedState.exchange}
-          breakevenPrice={result.breakevenPrice}
+          breakevenPrice={analysis.breakevenPrice}
         />
       )}
     </CalculatorCard>

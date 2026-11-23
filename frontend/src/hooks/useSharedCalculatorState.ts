@@ -28,7 +28,10 @@ export const useSharedCalculatorState = () => {
 
   const actions: SharedCalculatorActions = {
     setSelectedBroker,
-    setSelectedTradeType,
+    setSelectedTradeType: (tradeType) => {
+      if (tradeType === 'equity-delivery') setPositionType('long');
+      setSelectedTradeType(tradeType);
+    },
     setPositionType
   };
 
